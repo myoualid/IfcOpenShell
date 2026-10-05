@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IfcOpenShell JS — tutorial chapters</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        color: #18181b;
+        background: #fafafa;
+      }
+      a { color: #2563eb; }
+      .hero { padding: 2rem 1.5rem 1rem; max-width: 960px; margin: 0 auto; }
+      .chapters { max-width: 960px; margin: 0 auto; padding: 0 1.5rem 2rem; }
+      .chapter-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+      }
+      .chapter {
+        border: 1px solid #e4e4e7;
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        background: #fff;
+      }
+      .chapter h2 { margin: 0 0 0.35rem; font-size: 1rem; }
+      .chapter p { margin: 0 0 0.75rem; font-size: 13px; color: #52525b; }
+      .chapter a.btn {
+        display: inline-block;
+        font-size: 13px;
+        text-decoration: none;
+        background: #2563eb;
+        color: #fff;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+      }
+      .chapter.deferred {
+        background: #fafafa;
+        opacity: 0.9;
+      }
+      .section-label {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #71717a;
+        margin: 1.5rem 0 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="hero">
+      <h1>IfcOpenShell JS/WASM — tutorials</h1>
+      <p>
+        Copy-paste friendly <strong>index.html + app.js</strong> examples using the
+        camelCase session API (<code>init</code>, <code>open</code>, <code>file</code>,
+        <code>byType</code>, <code>createEntity</code>).
+      </p>
+      <p>
+        Serve with <code>node serve.mjs</code> from this folder (HTTP only — not
+        <code>file://</code>). Prose:
+        <a href="./TUTORIAL.md">TUTORIAL.md</a> ·
+        <a href="../WEB-STACK-GUIDE.md">WEB-STACK-GUIDE.md</a> ·
+        <a href="../PACKAGES-GUIDE.md">PACKAGES-GUIDE.md</a>
+      </p>
+    </header>
+
+    <div class="chapters">
+      <div class="section-label">Getting started</div>
+      <div class="chapter-grid">
+        <article class="chapter">
+          <h2>Chapter 0 — Installation</h2>
+          <p>Verify staged WASM and built <code>dist/</code>.</p>
+          <a class="btn" href="./00-installation/index.html">Run check</a>
+        </article>
+        <article class="chapter">
+          <h2>Smoke</h2>
+          <p>Minimal create-wall / open-file demo (original PR example).</p>
+          <a class="btn" href="./smoke/index.html">Run</a>
+        </article>
+      </div>
+
+      <div class="section-label">Core library</div>
+      <div class="chapter-grid">
+        <article class="chapter">
+          <h2>Chapter 1 — Parse</h2>
+          <p>Open IFC, list entities with <code>byType</code>.</p>
+          <a class="btn" href="./parse/index.html">Run</a>
+        </article>
+        <article class="chapter">
+          <h2>Chapter 2 — Geometry</h2>
+          <p>Tessellate and inspect detached <code>Mesh</code> structure.</p>
+          <a class="btn" href="./geom/index.html">Run</a>
+        </article>
+        <article class="chapter">
+          <h2>Chapter 3 — Create</h2>
+          <p>In-memory IFC4 with <code>file()</code> + <code>createEntity</code>.</p>
+          <a class="btn" href="./create/index.html">Run</a>
+        </article>
+        <article class="chapter">
+          <h2>Chapter 4 — Full stack</h2>
+          <p>Parse + edit a name + tessellate a few meshes.</p>
+          <a class="btn" href="./full/index.html">Run</a>
+        </article>
+      </div>
+
+      <div class="section-label">Viewer integration</div>
+      <div class="chapter-grid">
+        <article class="chapter">
+          <h2>Chapter 5 — Three.js</h2>
+          <p>Convert meshes to <code>THREE.Mesh</code> with Z-up framing.</p>
+          <a class="btn" href="./viewer-threejs/index.html">Run</a>
+        </article>
+        <article class="chapter">
+          <h2>Chapter 6 — Babylon.js</h2>
+          <p>Convert meshes to Babylon with Z-up framing.</p>
+          <a class="btn" href="./viewer-babylon/index.html">Run</a>
+        </article>
+      </div>
+
+      <div class="section-label">Coming later</div>
+      <div class="chapter-grid">
+        <article class="chapter deferred">
+          <h2>High-level <code>ifcopenshell.api.*</code></h2>
+          <p>
+            Generated authoring helpers, pset/placement tutorials, and IfcViewerWeb
+            sync — deferred until that surface is ported into this tree.
+          </p>
+        </article>
+      </div>
+    </div>
+  </body>
+</html>

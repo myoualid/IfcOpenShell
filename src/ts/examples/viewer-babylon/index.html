@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chapter 6 — Babylon.js viewer</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "ifcopenshell": "../../ifcopenshell-js/dist/index.js",
+          "@babylonjs/core": "https://cdn.jsdelivr.net/npm/@babylonjs/core@7.49.0/+esm"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <nav class="chapter-nav">
+      <a href="../index.html">All chapters</a>
+      <a href="../viewer-threejs/index.html">← Ch 5 — Three.js</a>
+      <a href="../smoke/index.html">Smoke →</a>
+    </nav>
+    <main class="page page-wide">
+      <h1>Chapter 6 — Load IFC geometry with Babylon.js</h1>
+      <p>
+        Tessellate with IfcOpenShell, convert detached <code>Mesh</code> snapshots to
+        Babylon meshes, recenter for large coordinates.
+      </p>
+      <p id="status">Starting…</p>
+      <section class="example-code-panel">
+        <h2>IFC code</h2>
+        <pre id="example-code" class="example-code-body"><code class="language-javascript"></code></pre>
+      </section>
+      <div class="viewport-wrap"><canvas id="viewport"></canvas></div>
+      <p class="hint">Drag to orbit · scroll to zoom · geometry from <code>sample.ifc</code></p>
+    </main>
+
+    <script type="text/plain" id="ifc-source">import ifcopenshell from 'ifcopenshell';
+
+await ifcopenshell.init({ wasmBase });
+const model = await ifcopenshell.open(bytes, 'sample.ifc');
+
+const settings = new ifcopenshell.geom.settings();
+settings.set('weld-vertices', true);
+settings.set('mesher-linear-deflection', 0.02);
+
+const iter = ifcopenshell.geom.iterate(settings, model, {
+  numThreads: 1,
+  geometryLibrary: 'opencascade',
+});
+await iter.initialize();
+
+for await (const mesh of iter) {
+  // mesh.vertices / mesh.faces / mesh.transform → Babylon VertexData (see app.js)
+}
+
+iter.dispose();
+settings.dispose();
+model.dispose();</script>
+
+    <script>
+      (function () {
+        function highlightIfcSource() {
+          const source = document.getElementById('ifc-source');
+          const code = document.querySelector('#example-code code');
+          if (!source || !code || !window.hljs) return;
+          code.textContent = source.textContent.trim();
+          hljs.highlightElement(code);
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', highlightIfcSource);
+        } else {
+          highlightIfcSource();
+        }
+      })();
+    </script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

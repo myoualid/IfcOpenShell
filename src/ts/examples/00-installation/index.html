@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chapter 0 — Installation</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "ifcopenshell": "../../ifcopenshell-js/dist/index.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <nav class="chapter-nav">
+      <a href="../index.html">All chapters</a>
+      <a href="../parse/index.html">Ch 1 — Parse →</a>
+    </nav>
+    <main class="page">
+      <h1>Chapter 0 — Installation</h1>
+      <p>Verify staged WASM and built <code>dist/</code> before running other chapters.</p>
+      <p id="status">Checking…</p>
+      <section class="example-code-panel">
+        <h2>IFC code</h2>
+        <pre id="example-code" class="example-code-body"><code class="language-javascript"></code></pre>
+      </section>
+      <ul id="checks" class="check-list"></ul>
+      <h2>Commands</h2>
+      <pre id="commands"></pre>
+    </main>
+
+    <script type="text/plain" id="ifc-source">import ifcopenshell from 'ifcopenshell';
+
+// Point at the staged wasm/ folder (sibling of ifcopenshell-js).
+await ifcopenshell.init({
+  wasmBase: new URL('../../ifcopenshell-wasm/wasm/', import.meta.url).href,
+});</script>
+
+    <script>
+      (function () {
+        function highlightIfcSource() {
+          const source = document.getElementById('ifc-source');
+          const code = document.querySelector('#example-code code');
+          if (!source || !code || !window.hljs) return;
+          code.textContent = source.textContent.trim();
+          hljs.highlightElement(code);
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', highlightIfcSource);
+        } else {
+          highlightIfcSource();
+        }
+      })();
+    </script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

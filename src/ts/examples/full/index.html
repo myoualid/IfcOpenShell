@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chapter 4 — Full stack</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "ifcopenshell": "../../ifcopenshell-js/dist/index.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <nav class="chapter-nav">
+      <a href="../index.html">All chapters</a>
+      <a href="../create/index.html">← Ch 3 — Create</a>
+      <a href="../viewer-threejs/index.html">Ch 5 — Three.js →</a>
+    </nav>
+    <main class="page">
+      <h1>Chapter 4 — Full stack</h1>
+      <p>Open a file, edit a wall name, then tessellate a few meshes.</p>
+      <p id="status" class="status">Starting…</p>
+
+      <div class="lesson-steps">
+        <section class="lesson-step" data-step="1">
+          <h2>1. Open the file</h2>
+          <pre class="lesson-code"><code>const model = await ifcopenshell.open(bytes, 'sample.ifc');</code></pre>
+          <pre class="lesson-result" id="step-1">Waiting…</pre>
+        </section>
+        <section class="lesson-step" data-step="2">
+          <h2>2. Get and edit an element</h2>
+          <pre class="lesson-code"><code>const walls = model.byType('IfcWall');
+walls[0].Name = 'Edited in full example';</code></pre>
+          <pre class="lesson-result" id="step-2">Waiting…</pre>
+        </section>
+        <section class="lesson-step" data-step="3">
+          <h2>3. Tessellate</h2>
+          <pre class="lesson-code"><code>const settings = new ifcopenshell.geom.settings();
+settings.set('weld-vertices', true);
+const iter = ifcopenshell.geom.iterate(settings, model, {
+  numThreads: 1,
+  geometryLibrary: 'opencascade',
+});
+await iter.initialize();
+const meshes = [];
+for await (const mesh of iter) {
+  if (mesh.faces.length === 0) continue;
+  meshes.push(mesh);
+  if (meshes.length >= 5) break;
+}</code></pre>
+          <pre class="lesson-result" id="step-3">Waiting…</pre>
+        </section>
+        <section class="lesson-step" data-step="4">
+          <h2>4. Log the result</h2>
+          <pre class="lesson-code"><code>console.log(walls[0].Name, meshes.length);</code></pre>
+          <pre class="lesson-result" id="step-4">Waiting…</pre>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

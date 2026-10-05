@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chapter 2 — Geometry</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "ifcopenshell": "../../ifcopenshell-js/dist/index.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <nav class="chapter-nav">
+      <a href="../index.html">All chapters</a>
+      <a href="../parse/index.html">← Ch 1 — Parse</a>
+      <a href="../create/index.html">Ch 3 — Create →</a>
+    </nav>
+    <main class="page">
+      <h1>Chapter 2 — Geometry</h1>
+      <p>Tessellate an open model into mesh buffers (kernel <code>opencascade</code>).</p>
+      <p id="status" class="status">Starting…</p>
+
+      <div class="lesson-steps">
+        <section class="lesson-step" data-step="1">
+          <h2>1. Configure settings</h2>
+          <pre class="lesson-code"><code>const settings = new ifcopenshell.geom.settings();
+settings.set('weld-vertices', true);
+settings.set('mesher-linear-deflection', 0.02);</code></pre>
+          <pre class="lesson-result" id="step-1">Waiting…</pre>
+        </section>
+        <section class="lesson-step" data-step="2">
+          <h2>2. Create a geometry iterator</h2>
+          <pre class="lesson-code"><code>const iter = ifcopenshell.geom.iterate(settings, model, {
+  numThreads: 1,
+  geometryLibrary: 'opencascade',
+});
+await iter.initialize();</code></pre>
+          <pre class="lesson-result" id="step-2">Waiting…</pre>
+        </section>
+        <section class="lesson-step" data-step="3">
+          <h2>3. Iterate meshes</h2>
+          <pre class="lesson-code"><code>const meshes = [];
+for await (const mesh of iter) {
+  if (mesh.faces.length === 0) continue;
+  meshes.push(mesh);
+  if (meshes.length >= 10) break;
+}</code></pre>
+          <pre class="lesson-result" id="step-3">Waiting…</pre>
+        </section>
+        <section class="lesson-step" data-step="4">
+          <h2>4. Inspect buffers</h2>
+          <pre class="lesson-code"><code>const mesh = meshes[0];
+console.log(
+  mesh.type,
+  mesh.vertices.length / 3,
+  mesh.faces.length / 3,
+);</code></pre>
+          <pre class="lesson-result" id="step-4">Waiting…</pre>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
