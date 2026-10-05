@@ -57,7 +57,7 @@ else()
 endif()
 
 if(WASM_BUILD)
-    ifcopenshell_wasm_define_main_import_target(IfcGeom INTERFACE_LINK_LIBRARIES "Eigen3::Eigen")
+    ifcopenshell_wasm_define_main_import_target(IfcGeom INTERFACE_LINK_LIBRARIES Eigen3::Eigen Boost::headers)
 endif()
 
 if((BUILD_CONVERT OR BUILD_IFCPYTHON OR BUILD_IFCAPI) AND WITH_OPENCASCADE)

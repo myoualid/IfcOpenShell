@@ -345,8 +345,19 @@ def emsdk_env(toolchain_dir: Path) -> dict[str, str]:
     if not emsdk_env_file.exists():
         raise RuntimeError(f"emsdk not found at {toolchain_dir}. Run bootstrap-toolchain first.")
 
+    posix = emsdk_env_file.resolve().as_posix()
+    if os.name == "nt" and len(posix) >= 2 and posix[1] == ":":
+        posix = f"/{posix[0].lower()}{posix[2:]}"
+    bash = "bash"
+    extra_env = None
+    msys_bash = Path(r"C:\msys64\usr\bin\bash.exe")
+    if os.name == "nt" and msys_bash.exists():
+        bash = str(msys_bash)
+        extra_env = dict(os.environ)
+        extra_env["PATH"] = r"C:\msys64\usr\bin;C:\msys64\mingw64\bin;" + extra_env.get("PATH", "")
     result = run(
-        ["bash", "-c", f"source {emsdk_env_file} && env"],
+        [bash, "-c", f"source '{posix}' && /usr/bin/env"],
+        env=extra_env,
         capture=True,
         check=True,
     )

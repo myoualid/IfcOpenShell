@@ -73,7 +73,9 @@ if(WITH_ROCKSDB)
 endif()
 
 if(WASM_BUILD)
-    ifcopenshell_wasm_define_main_import_target(IfcParse)
+    # Schema side modules include IfcParse headers that need Boost; the main
+    # module owns the Boost link, so expose headers through the import target.
+    ifcopenshell_wasm_define_main_import_target(IfcParse INTERFACE_LINK_LIBRARIES Boost::headers)
 endif()
 
 ifcopenshell_wasm_plugin_dependency(plugin_when_not_wasm)
@@ -108,7 +110,16 @@ foreach(schema ${SCHEMA_VERSIONS})
             SYMBOL_ID "ifc${schema}"
             EXPORT_SYMBOL "ifcopenshell_emscripten_register_schema_ifc${schema}"
         )
-        ifcopenshell_wasm_plugin_link_options(${SCHEMA_PLUGIN_TARGET} ifcopenshell_register_schema_plugin_v1 EXPORT_DYNAMIC)
+        # SIDE_MODULE=1 + EXPORT_DYNAMIC exports entity Class() symbols that
+        # geometry mapping plugins import (e.g. Ifc4::IfcContext::Class).
+        # SIDE_MODULE=2 only keeps the registration entry points and breaks tessellation.
+        ifcopenshell_wasm_plugin_link_options(
+            ${SCHEMA_PLUGIN_TARGET}
+            ifcopenshell_register_schema_plugin_v1
+            SIDE_MODULE 1
+            OPTIMIZATION -O1
+            EXPORT_DYNAMIC
+        )
         ifcopenshell_wasm_plugin_target_link(${SCHEMA_PLUGIN_TARGET}
             MAIN_TARGETS IfcParse
             PRIVATE ${plugin_when_not_wasm}

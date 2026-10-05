@@ -164,8 +164,36 @@ def emsdk_env() -> dict[str, str]:
     """Return environment variables for emsdk activation.
 
     Respects WASM_NATIVE_TOOLCHAIN env var to use an externally managed emsdk.
+    On Windows, bash-exported PATH is POSIX-only and cannot launch emcmake.bat,
+    so the toolchain directories are prepended to the native PATH instead.
     """
-    return core.emsdk_env(_resolved_toolchain_dir())
+    toolchain = _resolved_toolchain_dir()
+    if os.name != "nt":
+        return core.emsdk_env(toolchain)
+    env = dict(os.environ)
+    emscripten = toolchain / "upstream" / "emscripten"
+    if not (emscripten / "emcmake.bat").exists():
+        raise RuntimeError(f"emsdk not found at {toolchain}. Run bootstrap-toolchain first.")
+    prepend = [str(toolchain), str(emscripten), str(toolchain / "upstream" / "bin")]
+    node_bin = next(iter((toolchain / "node").glob("*_64bit\\bin")), None)
+    if node_bin is None:
+        node_bin = next(iter((toolchain / "node").glob("*_64bit/bin")), None)
+    if node_bin is not None:
+        prepend.append(str(node_bin))
+    env["PATH"] = os.pathsep.join(prepend + [env.get("PATH", "")])
+    env["EMSDK"] = str(toolchain)
+    env["EMSCRIPTEN"] = str(emscripten)
+    emsdk_python = next(iter((toolchain / "python").glob("*_64bit/python.exe")), None)
+    if emsdk_python is not None:
+        env["EMSDK_PYTHON"] = str(emsdk_python)
+    return env
+
+
+def _emcmake() -> str:
+    emcmake = Path(core.emsdk_binaries(_resolved_toolchain_dir())["emcmake"])
+    if os.name == "nt":
+        emcmake = emcmake.with_suffix(".bat")
+    return str(emcmake)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -285,7 +313,8 @@ def generate_cmake_flags() -> list[str]:
         flags.append(f"-D{key}={value}")
 
     prefix_paths = []
-    for dep_name in DEPENDENCIES:
+    extra_prefix_names = ("libxml2",)
+    for dep_name in (*DEPENDENCIES, *extra_prefix_names):
         dep_prefix = install_prefix / dep_name
         if dep_prefix.exists():
             prefix_paths.append(str(dep_prefix))
@@ -318,10 +347,10 @@ def cmd_configure(args: argparse.Namespace) -> int:
         return 1
 
     cmake_flags = generate_cmake_flags()
-    cmake_cmd = ["emcmake", "cmake", str(CMAKE_DIR)] + cmake_flags
+    cmake_cmd = [_emcmake(), "cmake", "-S", str(CMAKE_DIR), "-B", str(build_dir)] + cmake_flags
 
     logger.info("Configuring IfcOpenShell...")
-    core.run(cmake_cmd, cwd=build_dir, env=env)
+    core.run(cmake_cmd, env=env)
 
     logger.info("Configuration complete. Build directory: %s", build_dir)
     return 0
