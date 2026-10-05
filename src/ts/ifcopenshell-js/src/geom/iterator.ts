@@ -9,8 +9,9 @@ import type {
 } from '@ifcopenshell-js/wasm/api';
 import type { IfcFile } from '../file.js';
 import { IfcOpenShellError, abortError, type IfcOpenShell } from '../init.js';
+import { schemaPluginId } from '../schema.js';
 import { HandleGuard } from '../resource.js';
-import { GeomSettings } from './settings.js';
+import { settings } from './settings.js';
 import type { Mesh, MeshPrecision } from './mesh.js';
 
 /** Include or exclude geometry by IFC type, GlobalId, or numeric id. */
@@ -67,7 +68,7 @@ export interface CollectOptions {
   onProgress?(progress: OperationProgress & { meshes: number }): void;
 }
 
-/** Meshes and completion metadata returned by {@link GeomIterator.collect}. */
+/** Meshes and completion metadata returned by {@link iterator.collect}. */
 export interface CollectResult<P extends MeshPrecision = 'float32'> {
   meshes: Mesh<P>[];
   truncated: boolean;
@@ -75,7 +76,7 @@ export interface CollectResult<P extends MeshPrecision = 'float32'> {
 }
 
 /** Asynchronous geometry mesh iterator backed by a loaded IFC file. */
-export class GeomIterator<P extends MeshPrecision = 'float32'> implements AsyncIterable<Mesh<P>> {
+export class iterator<P extends MeshPrecision = 'float32'> implements AsyncIterable<Mesh<P>> {
   private rawIter: IfcOpenshellGeomIterator | null = null;
   private guard: HandleGuard<IfcOpenshellGeomIterator> | null = null;
   private initialized = false;
@@ -84,21 +85,22 @@ export class GeomIterator<P extends MeshPrecision = 'float32'> implements AsyncI
   private exhausted = false;
   private disposed = false;
   private readonly ready: Promise<IfcOpenshellGeomIterator>;
-  private readonly ownedSettings: GeomSettings | null;
+  private readonly ownedSettings: settings | null;
   private settingsReleased = false;
   private readonly precision: P;
 
+  /** @internal Prefer {@link iterate}. */
   constructor(
     shell: IfcOpenShell,
     file: IfcFile,
-    settings: GeomSettings,
+    geomSettings: settings,
     options: IteratorOptions<P> = {},
     private readonly ownsSettings = false,
   ) {
-    validateTriangulatedOutput(settings);
+    validateTriangulatedOutput(geomSettings);
     this.precision = (options.precision ?? 'float32') as P;
-    this.ownedSettings = ownsSettings ? settings : null;
-    this.ready = createIterator(shell, file.raw, settings, options).then((raw) => {
+    this.ownedSettings = ownsSettings ? geomSettings : null;
+    this.ready = createIterator(shell, file.raw, geomSettings, options).then((raw) => {
       if (this.disposed) {
         raw.destroy();
         this.releaseSettings();
@@ -113,15 +115,16 @@ export class GeomIterator<P extends MeshPrecision = 'float32'> implements AsyncI
     });
   }
 
+  /** @internal Native iterator handle — advanced escape hatch only. */
   get raw(): IfcOpenshellGeomIterator {
-    if (this.disposed || this.rawIter == null) throw new IfcOpenShellError('GeomIterator has been disposed');
+    if (this.disposed || this.rawIter == null) throw new IfcOpenShellError('iterator has been disposed');
     return this.rawIter;
   }
 
   /** Return progress, initialization, error, and unit metadata. */
   async metadata(): Promise<IteratorMetadata> {
     const raw = await this.ready;
-    if (this.disposed) throw new IfcOpenShellError('GeomIterator has been disposed');
+    if (this.disposed) throw new IfcOpenShellError('iterator has been disposed');
     return {
       initialized: this.initialized,
       progress: normalizeProgress(raw.progress()),
@@ -133,7 +136,7 @@ export class GeomIterator<P extends MeshPrecision = 'float32'> implements AsyncI
 
   /** Initialize the native iterator and report whether initialization succeeded. */
   async initialize(): Promise<boolean> {
-    if (this.disposed) throw new IfcOpenShellError('GeomIterator has been disposed');
+    if (this.disposed) throw new IfcOpenShellError('iterator has been disposed');
     if (this.initializationAttempted) return this.initialized;
     const raw = await this.ready;
     const ok = raw.initialize();
@@ -145,12 +148,12 @@ export class GeomIterator<P extends MeshPrecision = 'float32'> implements AsyncI
 
   /** Compute geometry bounds, optionally forcing full geometry creation. */
   async computeBounds(withGeometry = true): Promise<void> {
-    if (this.disposed) throw new IfcOpenShellError('GeomIterator has been disposed');
+    if (this.disposed) throw new IfcOpenShellError('iterator has been disposed');
     if (!await this.initialize()) {
       const raw = await this.ready;
       if (!raw.hadErrorProcessingElements()) return;
       throw new IfcOpenShellError(
-        'Failed to initialize GeomIterator before computing bounds; verify the IFC has supported geometry and the selected kernel is available',
+        'Failed to initialize iterator before computing bounds; verify the IFC has supported geometry and the selected kernel is available',
       );
     }
     (await this.ready).computeBounds(withGeometry);
@@ -159,7 +162,7 @@ export class GeomIterator<P extends MeshPrecision = 'float32'> implements AsyncI
   /** Return the computed minimum and maximum points. */
   async bounds(): Promise<{ min: [number, number, number] | null; max: [number, number, number] | null }> {
     const raw = await this.ready;
-    if (this.disposed) throw new IfcOpenShellError('GeomIterator has been disposed');
+    if (this.disposed) throw new IfcOpenShellError('iterator has been disposed');
     if (this.cleanlyEmpty) return { min: null, max: null };
     return { min: readPoint3(raw.boundsMin()), max: readPoint3(raw.boundsMax()) };
   }
@@ -254,14 +257,14 @@ export class GeomIterator<P extends MeshPrecision = 'float32'> implements AsyncI
 
   private async nextWithOptions(options: { signal?: AbortSignal } = {}): Promise<Mesh<P> | null> {
     throwIfAborted(options.signal);
-    if (this.disposed) throw new IfcOpenShellError('GeomIterator has been disposed');
+    if (this.disposed) throw new IfcOpenShellError('iterator has been disposed');
     if (this.exhausted) return null;
     const raw = await this.ready;
     if (!await this.initialize()) {
       this.exhausted = true;
       if (!raw.hadErrorProcessingElements()) return null;
       throw new IfcOpenShellError(
-        'Failed to initialize GeomIterator; verify the IFC has supported geometry and the selected kernel is available',
+        'Failed to initialize iterator; verify the IFC has supported geometry and the selected kernel is available',
       );
     }
     const mesh = extractMesh(raw, this.precision);
@@ -273,64 +276,103 @@ export class GeomIterator<P extends MeshPrecision = 'float32'> implements AsyncI
 async function createIterator(
   shell: IfcOpenShell,
   file: IfcOpenshellFile,
-  settings: GeomSettings,
+  geomSettings: settings,
   options: IteratorOptions<MeshPrecision>,
 ): Promise<IfcOpenshellGeomIterator> {
   const kernel = options.kernel ?? 'passthrough';
   await loadGeometry(shell, file, kernel);
-  const raw = createFilteredIterator(shell, kernel, settings, file, options.numThreads ?? 1, options.filter);
-  if (!raw || raw.ptr === 0) throw new IfcOpenShellError('Failed to create GeomIterator');
+  const raw = createFilteredIterator(shell, kernel, geomSettings, file, options.numThreads ?? 1, options.filter);
+  if (!raw || raw.ptr === 0) throw new IfcOpenShellError('Failed to create iterator');
   return raw;
 }
 
 function createFilteredIterator(
   shell: IfcOpenShell,
   kernel: string,
-  settings: GeomSettings,
+  geomSettings: settings,
   file: IfcOpenshellFile,
   threads: number,
   filter?: IteratorFilter,
 ): IfcOpenshellGeomIterator | null {
   const include = filter?.include ?? true;
   if (filter?.kind === 'types') {
-    return shell.raw.geom.createIteratorWithIncludeExclude(kernel, settings.raw, file, filter.values, include, threads);
+    return shell.raw.geom.createIteratorWithIncludeExclude(kernel, geomSettings.raw, file, filter.values, include, threads);
   }
   if (filter?.kind === 'guids') {
-    return shell.raw.geom.createIteratorWithIncludeExcludeGlobalid(kernel, settings.raw, file, filter.values, include, threads);
+    return shell.raw.geom.createIteratorWithIncludeExcludeGlobalid(kernel, geomSettings.raw, file, filter.values, include, threads);
   }
   if (filter?.kind === 'ids') {
-    return shell.raw.geom.createIteratorWithIncludeExcludeId(kernel, settings.raw, file, filter.values, include, threads);
+    return shell.raw.geom.createIteratorWithIncludeExcludeId(kernel, geomSettings.raw, file, filter.values, include, threads);
   }
-  return shell.raw.geom.createIterator(kernel, settings.raw, file, threads);
+  return shell.raw.geom.createIterator(kernel, geomSettings.raw, file, threads);
 }
 
+/**
+ * Get a geometry iterator for the provided file.
+ * Matches Python `ifcopenshell.geom.iterate(settings, file, …)`.
+ */
+export function iterate<P extends MeshPrecision = 'float32'>(
+  geomSettings: settings,
+  file: IfcFile,
+  options: {
+    numThreads?: number;
+    include?: string[] | number[];
+    exclude?: string[] | number[];
+    geometryLibrary?: string;
+    precision?: P;
+  } = {},
+): iterator<P> {
+  const filter = toFilter(options.include, options.exclude);
+  return new iterator<P>(
+    file.shell,
+    file,
+    geomSettings,
+    {
+      kernel: options.geometryLibrary ?? 'opencascade',
+      numThreads: options.numThreads ?? 1,
+      filter,
+      precision: options.precision,
+    },
+    false,
+  );
+}
+
+function toFilter(
+  include?: string[] | number[],
+  exclude?: string[] | number[],
+): IteratorFilter | undefined {
+  if (include && exclude) {
+    throw new IfcOpenShellError('geom.iterate cannot take both include and exclude');
+  }
+  const values = include ?? exclude;
+  if (!values || values.length === 0) return undefined;
+  const asInclude = include != null;
+  if (typeof values[0] === 'number') {
+    return { kind: 'ids', values: values as number[], include: asInclude };
+  }
+  return { kind: 'types', values: values as string[], include: asInclude };
+}
+
+/** @internal Load geometry plugins for a kernel/schema. */
 export async function loadGeometry(shell: IfcOpenShell, file: IfcOpenshellFile, kernel: string): Promise<void> {
   const schema = schemaPluginId(file.schemaName());
   await shell.loadPlugin('kernel', kernel);
   await shell.loadPlugin('mapping', schema);
 }
 
-export function schemaPluginId(schemaName: string): string {
-  const normalized = schemaName.toLowerCase().replace(/[^a-z0-9]/g, '_');
-  if (normalized.includes('ifc2x3')) return 'ifc2x3';
-  if (normalized.includes('ifc4x3')) return 'ifc4x3_add2';
-  if (normalized.includes('ifc4')) return 'ifc4';
-  throw new IfcOpenShellError(
-    `Unsupported geometry mapping schema "${schemaName}"; supported mappings are IFC2X3, IFC4, and IFC4X3`,
-  );
-}
+export { schemaPluginId } from '../schema.js';
 
 function extractMesh<P extends MeshPrecision>(iter: IfcOpenshellGeomIterator, precision: P): Mesh<P> | null {
   let tri: IfcOpenshellGeomTriangulationElement | null = null;
   let geom: IfcOpenshellGeomTriangulation | null = null;
-  let element: IfcOpenshellGeomElement | null = null;
   try {
+    // getAsTriangulationElement() already consumes the current iterator element
+    // (same ownership as get()). Do not call get() afterwards.
     tri = iter.getAsTriangulationElement();
     if (!tri || tri.ptr === 0) return null;
     geom = tri.geometry();
     if (!geom || geom.ptr === 0) return null;
-    element = iter.get();
-    if (!element || element.ptr === 0) return null;
+    const element = tri as unknown as IfcOpenshellGeomElement;
     const vertices = precision === 'float64' ? geom.vertsBuffer(Float64Array) : geom.vertsBuffer(Float32Array);
     const normals = precision === 'float64' ? geom.normalsBuffer(Float64Array) : geom.normalsBuffer(Float32Array);
     const uvs = precision === 'float64' ? geom.uvsBuffer(Float64Array) : geom.uvsBuffer(Float32Array);
@@ -352,7 +394,6 @@ function extractMesh<P extends MeshPrecision>(iter: IfcOpenshellGeomIterator, pr
       colors,
     } as Mesh<P>;
   } finally {
-    release(element);
     release(geom);
     release(tri);
   }
@@ -372,10 +413,10 @@ function release(handle: { destroy(): void } | null | undefined): void {
   handle?.destroy();
 }
 
-function validateTriangulatedOutput(settings: GeomSettings): void {
-  if (settings.getInt('iterator-output') !== 0) {
+function validateTriangulatedOutput(geomSettings: settings): void {
+  if (geomSettings.get('iterator-output') !== 0) {
     throw new IfcOpenShellError(
-      'IfcFile.meshes() requires triangulated geometry; set "iterator-output" to 0 (TRIANGULATED)',
+      'geom.iterate() requires triangulated geometry; set "iterator-output" to 0 (TRIANGULATED)',
     );
   }
 }

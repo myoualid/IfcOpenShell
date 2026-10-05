@@ -3,7 +3,7 @@
  * Pure-data description of a single triangulated mesh element.
  *
  * A {@link Mesh} carries no WASM handle — it is a detached, JS-owned snapshot
- * of one element produced by {@link GeomIterator}. The underlying WASM
+ * of one element produced by {@link iterator}. The underlying WASM
  * handles used to build it are released as soon as the mesh is yielded, so
  * callers may keep and use the object freely for as long as they like.
  */

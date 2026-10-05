@@ -2,123 +2,71 @@
 import type { IfcOpenshellGeomSettings } from '@ifcopenshell-js/wasm/api';
 import { IfcOpenShellError, type IfcOpenShell } from '../init.js';
 import { HandleGuard } from '../resource.js';
+import { requireSession } from '../session.js';
 
 /** Value accepted by a geometry setting setter. */
 export type SettingInput = boolean | number | string | number[] | string[];
 type SettingType = 'bool' | 'double' | 'int' | 'string' | 'intSet' | 'doubleList' | 'stringSet';
 
-/** Owned wrapper for native geometry interpretation settings. */
-export class GeomSettings {
+/**
+ * Owned wrapper for native geometry interpretation settings.
+ * Matches Python `ifcopenshell.geom.settings()` — uses the runtime from
+ * {@link init} unless an explicit shell is passed.
+ */
+export class settings {
   private _raw: IfcOpenshellGeomSettings | null;
   private readonly guard: HandleGuard<IfcOpenshellGeomSettings>;
 
-  constructor(shell: IfcOpenShell) {
-    this._raw = shell.raw.geom.createSettings();
+  constructor(shell?: IfcOpenShell) {
+    const runtime = shell ?? requireSession();
+    this._raw = runtime.raw.geom.createSettings();
     this.guard = new HandleGuard(this, this._raw, true);
   }
 
+  /** @internal Native settings handle — advanced escape hatch only. */
   get raw(): IfcOpenshellGeomSettings {
-    if (this._raw == null) throw new IfcOpenShellError('GeomSettings has been disposed');
+    if (this._raw == null) throw new IfcOpenShellError('geom.settings has been disposed');
     return this._raw;
-  }
-
-  setBool(name: string, value: boolean): void {
-    this.raw.setBool(name, value);
-  }
-
-  setDouble(name: string, value: number): void {
-    this.raw.setDouble(name, value);
-  }
-
-  setInt(name: string, value: number): void {
-    this.raw.setInt(name, value);
-  }
-
-  setString(name: string, value: string): void {
-    this.raw.setString(name, value);
-  }
-
-  setIntSet(name: string, value: number[]): void {
-    this.raw.setIntSet(name, value);
-  }
-
-  setDoubleList(name: string, value: number[]): void {
-    this.raw.setDoubleList(name, value);
-  }
-
-  setStringSet(name: string, value: string[]): void {
-    this.raw.setStringSet(name, value);
   }
 
   /** Set a named setting using the native setting type when available. */
   set(name: string, value: SettingInput): void {
-    if (typeof value === 'boolean') this.setBool(name, value);
-    else if (typeof value === 'string') this.setString(name, value);
+    if (typeof value === 'boolean') this.raw.setBool(name, value);
+    else if (typeof value === 'string') this.raw.setString(name, value);
     else if (Array.isArray(value)) {
-      if (value.every((item): item is string => typeof item === 'string')) this.setStringSet(name, value);
+      if (value.every((item): item is string => typeof item === 'string')) this.raw.setStringSet(name, value);
       else if (normalizeSettingType(catchString(() => this.getType(name), 'intSet')) === 'doubleList') {
-        this.setDoubleList(name, value);
+        this.raw.setDoubleList(name, value);
       } else {
-        this.setIntSet(name, value);
+        this.raw.setIntSet(name, value);
       }
     } else if (normalizeSettingType(catchString(() => this.getType(name), 'double')) === 'int') {
-      this.setInt(name, value);
+      this.raw.setInt(name, value);
     } else {
-      this.setDouble(name, value);
+      this.raw.setDouble(name, value);
     }
   }
 
-  getBool(name: string): boolean {
-    return this.raw.getBool(name);
-  }
-
-  getDouble(name: string): number {
+  /** Read a named setting. Python: `settings.get(name)`. */
+  get(name: string): SettingInput {
+    const type = normalizeSettingType(this.getType(name));
+    if (type === 'bool') return this.raw.getBool(name);
+    if (type === 'int') return this.raw.getInt(name);
+    if (type === 'string') return this.raw.getString(name);
+    if (type === 'intSet') return this.raw.getIntSet(name);
+    if (type === 'doubleList') return this.raw.getDoubleList(name);
+    if (type === 'stringSet') return this.raw.getStringSet(name);
     return this.raw.getDouble(name);
   }
 
-  getInt(name: string): number {
-    return this.raw.getInt(name);
-  }
-
-  getString(name: string): string {
-    return this.raw.getString(name);
-  }
-
-  getIntSet(name: string): number[] {
-    return this.raw.getIntSet(name);
-  }
-
-  getDoubleList(name: string): number[] {
-    return this.raw.getDoubleList(name);
-  }
-
-  getStringSet(name: string): string[] {
-    return this.raw.getStringSet(name);
-  }
-
+  /** Python: `settings.get_type(name)`. */
   getType(name: string): string {
     return this.raw.getType(name);
   }
 
-  /** Read a named setting using its native scalar or list representation. */
-  value(name: string): SettingInput {
-    const type = normalizeSettingType(this.getType(name));
-    if (type === 'bool') return this.getBool(name);
-    if (type === 'int') return this.getInt(name);
-    if (type === 'string') return this.getString(name);
-    if (type === 'intSet') return this.getIntSet(name);
-    if (type === 'doubleList') return this.getDoubleList(name);
-    if (type === 'stringSet') return this.getStringSet(name);
-    return this.getDouble(name);
-  }
-
-  /** Return the names exposed by the native geometry settings object. */
+  /** Python: `settings.setting_names()`. */
   settingNames(): string[] {
     return this.raw.settingNames();
-  }
-
-  names(): string[] {
-    return this.settingNames();
   }
 
   /** Release the native settings handle. */
@@ -138,13 +86,35 @@ export class GeomSettings {
 }
 
 function normalizeSettingType(type: string): SettingType {
-  const normalized = type.toLowerCase().replace(/[\s_-]+/g, '');
+  const trimmed = type.trim();
+  const normalized = trimmed.toLowerCase().replace(/[\s_-]+/g, '');
   if (normalized.includes('bool')) return 'bool';
-  if (normalized === 'int' || normalized.includes('integer')) return 'int';
-  if (normalized.includes('stringset')) return 'stringSet';
-  if (normalized.includes('doublelist')) return 'doubleList';
+  if (
+    normalized.includes('stringset')
+    || normalized.includes('set<std::string>')
+    || normalized.includes('set<string>')
+  ) {
+    return 'stringSet';
+  }
+  if (
+    normalized.includes('vector<double>')
+    || normalized.includes('doublelist')
+    || normalized.includes('listofdouble')
+  ) {
+    return 'doubleList';
+  }
+  if (
+    normalized.includes('set<int>')
+    || normalized.includes('intset')
+    || (normalized.includes('set') && normalized.includes('int'))
+  ) {
+    return 'intSet';
+  }
   if (normalized.includes('string')) return 'string';
-  if (normalized.includes('set')) return 'intSet';
+  if (normalized === 'int' || normalized.includes('integer')) return 'int';
+  if (normalized === 'double' || normalized.includes('float')) return 'double';
+  // Native enum option types (IteratorOutputOptions, TriangulationMethod, …) are ints.
+  if (/options?$|types?$|method$/.test(normalized) || /^[A-Z]/.test(trimmed)) return 'int';
   return 'double';
 }
 
