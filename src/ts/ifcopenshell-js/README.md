@@ -1,41 +1,66 @@
-# @ifcopenshell-js/web
+# ifcopenshell
+
+Canonical Sphinx docs (including full API reference): [`../docs/index.rst`](../docs/index.rst) (`pip install -r ../docs/requirements.txt && make -C ../docs html`).
 
 Ergonomic TypeScript and JavaScript wrappers for the generated low-level
-IfcOpenShell WASM API. The package uses the same contract in browsers and Node.
+IfcOpenShell WASM API. Same operations as SWIG Python with JS camelCase
+names (`BINDING-API-PARITY-SPEC.md`).
 
 ## Install
 
 ```bash
-npm install @ifcopenshell-js/web
+npm install ifcopenshell
 ```
 
 ## Usage
 
 ```ts
-import { IfcFile, init } from '@ifcopenshell-js/web';
+import ifcopenshell from 'ifcopenshell';
 
-const shell = await init();
-await shell.loadPlugin('schema', 'ifc4');
+// Node / bundlers: packaged assets resolve automatically.
+await ifcopenshell.init();
+
+// Browser when you serve the wasm/ directory yourself:
+// await ifcopenshell.init({ wasmBase: '/wasm/' });
 
 const response = await fetch('/model.ifc');
-const file = await IfcFile.open(
-  shell,
+const model = await ifcopenshell.open(
   new Uint8Array(await response.arrayBuffer()),
   'model.ifc',
 );
 
-console.log(file.schema, file.entityCount);
-const walls = file.all('IfcWall');
-console.log(walls.map((wall) => wall.get('Name')));
+const project = model.byType('IfcProject')[0];
+console.log(project.Name, model.schema);
+
+const wall = model.createEntity('IfcWall', {
+  GlobalId: ifcopenshell.guid.new(),
+  Name: 'Demo',
+});
+console.assert(wall.isA('IfcWall'));
+console.assert(model.byId(wall.id()).Name === 'Demo');
+
+const settings = new ifcopenshell.geom.settings();
+const iter = ifcopenshell.geom.iterate(settings, model, {
+  numThreads: 1,
+  geometryLibrary: 'opencascade',
+});
+
+model.dispose();
 ```
 
-The `raw` property exposes the generated C/WASM surface when a wrapper is not
-appropriate. Files, entities, geometry objects, and settings own native handles;
-call `dispose()` or use explicit resource management (`using`).
+WASM still requires `init()` and `dispose()` / `using`. Attribute access uses
+properties (`wall.Name`), matching Python.
 
-Geometry iteration helpers are exported from `@ifcopenshell-js/web/geom`, serializers from
-`@ifcopenshell-js/web/serializers`, and inspection helpers from
-`@ifcopenshell-js/web/util`.
+Geometry follows Python: `ifcopenshell.geom.settings` / `iterate` /
+`serializers.obj|svg|ttl`. Viewer-only helpers live under `util` and are not
+part of the parity contract.
+
+Tutorials and architecture notes:
+
+- [`../docs/index.rst`](../docs/index.rst) — Sphinx + Furo handbook and API
+- [`../WEB-STACK-GUIDE.md`](../WEB-STACK-GUIDE.md)
+- [`../PACKAGES-GUIDE.md`](../PACKAGES-GUIDE.md)
+- [`../examples/README.md`](../examples/README.md) — chapter hub (`node ../examples/serve.mjs`)
 
 ## Development
 
@@ -51,5 +76,4 @@ npm run build
 npm test
 ```
 
-Use `npm run test:browser` for the browser runtime smoke test and
-`npm run docs:check` to validate the public API documentation.
+Use `npm run test:browser` for the browser runtime smoke test.
