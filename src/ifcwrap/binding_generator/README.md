@@ -42,6 +42,18 @@ The main stages are:
    generated C/C++ files live under `binding_generator/generated`; WASM files
    are generated in the CMake build directory.
 
+## Naming across layers
+
+| Layer | Convention | Example |
+| ----- | ---------- | ------- |
+| C ABI | snake_case | `ifcopenshell_file_by_id` |
+| Generated WASM JS / `.d.ts` | camelCase via `_camel_name` in `targets/_shared.py` | `file.byId` |
+| Hand-written `ifcopenshell-js` facade | camelCase (same rule) | `model.byId` |
+| Python SWIG | snake_case | `model.by_id` |
+
+Do not emit snake_case as a public JS/TS method or option key. Asset filenames
+and IFC schema identifiers keep their existing spelling.
+
 For a new API entry, begin in the relevant C++ spec. Follow its discovery or
 adapter into `pipeline.py`, inspect the result in `binding_ir.py` and
 `abi_ir.py`, then follow the appropriate backend for rendering details.
