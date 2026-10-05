@@ -1,6 +1,6 @@
 
 /**
- * Utility APIs for inspecting IFC entities and working with colors.
+ * Viewer/debug helpers — not part of the Python SWIG parity surface.
  *
  * @module Utilities
  */
@@ -15,4 +15,5 @@ export {
   inspectEntity,
   type AttributeEntry,
   type EntityInfo,
+  type InspectEntityInfo,
 } from './inspect.js';

@@ -8,13 +8,16 @@ export interface AttributeEntry {
   value: string;
 }
 
-/** A plain-object snapshot of an entity's metadata. */
-export interface EntityInfo {
+/** A plain-object snapshot of an entity's metadata (viewer helper, not Python `get_info`). */
+export interface InspectEntityInfo {
   id: number;
   type: string;
   guid: string | null;
   attributes: AttributeEntry[];
 }
+
+/** @deprecated Use {@link InspectEntityInfo}. */
+export type EntityInfo = InspectEntityInfo;
 
 /** Format one attribute as a compact human-readable string. */
 export async function formatAttributeValue(attr: AttributeValue): Promise<string> {
@@ -25,7 +28,7 @@ export async function formatAttributeValue(attr: AttributeValue): Promise<string
     if (normalizedType === 'INSTANCE' || normalizedType === 'ENTITY_INSTANCE') {
       const inst = await attr.entity();
       try {
-        return inst ? `#${inst.id} · ${inst.typeName}` : '$';
+        return inst ? `#${inst.id()} · ${inst.isA()}` : '$';
       } finally {
         await inst?.dispose();
       }
@@ -38,10 +41,10 @@ export async function formatAttributeValue(attr: AttributeValue): Promise<string
         return '[…]';
       }
     }
-    try { return await attr.string(); } catch {}
-    try { return String(await attr.integer()); } catch {}
-    try { return String(await attr.number()); } catch {}
-    try { return String(await attr.boolean()); } catch {}
+    try { return await attr.string(); } catch { /* try next */ }
+    try { return String(await attr.integer()); } catch { /* try next */ }
+    try { return String(await attr.number()); } catch { /* try next */ }
+    try { return String(await attr.boolean()); } catch { /* try next */ }
     return attr.type;
   } catch {
     return '?';
@@ -49,24 +52,25 @@ export async function formatAttributeValue(attr: AttributeValue): Promise<string
 }
 
 /** Inspect an entity and return its id, type, GlobalId, and formatted attributes. */
-export async function inspectEntity(file: IfcFile, id: number): Promise<EntityInfo | null> {
-  const entity = file.get(id);
+export async function inspectEntity(file: IfcFile, id: number): Promise<InspectEntityInfo | null> {
+  const entity = file.byId(id);
   if (!entity) return null;
   try {
-    const attributes = await Promise.all(entity.attributes().map(async (name) => {
+    const names = entity.raw.getAttributeNames();
+    const attributes = await Promise.all(names.map(async (name) => {
       using attr = entity.attribute(name);
       return { name, value: await formatAttributeValue(attr) };
     }));
     let guid: string | null = null;
     if (attributes.some((item) => item.name === 'GlobalId')) {
       try {
-        const value = entity.get('GlobalId');
+        const value = entity.GlobalId;
         guid = typeof value === 'string' ? value : null;
       } catch {
         guid = null;
       }
     }
-    return { id: entity.id, type: entity.type, guid, attributes };
+    return { id: entity.id(), type: entity.isA(), guid, attributes };
   } finally {
     entity.dispose();
   }

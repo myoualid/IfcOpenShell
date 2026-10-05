@@ -1,6 +1,8 @@
 
 /**
- * Serializer APIs for exporting IFC geometry and data.
+ * Serializer APIs matching Python `ifcopenshell.geom.serializers`.
+ *
+ * Browser/WASM adaptation: write into in-memory text buffers instead of paths.
  *
  * @module Serializers
  */
@@ -16,10 +18,10 @@ import type {
 } from '@ifcopenshell-js/wasm/api';
 import type { IfcFile } from '../file.js';
 import { loadGeometry, type OperationProgress } from '../geom/iterator.js';
-import type { GeomSettings } from '../geom/settings.js';
+import type { settings } from '../geom/settings.js';
 import { IfcOpenShellError, abortError, type IfcOpenShell } from '../init.js';
 
-/** Formats supported by {@link exportToBuffer}. */
+/** Formats supported by the geometry serializers. */
 export type SerializerFormat = 'obj' | 'svg' | 'ttl';
 
 /** Text buffers returned by a serializer; OBJ uses `secondary` for MTL data. */
@@ -32,8 +34,8 @@ export interface ExportResult {
 
 /** Geometry loading, serializer, cancellation, and progress options. */
 export interface ExportOptions {
-  /** Geometry kernel to load before export. Defaults to `passthrough`. */
-  kernel?: string;
+  /** Geometry kernel / library to load before export. Defaults to `opencascade`. */
+  geometryLibrary?: string;
   /** Number of native geometry iterator threads. */
   numThreads?: number;
   /**
@@ -45,42 +47,62 @@ export interface ExportOptions {
   onProgress?(progress: OperationProgress): void;
 }
 
-/**
- * Load geometry and serialize the file into in-memory text buffers.
- *
- * OBJ returns its material data in `secondary`; SVG and TTL return an empty
- * secondary buffer. The function returns `null` when the native iterator
- * cannot initialize and throws when a serializer or geometry element fails.
- */
-export async function exportToBuffer(
+/** Serialize geometry to OBJ (+ MTL in `secondary`). */
+export function obj(
   shell: IfcOpenShell,
   file: IfcFile,
-  geomSettings: GeomSettings,
+  geomSettings: settings,
+  options?: ExportOptions,
+): Promise<ExportResult | null> {
+  return serialize(shell, file, geomSettings, 'obj', options);
+}
+
+/** Serialize geometry to SVG. */
+export function svg(
+  shell: IfcOpenShell,
+  file: IfcFile,
+  geomSettings: settings,
+  options?: ExportOptions,
+): Promise<ExportResult | null> {
+  return serialize(shell, file, geomSettings, 'svg', options);
+}
+
+/** Serialize geometry to Turtle / IFC-TTL. */
+export function ttl(
+  shell: IfcOpenShell,
+  file: IfcFile,
+  geomSettings: settings,
+  options?: ExportOptions,
+): Promise<ExportResult | null> {
+  return serialize(shell, file, geomSettings, 'ttl', options);
+}
+
+async function serialize(
+  shell: IfcOpenShell,
+  file: IfcFile,
+  geomSettings: settings,
   format: SerializerFormat,
   options: ExportOptions = {},
 ): Promise<ExportResult | null> {
-  if (format !== 'obj' && format !== 'svg' && format !== 'ttl') {
-    throw new IfcOpenShellError(`Unsupported serializer format: ${format as string}`);
-  }
   throwIfAborted(options.signal);
-  const kernel = options.kernel ?? 'passthrough';
+  const kernel = options.geometryLibrary ?? 'opencascade';
   options.onProgress?.({ phase: 'plugin', message: `Loading ${kernel} kernel` });
   await loadGeometry(shell, file.raw, kernel);
   options.onProgress?.({ phase: 'plugin', message: `Loading ${format} serializer` });
   await shell.loadPlugin('geometry_serializer', format);
 
-  let obj: IfcOpenshellGeomBuffer | null = null;
+  let objBuf: IfcOpenshellGeomBuffer | null = null;
   let mtl: IfcOpenshellGeomBuffer | null = null;
   let serializer: IfcOpenshellGeomGeometrySerializer | null = null;
-  let iterator: IfcOpenshellGeomIterator | null = null;
+  let geomIterator: IfcOpenshellGeomIterator | null = null;
   let outputPath: string | null = null;
 
   try {
     if (format === 'obj') {
-      obj = shell.raw.geom.createBuffer();
+      objBuf = shell.raw.geom.createBuffer();
       mtl = shell.raw.geom.createBuffer();
       serializer = shell.raw.geom.createGeometrySerializerByStream(
-        'obj', mtl, obj, geomSettings.raw,
+        'obj', mtl, objBuf, geomSettings.raw,
       );
     } else {
       outputPath = uniquePath(format);
@@ -92,31 +114,31 @@ export async function exportToBuffer(
     serializer.setFile(file.raw);
     serializer.writeHeader();
 
-    iterator = shell.raw.geom.createIterator(kernel, geomSettings.raw, file.raw, options.numThreads ?? 1);
-    if (!iterator || iterator.ptr === 0) throw new IfcOpenShellError('Failed to create geometry iterator');
-    if (!iterator.initialize()) return null;
+    geomIterator = shell.raw.geom.createIterator(kernel, geomSettings.raw, file.raw, options.numThreads ?? 1);
+    if (!geomIterator || geomIterator.ptr === 0) throw new IfcOpenShellError('Failed to create geometry iterator');
+    if (!geomIterator.initialize()) return null;
 
     const preferTriangulation = serializer.isTesselated();
     let written = 0;
     do {
       throwIfAborted(options.signal);
-      writeElement(iterator, serializer, preferTriangulation);
+      writeElement(geomIterator, serializer, preferTriangulation);
       written++;
       if (written % 16 === 0) {
         options.onProgress?.({
           phase: 'write',
           message: `Exporting ${format}`,
           current: written,
-          ratio: progressRatio(iterator.progress()),
+          ratio: progressRatio(geomIterator.progress()),
         });
         await tick();
       }
-    } while (iterator.next());
+    } while (geomIterator.next());
 
     serializer.finalize();
     if (format === 'obj') {
       return {
-        primary: obj?.isReady() ? obj.getValue() : '',
+        primary: objBuf?.isReady() ? objBuf.getValue() : '',
         secondary: mtl?.isReady() ? mtl.getValue() : '',
       };
     }
@@ -124,9 +146,9 @@ export async function exportToBuffer(
     const bytes = shell.fs.readFile(outputPath!, { encoding: 'utf8' });
     return { primary: typeof bytes === 'string' ? bytes : new TextDecoder().decode(bytes), secondary: '' };
   } finally {
-    release(iterator);
+    release(geomIterator);
     release(serializer);
-    release(obj);
+    release(objBuf);
     release(mtl);
     if (outputPath && shell.fs) {
       try {
@@ -139,7 +161,7 @@ export async function exportToBuffer(
 }
 
 function writeElement(
-  iterator: IfcOpenshellGeomIterator,
+  geomIterator: IfcOpenshellGeomIterator,
   serializer: IfcOpenshellGeomGeometrySerializer,
   preferTriangulation: boolean,
 ): void {
@@ -147,7 +169,7 @@ function writeElement(
   const tri = () => {
     let item: IfcOpenshellGeomTriangulationElement | null = null;
     try {
-      item = iterator.getAsTriangulationElement();
+      item = geomIterator.getAsTriangulationElement();
       if (!item || item.ptr === 0) {
         failures.push(new IfcOpenShellError('Geometry iterator did not provide a triangulation element'));
         return false;
@@ -164,7 +186,7 @@ function writeElement(
   const brep = () => {
     let item: IfcOpenshellGeomBrepElement | null = null;
     try {
-      item = iterator.getAsBrepElement();
+      item = geomIterator.getAsBrepElement();
       if (!item || item.ptr === 0) {
         failures.push(new IfcOpenShellError('Geometry iterator did not provide a BRep element'));
         return false;
