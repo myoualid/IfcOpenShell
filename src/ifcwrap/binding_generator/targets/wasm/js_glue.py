@@ -599,6 +599,10 @@ def _render_module_factory(metadata: BindingABI) -> str:
         "        },\n"
         "    });\n"
         "\n"
+        "    // SIDE_MODULE=1 schema plugins may import ctype helpers that the\n"
+        "    // MAIN_MODULE build did not export into the dynamic-loader GOT.\n"
+        "    ensureSideModuleLibc(module);\n"
+        "\n"
         "    const pluginBaseUrl = options.pluginBaseUrl ?? new URL('.', import.meta.url).href;\n"
         "    const pluginManifest = options.pluginManifest ?? {};\n"
         "    const pluginLoader = options.pluginLoader ?? defaultPluginLoader;\n"
@@ -637,7 +641,8 @@ def _render_module_factory(metadata: BindingABI) -> str:
         "        const path = virtualFilePath(entry.wasm);\n"
         "        module.FS.writeFile(path, bytes);\n"
         "        try {\n"
-        "            module.loadDynamicLibrary(path, { global: true, allowUndefined: true });\n"
+        # Browsers reject sync WebAssembly.Compile for modules > 8MB (e.g. OCCT).
+        "            await module.loadDynamicLibrary(path, { global: true, allowUndefined: true, loadAsync: true });\n"
         "        } finally {\n"
         "            module.FS.unlink(path);\n"
         "        }\n"
@@ -1328,6 +1333,30 @@ def render_js_glue(metadata: BindingABI, handles: dict[str, CTypeIR] | None = No
             classes,
             "",
             wrappers,
+            "",
+            "function ensureSideModuleLibc(module) {",
+            "    const ctype = {",
+            "        isspace: (c) => ((c >= 9 && c <= 13) || c === 32) ? 1 : 0,",
+            "        isdigit: (c) => (c >= 48 && c <= 57) ? 1 : 0,",
+            "        isalpha: (c) => ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) ? 1 : 0,",
+            "        isalnum: (c) => (",
+            "            (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122)",
+            "        ) ? 1 : 0,",
+            "        isupper: (c) => (c >= 65 && c <= 90) ? 1 : 0,",
+            "        islower: (c) => (c >= 97 && c <= 122) ? 1 : 0,",
+            "        tolower: (c) => (c >= 65 && c <= 90) ? c + 32 : c,",
+            "        toupper: (c) => (c >= 97 && c <= 122) ? c - 32 : c,",
+            "    };",
+            "    for (const [name, fn] of Object.entries(ctype)) {",
+            "        fn.sig = 'ii';",
+            "        if (typeof module[name] !== 'function') module[name] = fn;",
+            "        if (typeof module[`_${name}`] !== 'function') module[`_${name}`] = fn;",
+            "    }",
+            "    // Dynamic side modules resolve imports via wasmImports, not Module.*",
+            "    if (typeof module.mergeLibSymbols === 'function') {",
+            "        module.mergeLibSymbols(ctype);",
+            "    }",
+            "}",
             "",
             factory,
             "",

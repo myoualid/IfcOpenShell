@@ -848,14 +848,47 @@ def _snake_case_identifier(name: str) -> str:
     return "".join(chars)
 
 
+def _overload_param_match_keys(cpp_type: str | DiscoveredCppType) -> frozenset[str]:
+    """Match keys for one param, including platform typedef aliases.
+
+    Specs often say ``unsigned long`` while Clang reports ``size_t`` (or a
+    desugared ``unsigned int`` on WASM32). Collect keys from every spelling
+    variant so those aliases still intersect.
+    """
+
+    def key_for(value: str | DiscoveredCppType) -> str:
+        semantic = analyze_cpp_type(value)
+        if isinstance(semantic, ScalarSemanticType):
+            return f"scalar:{semantic.family}"
+        if isinstance(semantic, StringSemanticType):
+            return "string"
+        if isinstance(semantic, VoidSemanticType):
+            return "void"
+        return _normalize_cpp_type(
+            value.canonical_spelling if isinstance(value, DiscoveredCppType) else value
+        )
+
+    keys = {key_for(cpp_type)}
+    for variant in _cpp_type_variants(cpp_type):
+        keys.add(key_for(variant))
+    return frozenset(keys)
+
+
 def _select_overload(
     overloads: tuple[DiscoveredMethod, ...] | tuple[DiscoveredFunction, ...],
     spec: DiscoveryOverloadSpec,
 ):
-    target_params = tuple(_normalize_cpp_type(param) for param in spec.params)
+    target_params = tuple(_overload_param_match_keys(param) for param in spec.params)
     for overload in overloads:
-        overload_params = tuple(_normalize_cpp_type(param.cpp_type) for param in overload.params)
-        if overload.cpp_name == spec.cpp_name and overload_params == target_params:
+        if overload.cpp_name != spec.cpp_name:
+            continue
+        if len(overload.params) != len(spec.params):
+            continue
+        overload_params = tuple(
+            _overload_param_match_keys(getattr(param, "cpp_type_ref", None) or param.cpp_type)
+            for param in overload.params
+        )
+        if all(target & discovered for target, discovered in zip(target_params, overload_params)):
             return overload
     candidates = ", ".join(
         f"{overload.cpp_name}({', '.join(param.cpp_type for param in overload.params)})"
@@ -1845,14 +1878,18 @@ def _select_constructor(
     context: str,
 ) -> DiscoveredConstructor:
     def param_matches(discovered: DiscoveredParam, target: str) -> bool:
-        discovered_type = _normalize_cpp_type(discovered.cpp_type_ref.canonical_spelling)
+        discovered_type = _normalize_cpp_type(discovered.cpp_type)
         target_type = _normalize_cpp_type(target)
-        if discovered_type == target_type:
-            return True
         discovered_suffix = "".join(ch for ch in discovered_type if ch in "*&")
         target_suffix = "".join(ch for ch in target_type if ch in "*&")
         if discovered_suffix != target_suffix:
             return False
+        # Prefer semantic/alias keys so std::string matches Clang's
+        # std::basic_string<char> desugaring (and size_t/unsigned long, etc.).
+        if _overload_param_match_keys(discovered.cpp_type_ref) & _overload_param_match_keys(target):
+            return True
+        if discovered_type == target_type:
+            return True
         discovered_base = discovered_type.replace("*", "").replace("&", "").strip()
         target_base = target_type.replace("*", "").replace("&", "").strip()
         return _cpp_type_names_match(discovered_base, target_base)

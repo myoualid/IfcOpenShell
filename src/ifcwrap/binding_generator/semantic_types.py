@@ -142,7 +142,13 @@ def _scalar_family_from_base(base_name: str, *, normalized: str) -> str | None:
         return "double"
     if base_name in {"uint8_t", "std::uint8_t", "unsigned char"}:
         return "uint8"
-    if (base_name == "char" and normalized.endswith("*")) or base_name == "std::string":
+    if base_name == "char" and normalized.endswith("*"):
+        return "string"
+    # Clang often desugars std::string to std::basic_string<char> (sometimes with
+    # extra allocator parameters). Treat those spellings as the string scalar.
+    if base_name == "std::string" or base_name == "std::basic_string" or base_name.startswith(
+        "std::basic_string<"
+    ):
         return "string"
     return None
 
@@ -203,7 +209,27 @@ def _from_discovered(cpp_type: DiscoveredCppType) -> SemanticCppType:
             pointer_wrapper="unique_ptr" if cpp_type.template_name == "std::unique_ptr" else "shared_ptr",
         )
 
-    family = _scalar_family_from_base(cpp_type.base_name, normalized=normalized)
+    if cpp_type.template_name == "std::basic_string":
+        return StringSemanticType(cpp_type=cpp_text)
+
+    # Prefer typedef spellings (e.g. size_t) over desugared builtins. On WASM32
+    # size_t collapses to unsigned int; treating that as uint32 breaks discover
+    # specs that write unsigned long / size_t for the same overload.
+    family = None
+    for candidate in (
+        cpp_type.normalized_spelling,
+        cpp_type.spelling,
+        cpp_type.base_name,
+        cpp_type.normalized_desugared_spelling,
+        cpp_type.desugared_spelling,
+        cpp_type.canonical_spelling,
+        cpp_type.storage_spelling,
+    ):
+        if not candidate:
+            continue
+        family = _scalar_family_from_base(_strip_qualifiers(candidate), normalized=normalized)
+        if family is not None:
+            break
     if family == "void":
         if normalized != "void":
             return UnsupportedSemanticType(cpp_type=cpp_text, reason="opaque void pointer/reference")
@@ -263,6 +289,9 @@ def _from_string(cpp_type: str) -> SemanticCppType:
                 pointee=pointee,
                 pointer_wrapper=wrapper_kind,
             )
+
+    if _template_match(normalized, "std::basic_string"):
+        return StringSemanticType(cpp_type=normalized)
 
     core = _strip_qualifiers(normalized)
     family = _scalar_family_from_base(core, normalized=normalized)

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import shlex
 import shutil
 import subprocess
 import threading
@@ -35,6 +37,11 @@ def _compiler_output(compiler: str, *args: str) -> str:
 
 
 def _matching_libclang(compiler: str) -> Path | None:
+    env_lib = os.environ.get("LIBCLANG_LIBRARY_FILE")
+    if env_lib:
+        candidate = Path(env_lib)
+        if candidate.exists():
+            return candidate.resolve()
     resource_dir_text = _compiler_output(compiler, "-print-resource-dir")
     resource_dir = Path(resource_dir_text)
     library_dir = resource_dir.parents[1] if len(resource_dir.parents) > 1 else resource_dir.parent
@@ -59,6 +66,9 @@ def _configure_libclang(compiler: str):
     from clang import cindex
 
     compiler = shutil.which(compiler) or compiler
+    override = os.environ.get("IFCAPI_LIBCLANG_COMPILER")
+    if override:
+        compiler = shutil.which(override) or override
     library = _matching_libclang(compiler)
     if library is None:
         raise RuntimeError(f"Unable to find a libclang library matching compiler '{compiler}'")
@@ -100,6 +110,41 @@ def _system_include_args(compiler: str) -> tuple[str, ...]:
         else:
             args.extend(("-isystem", line))
     return tuple(args)
+
+
+def _without_emsdk_clang_builtins(args: list[str]) -> list[str]:
+    filtered: list[str] = []
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if token in {"-I", "-isystem", "-idirafter", "-iframework"} and i + 1 < len(args):
+            include_path = args[i + 1].replace("\\", "/")
+            if "emsdk/upstream/lib/clang" in include_path.lower():
+                i += 2
+                continue
+            filtered.extend([token, args[i + 1]])
+            i += 2
+            continue
+        if "emsdk/upstream/lib/clang" in token.replace("\\", "/").lower():
+            i += 1
+            continue
+        filtered.append(token)
+        i += 1
+    return filtered
+
+
+def _expand_response_files(tokens: list[str], directory: Path) -> list[str]:
+    expanded: list[str] = []
+    for token in tokens:
+        if token.startswith("@"):
+            response_file = Path(token[1:])
+            if not response_file.is_absolute():
+                response_file = directory / response_file
+            if response_file.exists():
+                expanded.extend(shlex.split(response_file.read_text(), posix=False))
+                continue
+        expanded.append(token)
+    return expanded
 
 
 def _project_root(source: Path) -> Path:
@@ -316,17 +361,32 @@ def parse_translation_unit(command) -> ParsedTranslationUnit:
     source = str(command.file)
     args: list[str] = []
     skip_next = False
-    for token in command.arguments[1:]:
-        if skip_next:
-            skip_next = False
-            continue
-        if token == "-o":
-            skip_next = True
+    tokens = _expand_response_files(list(command.arguments[1:]), Path(command.directory))
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if token == "-o" and i + 1 < len(tokens):
+            i += 2
             continue
         if token in {"-c", source}:
+            i += 1
             continue
+        if token in {"-I", "-isystem", "-idirafter"} and i + 1 < len(tokens):
+            include_path = tokens[i + 1].replace("\\", "/")
+            if "emsdk/upstream/lib/clang" in include_path.lower():
+                i += 2
+                continue
+            args.extend([token, tokens[i + 1]])
+            i += 2
+            continue
+        if token.startswith("-I") or token.startswith("-isystem"):
+            if "emsdk/upstream/lib/clang" in token.replace("\\", "/").lower():
+                i += 1
+                continue
         args.append(token)
-    args.extend(_system_include_args(command.arguments[0]))
+        i += 1
+    args.extend(_without_emsdk_clang_builtins(list(_system_include_args(command.arguments[0]))))
+    args = _without_emsdk_clang_builtins(args)
     translation_unit = cindex.Index.create().parse(
         source,
         args=args,

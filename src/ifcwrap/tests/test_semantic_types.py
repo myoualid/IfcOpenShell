@@ -49,6 +49,15 @@ def test_analyze_cpp_type_parses_optional_string() -> None:
     assert isinstance(semantic.element, StringSemanticType)
 
 
+def test_analyze_cpp_type_accepts_desugared_basic_string() -> None:
+    semantic = analyze_cpp_type("const std::basic_string<char> &")
+    assert isinstance(semantic, StringSemanticType)
+
+    nested = analyze_cpp_type("const std::vector<std::basic_string<char>> &")
+    assert isinstance(nested, SequenceSemanticType)
+    assert isinstance(nested.element, StringSemanticType)
+
+
 def test_analyze_cpp_type_parses_shared_ptr_aliases_from_discovery(
     tmp_path: Path,
 ) -> None:
