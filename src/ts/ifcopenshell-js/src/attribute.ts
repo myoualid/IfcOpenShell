@@ -33,6 +33,7 @@ export class AttributeValue {
   readonly type: string;
   readonly isNull: boolean;
 
+  /** @internal Construct over a native attribute handle — package use only. */
   constructor(
     private readonly shell: IfcOpenShell,
     raw: IfcOpenshellParseAttributeValue,
@@ -44,6 +45,7 @@ export class AttributeValue {
     this.isNull = raw.isNull();
   }
 
+  /** @internal Native attribute handle — advanced escape hatch only. */
   get raw(): IfcOpenshellParseAttributeValue {
     if (this._raw == null) throw new IfcOpenShellError('AttributeValue has been disposed');
     return this._raw;

@@ -123,8 +123,16 @@ export interface WasmAssets {
 
 /** Options for {@link init}. */
 export interface InitOptions {
-  /** WASM asset configuration. */
+  /**
+   * WASM asset configuration.
+   * Takes precedence over {@link wasmBase} when both are set.
+   */
   wasmAssets?: WasmAssets;
+  /**
+   * Base URL of a served `wasm/` directory (browser / CDN).
+   * Resolved via `@ifcopenshell-js/wasm` `resolveUrls` when {@link wasmAssets} is omitted.
+   */
+  wasmBase?: string;
   /** Custom plugin loader override. Defaults to the loader supplied by the asset descriptor. */
   pluginLoader?: PluginLoader;
 }

@@ -18,149 +18,186 @@ export type AttributeInput =
   | number[][]
   | string[];
 
-/** Plain-object snapshot returned by {@link Entity.info}. */
+/** Nested plain-object values returned by recursive {@link Entity.getInfo}. */
+export type EntityInfoValue = IfcValue | EntityInfo | EntityInfo[];
+
+/** Plain-object snapshot returned by {@link Entity.getInfo}. */
 export interface EntityInfo {
-  id: number;
+  id?: number;
   type: string;
-  attributes: Record<string, IfcValue>;
+  [attribute: string]: EntityInfoValue | undefined;
+}
+
+const ATTRIBUTE_FORWARD = 1;
+const ATTRIBUTE_INVERSE = 2;
+const liveEntities = new Map<string, Entity>();
+
+function liveKey(raw: IfcOpenshellInstance): string {
+  return `${raw.filePointer()}:${raw.id()}`;
+}
+
+/** Drop cached entity wrappers when their owning file is disposed. */
+export function forgetEntitiesForFile(filePointer: number): void {
+  const prefix = `${filePointer}:`;
+  const stale = [...liveEntities.entries()].filter(([key]) => key.startsWith(prefix));
+  for (const [key, entity] of stale) {
+    liveEntities.delete(key);
+    try {
+      entity.dispose();
+    } catch {
+      /* already released */
+    }
+  }
 }
 
 /** High-level wrapper for one IFC entity instance. */
 export class Entity {
+  [ifcAttribute: string]: any;
+
   private _raw: IfcOpenshellInstance | null;
   private readonly guard: HandleGuard<IfcOpenshellInstance>;
-  readonly id: number;
-  readonly type: string;
+  private readonly cacheKey: string;
 
   private constructor(
-    private readonly shell: IfcOpenShell,
+    private readonly _shell: IfcOpenShell,
     raw: IfcOpenshellInstance,
     owned = true,
   ) {
     this._raw = raw;
+    this.cacheKey = liveKey(raw);
     this.guard = new HandleGuard(this, raw, owned);
-    this.id = raw.id();
-    this.type = raw.className(false);
+    return new Proxy(this, ENTITY_PROXY);
   }
 
+  /** @internal Wrap a native instance handle — package use only. */
   static wrap(shell: IfcOpenShell, raw: IfcOpenshellInstance | null, owned = true): Entity | null {
-    return raw && raw.ptr !== 0 ? new Entity(shell, raw, owned) : null;
+    if (!raw || raw.ptr === 0) return null;
+    const existing = liveEntities.get(liveKey(raw));
+    if (existing && existing._raw != null) {
+      if (owned) {
+        try {
+          raw.destroy();
+        } catch {
+          /* duplicate native handle */
+        }
+      }
+      return existing;
+    }
+    const entity = new Entity(shell, raw, owned);
+    liveEntities.set(entity.cacheKey, entity);
+    return entity;
   }
 
+  /** @internal Runtime that owns this entity — package / advanced use only. */
+  get shell(): IfcOpenShell {
+    return this._shell;
+  }
+
+  /** @internal Native entity handle — advanced escape hatch only. */
   get raw(): IfcOpenshellInstance {
     if (this._raw == null) throw new IfcOpenShellError('Entity has been disposed');
     return this._raw;
   }
 
-  get typeName(): string {
-    return this.type;
+  /** STEP express id, matching Python `entity.id()`. */
+  id(): number {
+    return this.raw.id();
   }
 
-  className(withSchema = false): string {
-    return this.raw.className(withSchema);
+  /** Python: `is_a`. */
+  isA(): string;
+  isA(withSchema: boolean): string;
+  isA(className: string): boolean;
+  isA(arg?: string | boolean): string | boolean {
+    if (typeof arg === 'string') return this.raw.isA(arg);
+    return this.raw.className(arg === true);
   }
 
-  isA(className: string): boolean {
-    return this.raw.isA(className);
-  }
-
+  /**
+   * Escape hatch: typed view over one native attribute value.
+   * Prefer property access (`entity.Name`).
+   */
   attribute(nameOrIndex: string | number): AttributeValue {
     const raw = typeof nameOrIndex === 'string'
       ? this.raw.getArgumentByName(nameOrIndex)
       : this.raw.getArgument(nameOrIndex);
-    return new AttributeValue(this.shell, raw);
+    return new AttributeValue(this._shell, raw);
   }
 
-  /** Read and decode an attribute by name or zero-based index. */
+  /**
+   * Escape hatch: read and decode an attribute by name or zero-based index.
+   * Prefer property access (`entity.Name`).
+   */
   get(nameOrIndex: string | number): IfcValue {
     using attribute = this.attribute(nameOrIndex);
     return attribute.value();
   }
 
-  attributes(): string[] {
-    return this.raw.getAttributeNames();
-  }
-
-  entries(): [string, IfcValue][] {
-    return this.attributes().map((name) => [name, this.get(name)]);
-  }
-
-  /** Return the entity id, type, and decoded forward attributes. */
-  info(): EntityInfo {
-    return {
-      id: this.id,
-      type: this.type,
-      attributes: Object.fromEntries(this.entries()),
-    };
-  }
-
-  toJSON(): EntityInfo {
-    return this.info();
-  }
-
-  inverseAttributes(): string[] {
-    return this.raw.getInverseAttributeNames();
-  }
-
-  /** Return entities referenced by the named inverse attribute. */
-  inverse(name: string): Entity[] {
-    const list = this.raw.getInverse(name);
-    try {
-      const out: Entity[] = [];
-      for (let i = 0; i < list.size(); i++) {
-        const item = Entity.wrap(this.shell, list.get(i));
-        if (item) out.push(item);
+  /**
+   * Return a dictionary of the entity's properties.
+   * Python: `entity.get_info()`.
+   */
+  getInfo(options: {
+    includeIdentifier?: boolean;
+    recursive?: boolean;
+    ignore?: string[];
+    scalarOnly?: boolean;
+  } = {}): EntityInfo {
+    const ignore = new Set(options.ignore ?? []);
+    const includeIdentifier = options.includeIdentifier !== false;
+    const attributes = this.raw.getAttributeNames();
+    const info: EntityInfo = { type: this.isA() };
+    if (includeIdentifier) info.id = this.id();
+    for (const name of attributes) {
+      if (ignore.has(name)) continue;
+      const value = this.get(name);
+      if (options.scalarOnly && value instanceof Entity) continue;
+      if (options.recursive && value instanceof Entity) {
+        info[name] = value.getInfo(options);
+        continue;
       }
-      return out;
-    } finally {
-      list.destroy();
+      if (options.recursive && Array.isArray(value) && value.every((item) => item instanceof Entity)) {
+        info[name] = value.map((item) => item.getInfo(options));
+        continue;
+      }
+      info[name] = value;
     }
+    return info;
   }
 
-  attributeIndex(name: string): number {
-    return this.raw.getArgumentIndex(name);
+  /** Python: `entity.attribute_name(attr_idx)`. */
+  attributeName(attrIdx: number): string {
+    return this.raw.getArgumentName(attrIdx);
   }
 
-  attributeName(index: number): string {
-    return this.raw.getArgumentName(index);
-  }
-
-  attributeType(nameOrIndex: string | number): string {
-    const index = typeof nameOrIndex === 'number' ? nameOrIndex : this.attributeIndex(nameOrIndex);
+  /** Python: `entity.attribute_type(attr)`. */
+  attributeType(attr: string | number): string {
+    const index = typeof attr === 'number' ? attr : this.raw.getArgumentIndex(attr);
     return this.raw.getArgumentType(index);
   }
 
-  attributeCategory(name: string): number {
-    return this.raw.getAttributeCategory(name);
-  }
-
-  /** Set an attribute, inferring the native value kind from its IFC type. */
+  /**
+   * Escape hatch: set an attribute, inferring the native value kind.
+   * Prefer property assignment (`entity.Name = value`).
+   */
   set(nameOrIndex: string | number, value: AttributeInput, options: { type?: string } = {}): void {
-    const index = typeof nameOrIndex === 'number' ? nameOrIndex : this.attributeIndex(nameOrIndex);
+    const index = typeof nameOrIndex === 'number' ? nameOrIndex : this.raw.getArgumentIndex(nameOrIndex);
     const nativeType = this.raw.getArgumentType(index);
     if (options.type !== undefined && normalizeArgumentType(options.type) !== normalizeArgumentType(nativeType)) {
       throw new TypeError(`Attribute ${attributeLabel(this, nameOrIndex)} has native type ${nativeType}, not ${options.type}`);
     }
-    setArgument(this.shell, this.raw, index, value, nativeType, attributeLabel(this, nameOrIndex));
+    setArgument(this._shell, this.raw, index, value, nativeType, attributeLabel(this, nameOrIndex));
   }
 
-  /** Clear an attribute by name or zero-based index. */
-  unset(nameOrIndex: string | number): void {
-    if (typeof nameOrIndex === 'string') {
-      this.raw.unsetAttributeValue(nameOrIndex);
-      return;
-    }
-    this.raw.unsetArgument(nameOrIndex);
-  }
-
-  /** Serialize the entity as STEP text. */
-  text(validSpf = false): string {
+  /** Serialize the entity as STEP text. Python: `to_string`. */
+  toString(validSpf = true): string {
     return this.raw.toString(validSpf);
   }
 
   /** Release the native entity handle. Safe to call more than once. */
   dispose(): void {
     if (this._raw == null) return;
+    liveEntities.delete(this.cacheKey);
     this.guard.destroy();
     this._raw = null;
   }
@@ -172,7 +209,51 @@ export class Entity {
   async [Symbol.asyncDispose](): Promise<void> {
     this.dispose();
   }
+
 }
+
+type InstanceList = { size(): number; get(index: number): IfcOpenshellInstance | null; destroy(): void };
+
+/** @internal */
+export function wrapInstanceList(shell: IfcOpenShell, list: InstanceList): Entity[] {
+  try {
+    const out: Entity[] = [];
+    for (let i = 0; i < list.size(); i++) {
+      const item = Entity.wrap(shell, list.get(i));
+      if (item) out.push(item);
+    }
+    return out;
+  } finally {
+    list.destroy();
+  }
+}
+
+function resolveAttribute(entity: Entity, name: string): IfcValue {
+  const category = entity.raw.getAttributeCategory(name);
+  if (category === ATTRIBUTE_INVERSE) {
+    return wrapInstanceList(entity.shell, entity.raw.getInverse(name));
+  }
+  if (category === ATTRIBUTE_FORWARD) return entity.get(name);
+  throw new IfcOpenShellError(
+    `entity instance of type '${entity.isA(true)}' has no attribute '${name}'`,
+  );
+}
+
+const ENTITY_PROXY: ProxyHandler<Entity> = {
+  get(target, prop, receiver) {
+    if (typeof prop !== 'string' || prop in target) {
+      return Reflect.get(target, prop, receiver);
+    }
+    return resolveAttribute(target, prop);
+  },
+  set(target, prop, value, receiver) {
+    if (typeof prop !== 'string' || prop in target) {
+      return Reflect.set(target, prop, value, receiver);
+    }
+    target.set(prop, value as AttributeInput);
+    return true;
+  },
+};
 
 function setArgument(
   shell: IfcOpenShell,
@@ -232,7 +313,7 @@ function setArgument(
   } else if (type === 'AGGREGATE OF AGGREGATE OF ENTITY INSTANCE') {
     const values = requireNestedArray(value, (item): item is Entity => item instanceof Entity, label, typeName);
     requireSameFile(entity, values.flat(), label);
-    entity.setArgumentAsAggregateOfAggregateOfEntityInstance(index, values.map((row) => row.map((item) => item.id)));
+    entity.setArgumentAsAggregateOfAggregateOfEntityInstance(index, values.map((row) => row.map((item) => item.id())));
   } else {
     throw new TypeError(`Attribute ${label} has unsupported native IFC type ${typeName}`);
   }
@@ -243,7 +324,7 @@ function normalizeArgumentType(type: string): string {
 }
 
 function attributeLabel(entity: Entity, nameOrIndex: string | number): string {
-  return `${entity.type}.${typeof nameOrIndex === 'number' ? entity.attributeName(nameOrIndex) : nameOrIndex}`;
+  return `${entity.isA()}.${typeof nameOrIndex === 'number' ? entity.attributeName(nameOrIndex) : nameOrIndex}`;
 }
 
 function requireType<T extends 'boolean' | 'number' | 'string'>(
@@ -297,7 +378,7 @@ function requireSameFile(target: IfcOpenshellInstance, references: Entity[], lab
   const targetFile = target.filePointer();
   for (const reference of references) {
     if (reference.raw.filePointer() !== targetFile) {
-      throw new TypeError(`Attribute ${label} cannot reference Entity #${reference.id} from a different IFC file`);
+      throw new TypeError(`Attribute ${label} cannot reference Entity #${reference.id()} from a different IFC file`);
     }
   }
 }

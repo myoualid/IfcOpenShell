@@ -4,7 +4,7 @@ import {
   IfcOpenShellErrorKind,
   abortError,
   isIfcOpenShellAbortError,
-} from '@ifcopenshell-js/wasm/api';
+} from './errors.js';
 import type {
   EmscriptenFS,
   EmscriptenOptions,
@@ -12,11 +12,16 @@ import type {
   IfcOpenshellModule,
   InitOptions,
   PluginKind,
+  PluginManifest,
   WasmAssets,
 } from './types.js';
 
 /** Initialized IfcOpenShell runtime and its ergonomic low-level API. */
 export interface IfcOpenShell {
+  /**
+   * @internal Generated WASM module. Escape hatch only — not part of the
+   * public app API. Prefer {@link open}, {@link file}, and facade methods.
+   */
   readonly raw: IfcOpenshellModule;
   readonly fs: EmscriptenFS | null;
   loadPlugin(kind: PluginKind, id: string): Promise<void>;
@@ -42,14 +47,17 @@ export {
  */
 export async function init(options: InitOptions = {}): Promise<IfcOpenShell> {
   let assets: WasmAssets;
-  if (options.wasmAssets) {
-    assets = options.wasmAssets;
-  } else {
-    try {
+  try {
+    if (options.wasmAssets) {
+      assets = options.wasmAssets;
+    } else if (options.wasmBase) {
+      assets = await resolveFromBase(options.wasmBase);
+    } else {
       assets = await resolveRuntime();
-    } catch (error) {
-      throw new IfcOpenShellError('Failed to resolve packaged WASM assets', error);
     }
+  } catch (error) {
+    if (error instanceof IfcOpenShellError) throw error;
+    throw new IfcOpenShellError('Failed to resolve packaged WASM assets', error);
   }
   const loader = options.pluginLoader ?? assets.pluginLoader;
 
@@ -81,6 +89,37 @@ export async function init(options: InitOptions = {}): Promise<IfcOpenShell> {
     loadedPlugins: () => raw.loadedPlugins(),
   };
   return Object.freeze(shell);
+}
+
+/**
+ * Resolve a served `wasm/` directory (browser / CDN) without importing
+ * `@ifcopenshell-js/wasm` — so bare-browser apps only need an import map for
+ * `ifcopenshell`.
+ */
+async function resolveFromBase(wasmBase: string): Promise<WasmAssets> {
+  const normalizedBase = wasmBase.endsWith('/') ? wasmBase : `${wasmBase}/`;
+  const manifestResponse = await fetch(new URL('ifcopenshell_plugins.json', normalizedBase));
+  if (!manifestResponse.ok) {
+    throw new IfcOpenShellError(
+      `Failed to load WASM plugin manifest: ${manifestResponse.status}`,
+    );
+  }
+  const manifest = (await manifestResponse.json()) as PluginManifest;
+  const initModuleUrl = new URL('ifcopenshell_wasm.mjs', normalizedBase).href;
+  const apiModuleUrl = new URL('ifcopenshell_api.mjs', normalizedBase).href;
+  const [wasmModule, apiModule] = await Promise.all([
+    import(/* @vite-ignore */ /* webpackIgnore: true */ initModuleUrl),
+    import(/* @vite-ignore */ /* webpackIgnore: true */ apiModuleUrl),
+  ]);
+
+  return {
+    initModule: wasmModule.default,
+    wasmUrl: new URL('ifcopenshell_wasm.wasm', normalizedBase).href,
+    pluginBaseUrl: normalizedBase,
+    manifest,
+    apiModuleUrl,
+    createIfcOpenshellModule: apiModule.createIfcOpenshellModule,
+  };
 }
 
 async function resolveRuntime(): Promise<WasmAssets> {

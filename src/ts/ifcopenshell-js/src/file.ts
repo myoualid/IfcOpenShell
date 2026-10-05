@@ -1,12 +1,8 @@
 
 import type { IfcOpenshellFile } from '@ifcopenshell-js/wasm/api';
-import { Entity } from './entity.js';
-import { GeomIterator, type IteratorOptions } from './geom/iterator.js';
-import type { MeshPrecision } from './geom/mesh.js';
-import { GeomSettings } from './geom/settings.js';
+import { Entity, forgetEntitiesForFile, wrapInstanceList, type AttributeInput } from './entity.js';
 import { IfcOpenShellError, abortError, type IfcOpenShell } from './init.js';
 import { HandleGuard } from './resource.js';
-import { inspectEntity, type EntityInfo } from './util/inspect.js';
 
 /** Options controlling IFC byte-stream loading. */
 export interface OpenOptions {
@@ -30,18 +26,6 @@ export interface HeaderInfo {
   schemas: string[];
 }
 
-/** Summary information for an opened IFC file. */
-export interface FileInfo {
-  schema: string;
-  ids: number[];
-  types: string[];
-  entityCount: number;
-  maxId: number;
-  good: number;
-  storageMode: number;
-  header: HeaderInfo | null;
-}
-
 /** High-level wrapper for an IFC file and its entity graph. */
 export class IfcFile {
   private _raw: IfcOpenshellFile | null;
@@ -56,7 +40,7 @@ export class IfcFile {
     this.guard = new HandleGuard(this, raw, owned);
   }
 
-  /** Open IFC STEP bytes and retain ownership of the native file. */
+  /** @internal Prefer module-level {@link open}. */
   static async open(
     shell: IfcOpenShell,
     bytes: Uint8Array | ArrayBuffer,
@@ -75,112 +59,32 @@ export class IfcFile {
     return new IfcFile(shell, raw);
   }
 
-  /** Create a new empty IFC file for the requested schema. */
-  static async createEmpty(shell: IfcOpenShell, schema: string): Promise<IfcFile> {
-    return IfcFile.create(shell, schema);
-  }
-
-  /** Create a new IFC file for the requested schema. */
+  /** @internal Prefer module-level {@link file}. */
   static async create(shell: IfcOpenShell, schema: string): Promise<IfcFile> {
     const raw = shell.raw.parse.newFile(schema, 0, '');
     if (!raw || raw.ptr === 0) throw new IfcOpenShellError(`Failed to create ${schema} file`);
     return new IfcFile(shell, raw);
   }
 
+  /** @internal Wrap a native file handle — package use only. */
   static wrap(shell: IfcOpenShell, raw: IfcOpenshellFile | null, owned = false): IfcFile | null {
     return raw && raw.ptr !== 0 ? new IfcFile(shell, raw, owned) : null;
   }
 
+  /** @internal Runtime that owns this file — package / advanced use only. */
   get shell(): IfcOpenShell {
     return this._shell;
   }
 
+  /** @internal Native file handle — advanced escape hatch only. */
   get raw(): IfcOpenshellFile {
     if (this._raw == null) throw new IfcOpenShellError('IfcFile has been disposed');
     return this._raw;
   }
 
-  get schemaName(): string {
-    return this.raw.schemaName();
-  }
-
+  /** General IFC schema version: IFC2X3, IFC4, IFC4X3. */
   get schema(): string {
-    return this.schemaName;
-  }
-
-  get maxId(): number {
-    return this.raw.getMaxId();
-  }
-
-  get ids(): number[] {
-    return this.raw.entityNames();
-  }
-
-  get types(): string[] {
-    return this.raw.types();
-  }
-
-  get entityCount(): number {
-    return this.ids.length;
-  }
-
-  get isValid(): boolean {
-    return this.raw.good() !== 0;
-  }
-
-  /** Return an entity by numeric STEP id, or `null` when it is absent. */
-  get(id: number): Entity | null {
-    return Entity.wrap(this._shell, catchNull(() => this.raw.byId(id)));
-  }
-
-  /** Return an entity by GlobalId, or `null` when it is absent. */
-  find(guid: string): Entity | null {
-    return Entity.wrap(this._shell, catchNull(() => this.raw.byGuid(guid)));
-  }
-
-  /** Return all entities of a type, optionally excluding its subtypes. */
-  all(typeName: string, options: { includeSubtypes?: boolean } = {}): Entity[] {
-    const list = options.includeSubtypes === false
-      ? this.raw.byTypeExclSubtypes(typeName)
-      : this.raw.byType(typeName);
-    try {
-      const out: Entity[] = [];
-      for (let i = 0; i < list.size(); i++) {
-        const item = Entity.wrap(this._shell, list.get(i));
-        if (item) out.push(item);
-      }
-      return out;
-    } finally {
-      list.destroy();
-    }
-  }
-
-  /** Create an entity through the low-level file API. */
-  create(ifcClass: string, options: { predefinedType?: string | null; name?: string | null } = {}): Entity {
-    const entity = Entity.wrap(this._shell, this.raw.createEntityByName(ifcClass));
-    if (!entity) throw new IfcOpenShellError(`Failed to create ${ifcClass}`);
-    if (options.name != null) entity.set('Name', options.name);
-    if (options.predefinedType != null) entity.set('PredefinedType', options.predefinedType);
-    return entity;
-  }
-
-  text(): string {
-    return this.raw.toString();
-  }
-
-  /** Return schema, entity-id, validity, storage, and header summary data. */
-  info(): FileInfo {
-    const ids = this.ids;
-    return {
-      schema: this.schemaName,
-      ids,
-      types: this.types,
-      entityCount: ids.length,
-      maxId: this.raw.getMaxId(),
-      good: this.raw.good(),
-      storageMode: this.raw.storageMode(),
-      header: this.header(),
-    };
+    return this.raw.schemaName();
   }
 
   /** Read the STEP header, returning `null` when no header is available. */
@@ -214,83 +118,98 @@ export class IfcFile {
     }
   }
 
-  status(): number {
-    return this.raw.good();
+  /** Return an entity by numeric STEP id, or `null` when it is absent. Python: `by_id`. */
+  byId(id: number): Entity | null {
+    return Entity.wrap(this._shell, catchNull(() => this.raw.byId(id)));
   }
 
-  storageMode(): number {
-    return this.raw.storageMode();
+  /** Return an entity by GlobalId, or `null` when it is absent. Python: `by_guid`. */
+  byGuid(guid: string): Entity | null {
+    return Entity.wrap(this._shell, catchNull(() => this.raw.byGuid(guid)));
   }
 
-  unit(unitType: string): number {
-    return this.raw.getUnit(unitType);
+  /**
+   * Return entities of a type. Subtypes are included unless
+   * `includeSubtypes` is false. Python: `by_type`.
+   */
+  byType(typeName: string, options: { includeSubtypes?: boolean } = {}): Entity[] {
+    const list = options.includeSubtypes === false
+      ? this.raw.byTypeExclSubtypes(typeName)
+      : this.raw.byType(typeName);
+    return wrapInstanceList(this._shell, list);
   }
 
-  totalInverses(entity: Entity): number {
-    return this.raw.getTotalInverses(entity.raw);
-  }
-
-  inverses(entity: Entity): Entity[] {
-    const list = this.raw.getInverse(entity.raw);
-    try {
-      const out: Entity[] = [];
-      for (let i = 0; i < list.size(); i++) {
-        const item = Entity.wrap(this._shell, list.get(i));
-        if (item) out.push(item);
-      }
-      return out;
-    } finally {
-      list.destroy();
+  /** Create an entity with IFC attribute fields. Python: `create_entity`. */
+  createEntity(ifcClass: string, attributes: Record<string, AttributeInput | undefined> = {}): Entity {
+    const { id, ...fields } = attributes;
+    const raw = typeof id === 'number'
+      ? this.raw.createEntityByNameWithId(ifcClass, id)
+      : this.raw.createEntityByName(ifcClass);
+    const entity = Entity.wrap(this._shell, raw);
+    if (!entity) throw new IfcOpenShellError(`Failed to create ${ifcClass}`);
+    for (const [name, value] of Object.entries(fields)) {
+      if (value !== undefined) entity.set(name, value);
     }
+    return entity;
   }
 
-  inverseIndices(entity: Entity): number[] {
-    return this.raw.getInverseIndices(entity.raw);
+  /** Serialize the file as STEP text. Python: `str(file)` / `to_string`. */
+  toString(): string {
+    return this.raw.toString();
   }
 
-  traverse(entity: Entity, options: { maxDepth?: number; breadthFirst?: boolean } = {}): Entity[] {
-    const maxDepth = options.maxDepth ?? -1;
+  write(path: string): void {
+    this.raw.write(path);
+  }
+
+  /**
+   * Return entities that reference `inst`.
+   * Python: `file.get_inverse(inst, allow_duplicate=…, with_attribute_indices=…)`.
+   */
+  getInverse(
+    inst: Entity,
+    options: { allowDuplicate?: boolean; withAttributeIndices?: boolean } = {},
+  ): Entity[] | Set<Entity> | Array<[Entity, number]> {
+    const allowDuplicate = options.allowDuplicate === true;
+    const withIndices = options.withAttributeIndices === true;
+    if (withIndices && !allowDuplicate) {
+      throw new IfcOpenShellError('withAttributeIndices requires allowDuplicate to be true');
+    }
+    const inverses = wrapInstanceList(this._shell, this.raw.getInverse(inst.raw));
+    if (allowDuplicate) {
+      if (withIndices) {
+        const idxs = this.raw.getInverseIndices(inst.raw);
+        return inverses.map((entity, i): [Entity, number] => [entity, idxs[i] ?? -1]);
+      }
+      return inverses;
+    }
+    return new Set(inverses);
+  }
+
+  /** Python: `file.get_total_inverses(inst)`. */
+  getTotalInverses(inst: Entity): number {
+    return this.raw.getTotalInverses(inst.raw);
+  }
+
+  /**
+   * Traverse references from `inst`.
+   * Python: `file.traverse(inst, max_levels=…, breadth_first=…)`.
+   */
+  traverse(
+    inst: Entity,
+    options: { maxLevels?: number | null; breadthFirst?: boolean } = {},
+  ): Entity[] {
+    const maxLevels = options.maxLevels ?? -1;
     const list = options.breadthFirst
-      ? this.raw.traverseBreadthFirst(entity.raw, maxDepth)
-      : this.raw.traverse(entity.raw, maxDepth);
-    try {
-      const out: Entity[] = [];
-      for (let i = 0; i < list.size(); i++) {
-        const item = Entity.wrap(this._shell, list.get(i));
-        if (item) out.push(item);
-      }
-      return out;
-    } finally {
-      list.destroy();
-    }
-  }
-
-  /** Create an asynchronous geometry iterator for this file. */
-  meshes(settings: GeomSettings | undefined, options: IteratorOptions<'float64'> & { precision: 'float64' }): GeomIterator<'float64'>;
-  meshes<P extends MeshPrecision>(settings: GeomSettings | undefined, options: IteratorOptions<P>): GeomIterator<P>;
-  meshes(settings?: GeomSettings, options?: IteratorOptions<'float32'>): GeomIterator<'float32'>;
-  meshes<P extends MeshPrecision = 'float32'>(settings?: GeomSettings, options?: IteratorOptions<P>): GeomIterator<P> {
-    const ownedSettings = settings === undefined;
-    return new GeomIterator<P>(this._shell, this, settings ?? new GeomSettings(this._shell), options, ownedSettings);
-  }
-
-  async bounds(settings?: GeomSettings, options?: IteratorOptions): Promise<{
-    min: [number, number, number] | null;
-    max: [number, number, number] | null;
-  }> {
-    await using iterator = this.meshes(settings, options);
-    await iterator.computeBounds(true);
-    return iterator.bounds();
-  }
-
-  /** Return a plain-object inspection snapshot for an entity id. */
-  inspect(id: number): Promise<EntityInfo | null> {
-    return inspectEntity(this, id);
+      ? this.raw.traverseBreadthFirst(inst.raw, maxLevels)
+      : this.raw.traverse(inst.raw, maxLevels);
+    return wrapInstanceList(this._shell, list);
   }
 
   /** Release the native file handle. Safe to call more than once. */
   dispose(): void {
     if (this._raw == null) return;
+    forgetEntitiesForFile(this._raw.filePointer());
     this.guard.destroy();
     this._raw = null;
   }

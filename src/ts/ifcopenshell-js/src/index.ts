@@ -1,30 +1,50 @@
 
 /**
- * Core `@ifcopenshell-js/web` API.
+ * Core `ifcopenshell` API — same operations as SWIG Python, JS camelCase.
  *
  * @module Core
  */
 
 import './disposable.js';
 
-export {
-  init,
+import { Entity } from './entity.js';
+import { IfcFile } from './file.js';
+import { geom } from './geom/index.js';
+import { guid } from './guid.js';
+import * as ifcview from './ifcview/index.js';
+import {
+  abortError,
+  file,
   IfcOpenShellError,
   IfcOpenShellErrorCode,
   IfcOpenShellErrorKind,
-  abortError,
+  init,
   isIfcOpenShellAbortError,
-} from './init.js';
-export type { IfcOpenShell } from './init.js';
-export { IfcFile } from './file.js';
-export type { FileInfo, HeaderInfo, OpenOptions } from './file.js';
-export { Entity } from './entity.js';
-export type { AttributeInput, EntityInfo } from './entity.js';
-export { AttributeValue } from './attribute.js';
-export type { IfcLogical, IfcValue, NestedEntityIds } from './attribute.js';
+  open,
+} from './session.js';
+
 export {
-  GeomIterator,
-  GeomSettings,
+  abortError,
+  file,
+  IfcOpenShellError,
+  IfcOpenShellErrorCode,
+  IfcOpenShellErrorKind,
+  init,
+  isIfcOpenShellAbortError,
+  open,
+};
+export type { IfcOpenShell } from './session.js';
+export { IfcFile };
+export type { HeaderInfo, OpenOptions } from './file.js';
+export { Entity };
+export type { AttributeInput, EntityInfo, EntityInfoValue } from './entity.js';
+export { guid };
+export { geom };
+export {
+  settings,
+  iterator,
+  iterate,
+  serializers,
   columnMajorToRowMajor4,
   rowMajorToColumnMajor4,
   transformPoint4,
@@ -40,8 +60,9 @@ export type {
   MeshPrecision,
   MatrixPoint3,
   OperationProgress,
+  SettingInput,
 } from './geom/index.js';
-export { exportToBuffer } from './serializers/index.js';
+export { obj, svg, ttl } from './serializers/index.js';
 export type {
   ExportOptions,
   ExportResult,
@@ -62,4 +83,12 @@ export type {
   Ptr,
   WasmAssets,
 } from './types.js';
+/** Viewer helpers — not part of the Python SWIG parity surface. */
 export * as util from './util/index.js';
+/** IFC → `.ifcview` sidecar conversion / parser — not part of the Python SWIG parity surface. */
+export { ifcview };
+
+const ifcopenshell = { init, open, file, guid, geom, ifcview, IfcFile, Entity };
+export default ifcopenshell;
+export { AttributeValue } from './attribute.js';
+export type { IfcLogical, IfcValue, NestedEntityIds } from './attribute.js';
