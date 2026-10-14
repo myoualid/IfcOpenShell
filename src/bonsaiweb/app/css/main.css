@@ -1,0 +1,179 @@
+/* Host chrome for the gui2 workspace shell. Region layout lives in layout.css. */
+
+.World .HeaderBar {
+	width: 100%;
+	justify-content: flex-start;
+	overflow: hidden;
+}
+
+#Logo,
+#HeaderMenu {
+	flex: 0 0 auto;
+}
+
+#HeaderMenu {
+	margin-left: auto;
+}
+
+#WorkModeBar {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: stretch;
+	min-width: 0;
+	height: 100%;
+	overflow: hidden;
+}
+
+#RibbonWorkModes {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 100%;
+}
+
+#RibbonWorkModes .TabView-content {
+	display: none !important;
+}
+
+#RibbonWorkModes .TabView-tabs {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 100%;
+	min-width: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+#RibbonBar > .is-work-mode-hidden {
+	display: none !important;
+}
+html,
+body {
+	height: 100%;
+	margin: 0;
+	overflow: hidden;
+	background: var(--dui-color-bg);
+	color: var(--dui-color-text);
+	font-family: var(--dui-font-ui);
+}
+
+.bonsai-panel-body {
+	box-sizing: border-box;
+	min-height: 0;
+}
+
+/* Left dock: scroll lists inside an open panel. Collapse hides .PanelContent;
+   an ID selector here would beat .CollapsiblePanel.collapsed > .PanelContent. */
+#WorkspaceLeft .WorkspacePanel:not(.collapsed) {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	max-height: 100%;
+}
+
+#WorkspaceLeft .WorkspacePanel:not(.collapsed) > .PanelContent {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+}
+
+#WorkspaceLeft .WorkspacePanel:not(.collapsed) .bonsai-panel-body {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	overflow: auto;
+}
+
+#WorkspaceLeft .TreeView,
+#WorkspaceLeft .TreeView-content {
+	min-height: 0;
+}
+
+/* The viewer canvas fills the viewport. layout.css pads every canvas. */
+#Viewport #viewer-canvas {
+	padding: 0;
+}
+
+#Footer .StatusBar {
+	flex: 1;
+	min-width: 0;
+}
+
+#Footer .StatusBar.is-indeterminate .StatusBar-fill {
+	width: 40% !important;
+	animation: bonsai-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes bonsai-indeterminate {
+	0% { transform: translateX(-100%); }
+	100% { transform: translateX(250%); }
+}
+
+/* Bottom dock: keep the prompt pinned and scroll the session output. */
+#WorkspaceBottom .WorkspacePanel {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+#WorkspaceBottom .WorkspacePanel:not(.collapsed) > .PanelContent {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+}
+
+#WorkspaceBottom .bonsai-terminal {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+}
+
+#WorkspaceBottom .bonsai-terminal > .TabView {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	height: auto;
+	min-height: 0;
+}
+
+#WorkspaceBottom .bonsai-terminal .TabView-content,
+#WorkspaceBottom .bonsai-terminal .ScrollViewer {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+}
+
+.bonsai-terminal {
+	font-family: var(--dui-font-mono);
+}
+
+.bonsai-completions {
+	background: var(--dui-color-surface-raised);
+	border: 1px solid var(--dui-color-border-strong);
+	border-radius: var(--dui-radius);
+	box-shadow: var(--dui-shadow-overlay);
+	max-height: 200px;
+	overflow: auto;
+	padding: 4px 0;
+}
+
+.bonsai-completions .Button {
+	background: transparent;
+	border: 0;
+	border-radius: 0;
+	display: block;
+	text-align: left;
+	width: 100%;
+}
+
+.bonsai-completions .Button.is-active,
+.bonsai-completions .Button:hover {
+	background: var(--dui-color-surface-selected);
+}

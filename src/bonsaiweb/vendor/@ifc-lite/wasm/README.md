@@ -1,0 +1,269 @@
+# @ifc-lite/wasm
+
+Pre-built WebAssembly bindings for the IFClite Rust core, covering STEP parsing and geometry tessellation (including the pure-Rust exact CSG kernel).
+
+> **You probably don't need to use this package directly.** It's the WASM binary plus generated JS/TypeScript bindings that `@ifc-lite/parser`, `@ifc-lite/geometry`, and `@ifc-lite/renderer` consume internally. Reach for it when you want raw access to the Rust core without the higher-level wrappers.
+
+## Installation
+
+```bash
+npm install @ifc-lite/wasm
+```
+
+## Direct WASM use
+
+The text-based entity scanner (`scanEntitiesFast`) takes the raw IFC text
+(a `string`) — decode the buffer first; `scanEntitiesFastBytes` takes the raw
+`Uint8Array` bytes directly. The geometry methods (`buildPrePassOnce`,
+`processGeometryBatch`, see below) also take the raw `Uint8Array` bytes.
+
+```typescript
+import init, { IfcAPI } from '@ifc-lite/wasm';
+
+await init();                         // load and instantiate the WASM module
+
+const api = new IfcAPI();
+const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
+const content = new TextDecoder().decode(buffer);
+
+// Fast entity scan — returns an array of entity references
+const refs = api.scanEntitiesFast(content);
+console.log(`Entities: ${refs.length}`);
+
+api.free();                           // free the API instance
+```
+
+`api.extrusionDefinitions(bytes, ids)` returns exact authored
+`IfcExtrudedAreaSolid` sources and placed product occurrences without decoding
+meshes. Omit `ids` for all products, pass `new Uint32Array()` for none, or
+selected product STEP IDs for a filtered view. Repeated mapping targets share a source key while each
+occurrence retains its f64 `world_from_source` matrix and deterministic ordinal.
+Complete sources with valid positive net profile area have
+`nominal_quantities` in raw squared/cubed IFC file units; unsupported or
+invalid sources have `null`.
+For a complete source-profile point, apply `profile_position`, then
+`position_matrix`, then `world_from_source`; the last matrix includes file-unit
+conversion and maps to absolute IFC Z-up metres. An absent optional `Position`
+leaves its matrix field `null`, so use identity for that step when composing
+rather than expecting an identity array. Check `status` before interpreting a
+null matrix; unsupported sources and bounded output are reported by `status`
+and `diagnostics`. CSG operands carry
+`source_modified=true` because their final body can differ.
+
+## Meshes (pre-pass + job batches)
+
+Geometry runs as a single pre-pass (one scan that produces a flat job list
+plus unit scale, RTC offset, void/style indices) followed by
+`processGeometryBatch` calls over slices of that job list. Pass the IFC
+**bytes** (`Uint8Array`) to these methods:
+
+```typescript
+import init, { IfcAPI } from '@ifc-lite/wasm';
+
+// Your renderer, and your own adapter from a wasm mesh to its mesh type.
+declare const scene: { add(m: unknown): void };
+declare function toThreeMesh(mesh: unknown): unknown;
+
+await init();
+const api = new IfcAPI();
+const modelBuffer = await fetch('model.ifc').then(r => r.arrayBuffer());
+const bytes = new Uint8Array(modelBuffer);
+
+const pre = api.buildPrePassOnce(bytes);
+// Large-coordinate models: pre.needsShift / pre.rtcOffset give the RTC origin.
+for (let start = 0; start < pre.totalJobs; start += 100) {
+  const end = Math.min(start + 100, pre.totalJobs);
+  const jobs = pre.jobs.slice(start * 3, end * 3);
+  const collection = api.processGeometryBatch(
+    bytes, jobs, pre.unitScale,
+    pre.rtcOffset?.[0] ?? 0, pre.rtcOffset?.[1] ?? 0, pre.rtcOffset?.[2] ?? 0,
+    pre.needsShift,
+    pre.voidKeys, pre.voidCounts, pre.voidValues,
+    pre.styleIds, pre.styleColors,
+  );
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    scene.add(toThreeMesh(mesh)); // mesh.expressId, .ifcType, .positions, .normals, .indices, .color
+    mesh.free();
+  }
+  collection.free();
+}
+
+api.clearPrePassCache();
+api.free();                           // release the API instance when done
+```
+
+### Auxiliary geometry in the mesh frame
+
+Grid, alignment, and symbolic parsers accept the mesh pre-pass decision through
+their explicit-frame variants. `RtcFrame` coordinates are IFC Z-up metres:
+
+```typescript
+import type { IfcAPI, RtcFrame } from '@ifc-lite/wasm';
+
+declare const api: IfcAPI;
+declare const pre: ReturnType<IfcAPI['buildPrePassOnce']>;
+declare const content: string;
+
+const frame: RtcFrame = {
+  x: pre.rtcOffset?.[0] ?? 0,
+  y: pre.rtcOffset?.[1] ?? 0,
+  z: pre.rtcOffset?.[2] ?? 0,
+  needsShift: pre.needsShift,
+};
+
+const grids = api.parseGridLinesInFrame(content, frame);
+const axes = api.parseGridAxesInFrame(content, frame);
+try {
+  const alignments = api.parseAlignmentLinesInFrame(content, frame);
+  const symbols = api.parseSymbolicRepresentationsInFrame(content, frame);
+  try {
+    console.log(grids.length, axes.length, alignments.length, symbols.totalCount);
+  } finally {
+    symbols.free();
+  }
+} finally {
+  axes.free();
+}
+```
+
+`needsShift: false` means no RTC subtraction, even when the inactive coordinates
+are non-zero. “Raw IFC” here describes only that RTC step: each parser still
+applies its documented unit scaling and output-axis conversion. It is distinct
+from having no frame.
+The methods without `InFrame` remain available for standalone parsing and
+detect a frame from the whole source. That standalone choice is not guaranteed
+to match an earlier streaming sample or a federation override; reuse the exact
+pre-pass frame whenever these results accompany already-produced meshes.
+
+> Most consumers should use [`@ifc-lite/geometry`](../geometry/README.md)'s
+> `GeometryProcessor` instead — it wraps this pre-pass/job-batch flow with a
+> Web-Worker pool, RTC coordinate handling, and progressive streaming.
+
+## Exports
+
+| Class | Purpose |
+|---|---|
+| `IfcAPI` | Top-level entry point — `scanEntitiesFast` / `scanEntitiesFastBytes` / `scanGeometryEntitiesFast`, `buildPrePassOnce` / `buildPrePassStreaming`, `processGeometryBatch`, `extractProfiles`, `parseSymbolicRepresentations` |
+| `MeshCollection`, `MeshDataJs` | Tessellated geometry output |
+| `ProfileCollection`, `ProfileEntryJs` | Cross-section profile data (extruded-area solids) |
+| `SymbolicRepresentationCollection`, `SymbolicCircle`, `SymbolicPolyline` | 2D symbolic representations (for plan / annotation views) |
+
+All classes implement `free()` and `[Symbol.dispose]()` — call `free()` (or use `using`) to release Rust-side memory.
+
+## When to use a higher-level package instead
+
+| You want… | Use |
+|---|---|
+| A typed, idiomatic TS API for parsing | [`@ifc-lite/parser`](../parser/README.md) |
+| Streaming geometry with worker support | [`@ifc-lite/geometry`](../geometry/README.md) |
+| WebGPU rendering | [`@ifc-lite/renderer`](../renderer/README.md) |
+| To avoid managing WASM lifecycles by hand | Any of the above |
+
+## Rust source
+
+This package ships the bindings only. The Rust source lives in [`rust/wasm-bindings/`](https://github.com/LTplus-AG/ifc-lite/tree/main/rust/wasm-bindings) and the core in [`rust/core/`](https://github.com/LTplus-AG/ifc-lite/tree/main/rust/core). Available on crates.io as `ifc-lite-core`.
+
+## API
+
+See the [WASM API Reference](https://ifclite.dev/docs/api/wasm/).
+
+## License
+
+[MPL-2.0](https://mozilla.org/MPL/2.0/)
+
+
+For appearance authoring, `IfcAPI.catalogAppearance` resolves current IFC product
+classes and type memberships from an effective STEP snapshot before planning.
+It shares bounded native decoding with `planAppearance`; run both in a worker and
+validate the source revision before using a catalog or applying a plan. See the
+[WASM API guide](../../docs/api/wasm.md#effective-appearance-scope-catalog) for the
+request, response and limits.
+
+`IfcAPI.planPageAppearance(content, requestJson, rgba)` adds a bounded finite-page
+compositor. It returns an `IFPA` metadata/PNG envelope with per-item digest-named
+assets and ordinary atomic IFC edits. Outside-page albedo is resampled from the
+original canonical style/texture, not a repeated or clamped page border. Run in
+a cancellable worker and retain all generated assets with the command. See the
+[WASM API guide](../../docs/api/wasm.md#finite-page-appearance-output).
+
+`IfcAPI.planAnnotationPlane` creates a bounded calibrated image `IfcAnnotation`
+plan for an explicit spatial container, reusing canonical native geometry. Run it
+in a worker and publish its typed entities, source-image lease and returned mesh
+as one existing model/history transaction. See the [WASM API guide](../../docs/api/wasm.md#calibrated-annotation-creation)
+for the Z-up geometry/top-down UV and allocator/source validation contract.
+
+`IfcAPI.planCapturedMesh` creates a bounded `IfcBuildingElementProxy` plan from
+an already segmented textured triangle mesh, retaining independent UV seams and
+the original image URI. It uses the same native authoring and geometry path as
+annotation creation. See [captured surface creation](../../docs/api/wasm.md#captured-textured-surface-creation)
+for coordinate, budget and atomic host-commit requirements.
+
+Captured-mesh planning preserves optional `repeatS`/`repeatT` image sampler flags
+(default `false`); UVs remain bounded to `[0, 1]`.
+
+`IfcAPI.registerScanCorrespondences` fits bounded manual source-scan/IFC point
+pairs and returns a proper rigid transform plus separate fitting and held-out
+residuals. Frames and asset identities are bound into the report; the call does
+not align a loaded model or approve scan accuracy. See the
+[registration contract](../../docs/api/wasm.md#scan-correspondence-registration).
+
+`IfcAPI.planMeshTransfer` composes registered opaque textured-mesh observations
+onto supported direct IFC tessellations using the shared atlas planner. Unknown
+samples retain existing target albedo; the IFPA response includes explicit
+coverage and frozen-input bindings. Entirely unknown transfer has no applicable
+plan. See the [transfer contract](../../docs/api/wasm.md#registered-textured-mesh-appearance-transfer)
+for source identity, coordinate frames, budgets and host acceptance requirements.
+
+`IfcAPI.preparePdfVectorPage` validates bounded ordered PDF vector graphics states
+and preserves source operator identity, calibrated transforms and paint state.
+Content the planner cannot convert (text, images, clips, transparency,
+patterns, unqualified dashed strokes, curved/hairline strokes, unknown operators) is returned
+as a fidelity report with counts, page extents and visibility, and an
+`exact`/`rasterOnly` verdict; `IfcAPI.planPdfFillAnnotation` plans a partial
+page only when the request quotes that report's digest as the user's
+acceptance. It emits no IFC entities and makes no flattened-geometry fidelity
+claim; see the
+[preparation contract](../../docs/api/wasm.md#pdf-vector-graphics-state-preparation-and-fidelity-report).
+Qualified positive dash patterns on open and closed straight subpaths preserve
+phase, odd-array repetition, subpath reset, joins across vertices and run caps.
+The closing edge participates in the pattern. PDF 1.0–1.7 retain caps where the
+first and last on-dash pieces meet at the closure seam; PDF 2.0 joins them.
+PDF.js's effective format version is bound into the page DTO; an unknown version
+reports `dashVersion`, and a PDF 1.x dash covering the complete closed perimeter
+reports `dashTopology`. Explicit close-path and close-and-stroke operators share
+the versioned behavior.
+Combined fill and dashed-stroke paints can still refuse atomically when
+multiple run boundaries produce crossings outside the current fill-region
+qualifier.
+
+## Retained alignment station frames
+
+`AlignmentAxisJs` evaluates one `IfcAlignment` through the canonical Rust
+evaluator. Its `GlobalId` and `Name` properties use exact IFC EXPRESS names;
+`expressId`, `geometricHorizontalLengthMeters` and `approximate` are derived
+metadata. The caller owns the handle and must call `free()` in `finally`.
+
+```ts
+import init, { AlignmentAxisJs } from '@ifc-lite/wasm';
+
+await init();
+const content = await (await fetch('alignment.ifc')).text();
+const axis = new AlignmentAxisJs(content, 39);
+try {
+  const sample = axis.evaluate(10);
+  console.log(axis.GlobalId, axis.Name, sample);
+} finally {
+  axis.free();
+}
+```
+
+`evaluate(distanceMeters)` returns a `Float64Array` containing horizontal
+distance, absolute IFC Z-up point X/Y/Z in metres, and normalized world tangent
+X/Y/Z. Distance is alignment-local geometric horizontal length from the physical
+start, independent of authored chainage and different from 3D arc length. No
+renderer origin or axis conversion is applied. Nonfinite or out-of-range
+distances and unresolved units, curves or placements fail explicitly. The
+`approximate` flag identifies supported approximation paths; it must be exposed
+to precision-sensitive consumers. Whole-source parsing belongs in a disposable
+worker when used by the viewer, so releasing the tool also releases WASM pages.
