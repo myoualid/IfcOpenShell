@@ -1,0 +1,18 @@
+diff --git a/adm/cmake/occt_defs_flags.cmake b/adm/cmake/occt_defs_flags.cmake
+index 1111111..2222222 100644
+--- a/adm/cmake/occt_defs_flags.cmake
++++ b/adm/cmake/occt_defs_flags.cmake
+@@ -32,7 +32,12 @@ if (MSVC)
+ else()
+   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fexceptions -fPIC")
+   set (CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -fexceptions -fPIC")
+-  add_definitions(-DOCC_CONVERT_SIGNALS)
++  # setjmp inside try (OCC_CATCH_SIGNALS) plus wasm exceptions makes
++  # the wasm backend emit a br_table whose labels do not share an arity.
++  # V8 rejects that module. Wasm has no Unix signal delivery to longjmp.
++  if (NOT EMSCRIPTEN)
++    add_definitions(-DOCC_CONVERT_SIGNALS)
++  endif()
+ endif()
+ 
+ # enable structured exceptions for MSVC

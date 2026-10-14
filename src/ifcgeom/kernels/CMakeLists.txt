@@ -20,6 +20,10 @@ foreach(kernel ${GEOMETRY_KERNELS})
         SET_INSTALL_SELF_RPATH(${KERNEL_TARGET})
     endif()
 
+    # Every kernel exports the symbols defined in its own objects. The
+    # OpenCASCADE kernel additionally exports the OCCT symbols referenced by
+    # the tree and serializer plugins; see wasm.cmake. Exporting every OCCT
+    # symbol exceeds the JS engine's 100000-export limit.
     ifcopenshell_wasm_plugin_link_options(${KERNEL_TARGET} ifcopenshell_register_kernel_plugin_v1 EXPORT_DYNAMIC)
 
     set_target_properties(${KERNEL_TARGET} PROPERTIES
@@ -39,9 +43,16 @@ foreach(kernel ${GEOMETRY_KERNELS})
         )
     endif()
     list(APPEND kernel_libraries ${KERNEL_TARGET})
+    # The wasm OpenCASCADE kernel links a filtered toolkit list below.
+    # Linking the full list here as well would put TKXMesh and the GL driver
+    # back on the command line, and SIDE_MODULE=1 would then keep them.
+    set(kernel_private_libs ${${KERNEL_UPPER}_LIBRARIES})
+    if(WASM_BUILD AND kernel STREQUAL "opencascade")
+        set(kernel_private_libs "")
+    endif()
     ifcopenshell_wasm_plugin_target_link(${KERNEL_TARGET}
         MAIN_TARGETS IfcParse IfcGeom
-        PRIVATE ${plugin_when_not_wasm} ${${KERNEL_UPPER}_LIBRARIES} Eigen3::Eigen
+        PRIVATE ${plugin_when_not_wasm} ${kernel_private_libs} Eigen3::Eigen
     )
 
     install(TARGETS ${KERNEL_TARGET})
@@ -86,8 +97,10 @@ foreach(kernel ${GEOMETRY_KERNELS})
         if (WASM_BUILD)
             # TKMesh and TKXMesh both export the same DISCRETALGO meshing plugin entry point.
             # Keep TKMesh and drop TKXMesh so wasm-ld sees a single OCCT discretizer.
+            # The GL driver and mesh-visualization toolkits are not used headless,
+            # and whole-archive would otherwise keep their GLES imports.
             set(OCCT_LIBS_FILTERED ${OpenCASCADE_LIBRARIES})
-            list(FILTER OCCT_LIBS_FILTERED EXCLUDE REGEX "TKXMesh")
+            list(FILTER OCCT_LIBS_FILTERED EXCLUDE REGEX "TKXMesh|TKOpenGl|TKMeshVS")
             target_link_libraries(${KERNEL_TARGET} PRIVATE
                 "-Wl,--start-group"
                 ${OCCT_LIBS_FILTERED}
@@ -130,11 +143,10 @@ foreach(kernel ${GEOMETRY_KERNELS})
             endif()
             list(APPEND tree_libraries ${TREE_TARGET})
             if(WASM_BUILD)
-                # Tree plugins compile against OCCT headers but do NOT link OCCT
-                # libraries. OCCT symbols resolve at runtime from the kernel
-                # provider (which uses --export-dynamic to make all its symbols
-                # available). This matches the serializer plugin pattern and
-                # avoids duplicating OCCT code across side modules.
+                # Tree plugins compile against OCCT headers but do not link OCCT.
+                # geometry_kernel_opencascade exports the OCCT symbols these
+                # objects reference. Linking OCCT here as well would copy it
+                # into every tree and serializer plugin.
                 if(WITH_OPENCASCADE AND OCC_INCLUDE_DIR)
                     target_include_directories(${TREE_TARGET} PRIVATE "${OCC_INCLUDE_DIR}")
                 endif()
@@ -142,13 +154,46 @@ foreach(kernel ${GEOMETRY_KERNELS})
                     MAIN_TARGETS IfcParse IfcGeom
                     PRIVATE ${plugin_when_not_wasm} Eigen3::Eigen
                 )
-                add_dependencies(${TREE_TARGET} geometry_kernel_opencascade)
             else()
                 target_link_libraries(${TREE_TARGET} PRIVATE plugin IfcGeom geometry_kernel_opencascade ${OpenCASCADE_LIBRARIES} Eigen3::Eigen)
             endif()
             ifcopenshell_wasm_plugin_link_options(${TREE_TARGET} ifcopenshell_register_tree_plugin_v1)
             install(TARGETS ${TREE_TARGET})
         endforeach()
+        if(WASM_BUILD)
+            # Same directory as the kernel target: PRE_LINK has to be registered here.
+            # Pull in OCCT members referenced by the tree and serializer plugins and
+            # export those symbols. Exporting every OCCT symbol exceeds the JS
+            # engine's 100000-export limit.
+            get_target_property(occt_export_rsp geometry_kernel_opencascade IFCOPENSHELL_WASM_EXPORT_RSP)
+            get_filename_component(ifcos_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+            set(occt_export_script "${ifcos_repo_root}/cmake/wasm_export_dynamic.py")
+            set(occt_consumer_object_dirs
+                "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/geometry_tree_opencascade_brep.dir"
+                "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/geometry_tree_opencascade_trianglebvh.dir"
+                "${CMAKE_BINARY_DIR}/serializers/CMakeFiles/geometry_serializer_stp.dir"
+                "${CMAKE_BINARY_DIR}/serializers/CMakeFiles/geometry_serializer_igs.dir"
+                "${CMAKE_BINARY_DIR}/serializers/CMakeFiles/geometry_serializer_svg.dir"
+                "${CMAKE_BINARY_DIR}/serializers/CMakeFiles/geometry_serializer_ttl.dir"
+            )
+            set(occt_consumer_dir_args)
+            foreach(consumer_dir IN LISTS occt_consumer_object_dirs)
+                list(APPEND occt_consumer_dir_args --undefined-objects-dir "${consumer_dir}")
+            endforeach()
+            if(CMAKE_HOST_WIN32)
+                add_custom_command(
+                    TARGET geometry_kernel_opencascade PRE_LINK
+                    COMMAND py -3 "${occt_export_script}" --append --output "${occt_export_rsp}" ${occt_consumer_dir_args}
+                    VERBATIM
+                )
+            else()
+                add_custom_command(
+                    TARGET geometry_kernel_opencascade PRE_LINK
+                    COMMAND python3 "${occt_export_script}" --append --output "${occt_export_rsp}" ${occt_consumer_dir_args}
+                    VERBATIM
+                )
+            endif()
+        endif()
     endif()
 
     install(FILES ${IFCGEOM_H_FILES}

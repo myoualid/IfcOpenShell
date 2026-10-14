@@ -1,0 +1,4 @@
+# Built by the Emscripten link step, then copied here so the example pages
+# can load them. See README.md.
+IfcViewerWeb.js
+IfcViewerWeb.wasm
