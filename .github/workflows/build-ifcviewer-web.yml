@@ -1,4 +1,4 @@
-name: Build ifcviewer-web
+name: Build @aeco-dev/viewer
 
 # Emscripten build of src/ifcviewer-web. This does not use nix/build-all.py:
 # the web viewer links IfcViewerCore only (no Qt, OpenCASCADE, or IfcGeom).

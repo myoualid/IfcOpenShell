@@ -4,11 +4,8 @@ name: Publish @aeco-dev/viewer
 # ifcviewer.js, and publishes @aeco-dev/viewer. The version is chosen here and
 # is not committed back to the branch.
 #
-# Authentication, either one:
-#   - Repository secret NPM_TOKEN: an npm Automation token that can publish
-#     the @aeco-dev scope.
-#   - npm trusted publishing for this repo and workflow, with no secret.
-#     The job requests id-token: write for that path.
+# Authentication: repository secret IFCVIEWER, an npm token that can publish
+# the @aeco-dev scope. The build job does not use it.
 
 on:
   workflow_dispatch:
@@ -74,19 +71,16 @@ jobs:
       - name: Publish
         working-directory: src/ifcviewer-web/npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.IFCVIEWER }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "NPM_TOKEN is unset. Publishing with GitHub OIDC (npm trusted publishing)."
-            echo "If @aeco-dev/viewer has no trusted publisher for this workflow, add an Automation token as the NPM_TOKEN secret."
-            unset NODE_AUTH_TOKEN
-            extra=(--provenance)
-          else
-            extra=()
+            echo "::error::The IFCVIEWER secret is empty. Add the npm token under Settings, Secrets and variables, Actions, secret name IFCVIEWER."
+            exit 1
           fi
+          echo "::add-mask::$NODE_AUTH_TOKEN"
           if [ "$DRY_RUN" = "true" ]; then
             npm publish --dry-run --access public
           else
-            npm publish --access public "${extra[@]}"
+            npm publish --access public
           fi
