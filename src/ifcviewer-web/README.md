@@ -8,6 +8,34 @@ The result is a static site. Serve the build directory over `http://localhost` (
 
 This build is separate from `@ifcopenshell/wasm`. It does not use `nix/build-all.py`.
 
+## How geometry works
+
+The web viewer does not tessellate IFC. OpenCASCADE and IfcGeom stay in the desktop build. What wasm loads is a baked sidecar, a `.ifcview` (format version 19, `src/ifcviewer/IfcViewFormat.h`). The page checks the first 12 bytes (`magic`, version, endian) and refuses a file from another version. `web/ifcviewer.js` passes that version as `sidecarFormatVersion`.
+
+Baking happens once, on the desktop. The geometry iterator emits one mesh per unique shape and one instance per placed product. Vertices are stored in the mesh's local coordinates and quantized to 12 bytes:
+
+| Bytes | Field |
+|---|---|
+| 0–5 | Position, three `uint16` values in `[0, 1]` across that mesh's local AABB |
+| 6–7 | Normal, two `int8` values, octahedral encoding |
+| 8–11 | Color, four `uint8` values |
+
+The vertex shader expands the position with the mesh AABB and decodes the normal. A mesh used many times is stored once; each placement is an instance. On disk an instance is a mesh id, an object id, a `double` translation, and a `float` 3×3 linear part. The full float matrix is built at load, after the federation false origin, the model transform, and the model's `IfcMapConversion` have been applied, so large survey coordinates stay exact until they are cancelled down to viewport size.
+
+Meshes above 500 triangles also get a second index list, LOD1, from meshoptimizer (about a quarter of the triangles, stopped if the error passes 5%). LOD1 reuses the same vertices. A mesh with no LOD1 is drawn at full resolution at every distance.
+
+Before the file is written, meshes are sorted by a 3D Morton code of their centroids and packed into chunks of at most 4 MB of vertex bytes (`ChunkPlanner`). That order is stored in a chunk table of contents. The loader must not recompute it: the float Morton codes are not bit-identical between the x86 baker and the wasm loader, and a recomputed plan would split a chunk across the file. Each chunk is then two independent zstd frames, vertices and indices, so one HTTP Range (or one `Blob.slice`) fetches one chunk.
+
+The file, after the 12-byte header and a `uint64` geometry-section length, is:
+
+1. Geometry section. One pair of zstd frames per chunk.
+2. Geometry metadata, one zstd frame: mesh dictionary, instances, coordinate operation, chunk table. The loader finishes this before it can request any chunk, and it is what first paint waits on.
+3. Element metadata, one zstd frame: element table and string table (id, GlobalId, name, type). Used for picking and the object list, never for drawing. The web loader fetches it lazily, per model, the first time something asks for objects.
+
+At runtime `load_ifcview_from_source_c` never copies the file into the wasm heap. `web/ifcviewer.js` reads ranges from a picked `File` or from a remote URL. Metadata sets up instances, AABBs, and culling immediately. Each frame the camera asks for the chunks it can see; at most six are in flight, so the first ones finish and paint instead of the connection being split across the whole model. A finished chunk is decompressed and uploaded into a GPU buffer pool. Chunks that fall out of view can be evicted and fetched again. `addUrl(url, { cache: true })` writes those same ranges into the origin private file system, so a later visit that already has the bytes issues no geometry requests.
+
+The link step embeds `sample.ifcview` so the example pages draw something before a file is picked. Regenerate that fixture with `python make_sample.py` from this directory. The script writes a small IFC (a slab, a wall, and a beam) and a georeferenced pair, then runs the desktop `sidecar_bake` tool. Point `SIDECAR_BAKE` at that binary when it is not at `build-viewer/ifcviewer/sidecar_bake`. Changing `sample.ifcview` relinks the wasm.
+
 ## What you get
 
 After a successful build, `build-web/` contains:
