@@ -1,0 +1,133 @@
+name: Build ifcviewer-web
+
+# Emscripten build of src/ifcviewer-web. This does not use nix/build-all.py:
+# the web viewer links IfcViewerCore only (no Qt, OpenCASCADE, or IfcGeom).
+# Runs on the AECO fork, which can be ahead of IfcOpenShell/IfcOpenShell.
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches:
+      - v0.9.0
+      - ifcopenshell-ifcviewer
+    paths:
+      - src/ifcviewer/**
+      - src/ifcviewer-web/**
+      - src/helpers/**
+      - nix/sources.lock.json
+      - nix/build-all.py
+      - .github/workflows/build-ifcviewer-web.yml
+      - .github/scripts/pack-aeco-viewer.py
+
+permissions: {}
+
+concurrency:
+  group: ifcviewer-web-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  build:
+    if: github.repository == 'myoualid/IfcOpenShell'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install CMake and Ninja
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+
+      - name: Read pinned toolchain versions
+        id: pins
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          lock = json.loads(Path("nix/sources.lock.json").read_text())
+          build = Path("nix/build-all.py").read_text()
+          eigen = re.search(r'EIGEN_VERSION = "([^"]+)"', build)
+          if not eigen:
+              raise SystemExit("EIGEN_VERSION not found in nix/build-all.py")
+          out = Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"emsdk={lock['emsdk']['version']}\n")
+              fh.write(f"eigen={eigen.group(1)}\n")
+          PY
+
+      - name: Cache emsdk
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: emsdk-cache
+        with:
+          path: ${{ runner.temp }}/emsdk
+          key: emsdk-${{ steps.pins.outputs.emsdk }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install emsdk
+        if: steps.emsdk-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git
+          cd emsdk
+          ./emsdk install ${{ steps.pins.outputs.emsdk }}
+          ./emsdk activate ${{ steps.pins.outputs.emsdk }}
+
+      - name: Cache Eigen
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: eigen-cache
+        with:
+          path: ${{ runner.temp }}/eigen-install
+          key: eigen-${{ steps.pins.outputs.eigen }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install Eigen
+        if: steps.eigen-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fsSL -o eigen.tar.gz "https://gitlab.com/libeigen/eigen/-/archive/${{ steps.pins.outputs.eigen }}/eigen-${{ steps.pins.outputs.eigen }}.tar.gz"
+          tar -xzf eigen.tar.gz
+          cmake -S "eigen-${{ steps.pins.outputs.eigen }}" -B eigen-build -G Ninja \
+            -DCMAKE_INSTALL_PREFIX="${{ runner.temp }}/eigen-install" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build eigen-build --target install
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          key: ifcviewer-web-${{ runner.os }}-${{ runner.arch }}
+          install: binary
+
+      - name: Configure and build
+        env:
+          EM_COMPILER_WRAPPER: ccache
+        run: |
+          if [ ! -f src/ifcviewer-web/sample.ifcview ]; then
+            echo "::error::src/ifcviewer-web/sample.ifcview is missing. The link step embeds it."
+            exit 1
+          fi
+          source "${{ runner.temp }}/emsdk/emsdk_env.sh"
+          emcmake cmake -S src/ifcviewer-web -B build-web -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEigen3_DIR="${{ runner.temp }}/eigen-install/share/eigen3/cmake" \
+            -DIFCVIEWERWEB_BONSAIWEB_VENDOR_DIR=
+          cmake --build build-web
+          test -s build-web/IfcViewerWeb.js
+          test -s build-web/IfcViewerWeb.wasm
+          ls -lh build-web/IfcViewerWeb.js build-web/IfcViewerWeb.wasm build-web/ifcviewer.js
+
+      - name: Upload ifcviewer-web
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ifcviewer-web
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            build-web/IfcViewerWeb.js
+            build-web/IfcViewerWeb.wasm
+            build-web/ifcviewer.js
+            build-web/index.html
+            build-web/embedded.html
+            build-web/scripting.html
+            build-web/IfcViewerWeb.html
