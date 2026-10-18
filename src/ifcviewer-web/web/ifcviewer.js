@@ -916,6 +916,13 @@
       sidecarFormatVersion: sidecarFormatVersion,
       isLive: function () { return live; },
 
+      // Draw the next frame although nothing in the scene changed. The viewer
+      // renders on demand and already redraws after its own changes and after
+      // a canvas resize; call this when something it cannot see discarded the
+      // canvas bitmap (a window move, tab or occlusion change, re-parenting
+      // the canvas). Calls within one frame coalesce into a single draw.
+      requestRedraw: function () { Module._ifcv_request_redraw_c(); },
+
       // ---- Events ----------------------------------------------------------
 
       // Single-object picks (click). Fires with
