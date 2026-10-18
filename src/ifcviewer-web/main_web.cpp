@@ -529,12 +529,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void raf_tick_c(void* user) {
     auto* app = static_cast<AppState*>(user);
     if (!app->ready) return;
 
+    // Reconfiguring writes canvas.width/height, which clears the bitmap, so
+    // the new size must be drawn this tick or the canvas presents blank.
     int w = 0, h = 0;
     app->host.framebufferSize(w, h);
     if (w != app->last_w || h != app->last_h) {
         app->core.configureSurface(w, h);
         app->last_w = w;
         app->last_h = h;
+        app->host.requestFrame();
     }
 
     // Fly mode: integrate held-key movement each frame (dt from wall clock).
@@ -553,6 +556,13 @@ extern "C" EMSCRIPTEN_KEEPALIVE void raf_tick_c(void* user) {
     if (app->host.consumeFrameRequest()) {
         app->core.render();
     }
+}
+
+// Draw on the next raf_tick_c although nothing in the scene changed. For
+// host-side events the wasm cannot observe: the browser discarding the canvas
+// bitmap on a window move, tab or occlusion change, or DOM re-parenting.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_request_redraw_c() {
+    if (g_app) g_app->host.requestFrame();
 }
 
 // Stream a .ifcview from a registered JS byte-source and APPEND it to the scene
