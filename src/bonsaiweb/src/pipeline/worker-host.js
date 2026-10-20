@@ -5,9 +5,8 @@
 // the wasm glue from the same URLs the page already loaded, so spawn stays cheap.
 // The blob worker has no base URL of its own, so every URL here is absolute.
 
-// Bundled callers pass `shimUrl`, because import.meta.url then points into build/.
-const SHIM_URL = 'https://cdn.jsdelivr.net/npm/es-module-shims@2.6.2/dist/es-module-shims.wasm.js';
-const DEFAULT_SHIM_URL = SHIM_URL;
+// Bundled callers pass `shimUrl` and `assets` from configuration.paths.
+// import.meta.url then points into build/, so this file does not choose a CDN.
 
 function absoluteImportMap( map, base ) {
 
@@ -35,16 +34,13 @@ export function readPageImportMap() {
 
 }
 
-export function shimUrlFrom() {
+export function createIfcOpenShellWorker( moduleUrl, { shimUrl, assets } = {} ) {
 
-	return SHIM_URL;
-
-}
-
-export function createIfcOpenShellWorker( moduleUrl, { shimUrl = DEFAULT_SHIM_URL } = {} ) {
-
+	if ( ! shimUrl ) throw new Error( 'convert worker needs a shim URL' );
+	if ( ! assets?.zstdModule || ! assets?.zstdWasm ) throw new Error( 'convert worker needs zstd paths' );
 	const importMap = readPageImportMap();
 	const source = `
+		self.bonsaiAssets = ${ JSON.stringify( assets ) };
 		let installed = false;
 		const pending = [];
 		self.addEventListener( 'message', ( event ) => {

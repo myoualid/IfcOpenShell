@@ -5,14 +5,27 @@ import { createLogger } from '../util/log.js';
 
 const log = createLogger( 'convert-main' );
 
-const ZSTD_WASM = 'https://cdn.jsdelivr.net/npm/@ioai/wasm-zstd@latest/dist/wasm-zstd.wasm';
-
+let assets = null;
 let ready = null;
+
+export function configureAssets( next ) {
+
+	const same = assets?.zstdModule === next?.zstdModule && assets?.zstdWasm === next?.zstdWasm;
+	assets = next ?? null;
+	if ( ! same ) ready = null;
+
+}
 
 async function loadPipeline() {
 
+	if ( ! assets?.zstdModule || ! assets?.zstdWasm ) {
+
+		throw new Error( 'main-thread conversion needs zstd paths from configuration.paths' );
+
+	}
+
 	const pipeline = await import( './ifcopenshell/convert.js' );
-	pipeline.configureCompressor( { wasmUrl: ZSTD_WASM } );
+	pipeline.configureCompressor( { moduleUrl: assets.zstdModule, wasmUrl: assets.zstdWasm } );
 	return pipeline;
 
 }
