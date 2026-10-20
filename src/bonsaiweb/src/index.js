@@ -77,9 +77,24 @@ export class Bonsai {
 		const viewport = context.dom.viewport;
 		if ( viewport ) {
 
-			tool.Loader.enableDragDrop( viewport, ( file ) => {
+			tool.Loader.enableDragDrop( viewport, ( payload ) => {
 
-				ops.execute( 'load.ifc', context, file );
+				if ( payload?.entries ) {
+
+					ops.execute( 'project.open_bag', context, payload.entries, payload.label );
+					return;
+
+				}
+
+				if ( payload?.files ) {
+
+					for ( const file of payload.files ) ops.execute( 'load.ifc', context, file );
+					return;
+
+				}
+
+				const file = payload?.file ?? payload;
+				if ( file ) ops.execute( 'load.ifc', context, file );
 
 			} );
 

@@ -12,6 +12,7 @@ import {
 
 import ops from '../../ops.js';
 import { writeStoredZip } from '../../pipeline/zip.js';
+import { Federation } from '../../tool/federation.js';
 import { Ifc, Loader } from '../../tool/index.js';
 import { viewer } from '../../tool/Viewer.js';
 
@@ -216,10 +217,20 @@ class ProjectPanelUI {
 			},
 		};
 
+		const save = new IconButton( 'download' ).setTooltip( 'Download project' );
+		save.setStyle( 'cursor', [ 'pointer' ] );
+		save.dom.addEventListener( 'click', ( event ) => {
+
+			event.preventDefault();
+			event.stopPropagation();
+			ops.execute( 'project.download', this.context );
+
+		} );
+
 		this.root = new StackPanel( { isVertical: true } )
 			.gap( '0.75rem' )
 			.add(
-				row( this._badge, this._visibleCaption ),
+				row( this._badge, this._visibleCaption, save ),
 				this._list,
 			);
 
@@ -274,6 +285,16 @@ class ProjectPanelUI {
 	_fillPosition( sourceId, label ) {
 
 		const fields = this._fieldsFor( sourceId );
+		const stored = Federation.modelForSource( sourceId )?.transform;
+		if ( stored && ! fields.hold ) {
+
+			fields.x.setValue( stored.b[ 0 ] );
+			fields.y.setValue( stored.b[ 1 ] );
+			fields.z.setValue( stored.b[ 2 ] );
+			fields.north.setValue( stored.rxyzDeg[ 2 ] );
+
+		}
+
 		this._positionDialog.setTitle( label || 'Position' );
 		this._positionDialog.content( new StackPanel( { isVertical: true } )
 			.gap( '0.5rem' )
@@ -396,7 +417,7 @@ class ProjectPanelUI {
 			const checkbox = item.dom.querySelector( 'input[type="checkbox"]' );
 			checkbox?.addEventListener( 'change', () => {
 
-				this._setModelVisible( model.objectIds, checkbox.checked );
+				this._setModelVisible( model.sourceId, model.objectIds, checkbox.checked );
 
 			} );
 			const actions = item.dom.querySelector( '.LabeledBoxItem-actions' );
@@ -480,8 +501,9 @@ class ProjectPanelUI {
 
 	}
 
-	_setModelVisible( objectIds, visible ) {
+	_setModelVisible( sourceId, objectIds, visible ) {
 
+		Federation.setVisible( sourceId, visible );
 		if ( ! objectIds?.length ) return;
 		const name = visible ? 'show.selection' : 'hide.selection';
 		ops.execute( name, this.context, objectIds );

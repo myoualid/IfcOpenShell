@@ -5,11 +5,12 @@
 // The live IfcViewer is `bonsai.viewer`.
 
 import { Ifc } from './Ifc.js';
+import { Federation } from './federation.js';
 import { Loader } from './Loader.js';
 import { Element } from './Element.js';
 import { Pset } from './Pset.js';
 import { Terminal } from './Terminal.js';
 import { Viewer } from './Viewer.js';
 
-export { Ifc, Loader, Element, Pset, Terminal, Viewer };
+export { Ifc, Loader, Federation, Element, Pset, Terminal, Viewer };
 export default { Ifc, Loader, Element, Pset, Terminal };

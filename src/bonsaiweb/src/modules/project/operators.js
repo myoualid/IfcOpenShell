@@ -1,4 +1,6 @@
 import ops, { Operator } from '../../ops.js';
+import { writeStoredZip } from '../../pipeline/zip.js';
+import { Federation } from '../../tool/federation.js';
 import { Ifc, Loader } from '../../tool/index.js';
 import { Viewer, viewer } from '../../tool/Viewer.js';
 
@@ -11,7 +13,7 @@ function openModelFilePicker( onFile ) {
 
 	const input = document.createElement( 'input' );
 	input.type = 'file';
-	input.accept = '.ifc,.ifcview,.zip,application/zip';
+	input.accept = '.ifc,.ifcview,.ifcfed,.zip,application/zip';
 	input.style.display = 'none';
 
 	const cleanup = () => {
@@ -51,7 +53,7 @@ function openModelFilePicker( onFile ) {
 
 }
 
-// Loader options for one load: the geometry overrides { kernel, thread },
+// Loader options for one load: the geometry overrides { kernel, thread, delivery },
 // plus hooks that re-dispatch conversion progress and the live IFC.
 function loadOptions( context, options ) {
 
@@ -214,7 +216,7 @@ class ProjectOpenFile extends Operator {
 	static operatorLabel = 'Load IFC';
 
 	// `options` overrides configuration.geometry for this load:
-	// { kernel, thread }.
+	// { kernel, thread, delivery }.
 	constructor( context, options = {} ) {
 
 		super( context );
@@ -231,6 +233,111 @@ class ProjectOpenFile extends Operator {
 
 		} );
 		return { status: 'FINISHED' };
+
+	}
+
+}
+
+class ProjectOpenBag extends Operator {
+
+	static operatorName = 'project.open_bag';
+	static operatorLabel = 'Open Project';
+
+	constructor( context, entries, label, options = {} ) {
+
+		super( context );
+		this.entries = entries;
+		this.label = label;
+		this.options = options;
+
+	}
+
+	poll() {
+
+		return Boolean( Viewer.get() && this.entries?.length );
+
+	}
+
+	execute() {
+
+		this.context.signals.modelLoadStarted.dispatch( {
+			source: 'project',
+			name: this.label || 'project.ifcfed',
+		} );
+		return Loader.openProjectBag( this.entries, loadOptions( this.context, this.options ), this.label )
+			.catch( ( err ) => {
+
+				console.error( err );
+				return { status: 'CANCELLED' };
+
+			} );
+
+	}
+
+}
+
+class ProjectDownload extends Operator {
+
+	static operatorName = 'project.download';
+	static operatorLabel = 'Download Project';
+
+	poll() {
+
+		return Boolean( Viewer.get() );
+
+	}
+
+	async execute() {
+
+		const encoder = new TextEncoder();
+		for ( const entry of this.context.store.models ) {
+
+			Federation.ensureLocal( entry.sourceId, entry.name || entry.viewName || 'model.ifc' );
+
+		}
+
+		const payload = new Map();
+		for ( const entry of this.context.store.models ) {
+
+			const model = Federation.modelForSource( entry.sourceId );
+			if ( ! model ) continue;
+			const bundle = Loader.bundle( entry.sourceId );
+			let ifc = bundle?.ifc?.data
+				? { name: bundle.ifc.name, data: bundle.ifc.data }
+				: null;
+			if ( ! ifc ) {
+
+				const file = Ifc.file( entry.sourceId );
+				if ( file?.toString ) {
+
+					const data = encoder.encode( file.toString() );
+					ifc = { name: Ifc.get( entry.sourceId )?.name || entry.name || 'model.ifc', data };
+
+				}
+
+			}
+
+			let view = null;
+			const viewFile = bundle?.view?.file;
+			if ( viewFile ) {
+
+				view = {
+					name: bundle.view.name,
+					data: new Uint8Array( await viewFile.arrayBuffer() ),
+				};
+
+			}
+
+			payload.set( model.id, { ifc, view } );
+
+		}
+
+		Federation.captureViewer( viewer );
+		const archive = Federation.archiveFiles( payload );
+		if ( archive.warnings.length ) console.warn( archive.warnings.join( '\n' ) );
+		const data = writeStoredZip( archive.files );
+		await Loader.saveFile( new File( [ data ], archive.filename ) );
+		return { status: 'FINISHED', warnings: archive.warnings };
 
 	}
 
@@ -339,11 +446,32 @@ class ProjectModelLoaded extends Operator {
 
 	}
 
-	execute() {
+	async execute() {
 
 		const sourceId = typeof this.detail === 'number' ? this.detail : this.detail?.sourceId;
 		const sessionModelId = typeof this.detail === 'object' ? this.detail?.sessionModelId : undefined;
 		this.context.signals.modelLoaded.dispatch( { sourceId, sessionModelId } );
+		Federation.modelArrived( viewer );
+		const model = Federation.modelForSource( sourceId );
+		if ( model && ! Federation.isEffectivelyVisible( model ) ) {
+
+			try {
+
+				const objects = await viewer.getObjects();
+				const ids = objects
+					.filter( ( object ) => object.sourceId === sourceId && object.objectId > 0 )
+					.map( ( object ) => object.objectId );
+				if ( ids.length ) {
+
+					viewer.hide( ids );
+					this.context.signals.visibilityChanged.dispatch( { action: 'hide', target: ids } );
+
+				}
+
+			} catch { /* element table is not resident yet */ }
+
+		}
+
 		return { status: 'FINISHED' };
 
 	}
@@ -382,5 +510,5 @@ class ProjectBenchmark extends Operator {
 
 }
 
-export { LoadIfc, LoadSampleIfc, ProjectBenchmark, ProjectClear, ProjectDownloadView, ProjectModelLoaded, ProjectModels, ProjectNew, ProjectOpenFile };
-export default [ ProjectOpenFile, ProjectNew, ProjectClear, ProjectDownloadView, ProjectModels, ProjectModelLoaded, LoadIfc, LoadSampleIfc, ProjectBenchmark ];
+export { LoadIfc, LoadSampleIfc, ProjectBenchmark, ProjectClear, ProjectDownload, ProjectDownloadView, ProjectModelLoaded, ProjectModels, ProjectNew, ProjectOpenBag, ProjectOpenFile };
+export default [ ProjectOpenFile, ProjectOpenBag, ProjectDownload, ProjectNew, ProjectClear, ProjectDownloadView, ProjectModels, ProjectModelLoaded, LoadIfc, LoadSampleIfc, ProjectBenchmark ];

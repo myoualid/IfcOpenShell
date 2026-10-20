@@ -43,14 +43,18 @@ export const ribbonButtons = [
 		button( 'RB_SurveyPoint', 'Survey point', 'my_location', 'georeferencing.toggle' ),
 	] ),
 
-	group( 'RG_Project', 'Project', 'Project', [
+	group( 'RG_Project', 'Set up', 'Project', [
 		button( 'RB_LoadIfc', 'Open model', 'add', 'project.open_file' ),
+		button( 'RB_NewProject', 'New model', 'note_add', 'project.new' ),
 		button( 'RB_LoadSample', 'Load sample', 'draft', 'load.sample.ifc' ),
-		button( 'RB_NewProject', 'New Project', 'note_add', 'project.new' ),
+	] ),
+	group( 'RG_ProjectActions', 'Project', 'Project', [
+		button( 'RB_SaveProject', 'Save project', 'download', 'project.download' ),
 		button( 'RB_ClearAll', 'Clear all', 'clear', 'project.clear' ),
+	] ),
+	group( 'RG_Settings', 'Settings', 'Project', [
 		button( 'RB_Settings', 'Settings', 'settings', 'settings.toggle' ),
 	] ),
-
 	group( 'RG_Views', 'Views', 'Navigate', [
 		button( 'RB_ViewFront', 'Front', 'filter_center_focus', 'viewer.standard_view', [ 'FRONT' ] ),
 		button( 'RB_ViewBack', 'Back', 'flip_to_back', 'viewer.standard_view', [ 'BACK' ] ),
