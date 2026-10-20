@@ -2,9 +2,9 @@
 // These are the jsDelivr builds. Swap a directory for a local checkout to test a build.
 
 export const PathsConfig = {
-	viewer: 'https://cdn.jsdelivr.net/npm/@aeco-dev/viewer@0.1.1/dist',
+	viewer: 'https://cdn.jsdelivr.net/npm/@aeco-dev/viewer@0.1.3/dist',
 	ifcopenshell: 'https://cdn.jsdelivr.net/npm/ifcopenshell@latest/dist',
 	wasm: 'https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@latest',
-	gui: 'https://cdn.jsdelivr.net/npm/@aeco-dev/gui@latest',
+	gui: 'https://cdn.jsdelivr.net/npm/@aeco-dev/gui@0.2.4',
 	layout: 'https://cdn.jsdelivr.net/npm/@aeco-dev/layout@latest',
 };
