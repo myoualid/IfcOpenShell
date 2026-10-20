@@ -37,6 +37,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Require the bonsaiweb branch
+        run: |
+          if [ ! -f src/bonsaiweb/package-lock.json ]; then
+            echo "::error::Run this workflow from the ifcopenshell-bonsaiweb branch. ${GITHUB_REF_NAME} does not contain src/bonsaiweb."
+            exit 1
+          fi
+
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
