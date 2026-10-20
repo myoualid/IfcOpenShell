@@ -1,7 +1,7 @@
 import { Operator } from '../../ops.js';
 import { Loader } from '../../tool/index.js';
 
-const GEOMETRY_KEYS = [ 'kernel', 'thread' ];
+const GEOMETRY_KEYS = [ 'kernel', 'thread', 'delivery' ];
 
 class SettingsToggle extends Operator {
 

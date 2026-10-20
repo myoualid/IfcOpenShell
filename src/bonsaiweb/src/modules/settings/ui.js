@@ -33,6 +33,11 @@ const THREADS = {
 	main: 'Main thread',
 };
 
+const DELIVERY = {
+	stream: 'Stream while converting',
+	end: 'Open when finished',
+};
+
 const FOG_MODES = {
 	linear: 'Linear',
 	exp2: 'Exponential',
@@ -138,6 +143,10 @@ class SettingsPanelUI {
 
 		this._kernel = dropdown( KERNELS, 'IfcOpenShell geometry plugin.' );
 		this._thread = dropdown( THREADS, 'Auto converts in a worker. Main thread blocks frames while it tessellates.' );
+		this._delivery = dropdown(
+			DELIVERY,
+			'Stream shows meshes as they are tessellated. Open when finished waits for the sidecar, then loads it in one step.',
+		);
 		this._geometryNote = note( '' );
 
 		this._color = hint( new InputColor(), 'Viewport clear colour. Fog fades toward this colour.' );
@@ -153,6 +162,7 @@ class SettingsPanelUI {
 
 		this._kernel.onChange( () => this._commitGeometry( { kernel: this._kernel.getValue() } ) );
 		this._thread.onChange( () => this._commitGeometry( { thread: this._thread.getValue() } ) );
+		this._delivery.onChange( () => this._commitGeometry( { delivery: this._delivery.getValue() } ) );
 
 		this._color.dom.addEventListener( 'input', () => this._onBackground() );
 		this._color.onChange( () => this._onBackground() );
@@ -181,6 +191,7 @@ class SettingsPanelUI {
 		tabs.addTab( 'settings-geometry', 'Geometry', column(
 			labeled( 'Kernel', this._kernel ),
 			labeled( 'Thread', this._thread ),
+			labeled( 'Delivery', this._delivery ),
 			this._geometryNote,
 		).padding( '0.75rem 0.15rem 0.15rem' ) );
 		tabs.addTab( 'settings-scene', 'Scene', column(
@@ -268,7 +279,15 @@ class SettingsPanelUI {
 		if ( ! options ) return;
 		if ( ! this._kernel.dom.matches( ':focus' ) ) this._kernel.setValue( options.kernel );
 		if ( ! this._thread.dom.matches( ':focus' ) ) this._thread.setValue( options.thread );
-		this._geometryNote.setValue( 'Auto and Worker convert in a worker at every file size. Main thread is opt-in and yields every 30 ms. Kernel and thread apply the next time a model is converted.' );
+		if ( ! this._delivery.dom.matches( ':focus' ) ) this._delivery.setValue( options.delivery );
+		const streamNote = Loader.canStream()
+			? 'Stream feeds parts into the viewer as tessellation proceeds.'
+			: 'This viewer build has no stream API, so Stream still opens the sidecar when conversion finishes.';
+		this._geometryNote.setValue(
+			'Auto and Worker convert in a worker at every file size. Main thread is opt-in and yields every 30 ms. '
+			+ `Open when finished loads the sidecar in one step. ${ streamNote } `
+			+ 'These apply the next time a model is converted.',
+		);
 
 	}
 
