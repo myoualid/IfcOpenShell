@@ -30,6 +30,7 @@ export function readViewerTools( api ) {
 		axes: typeof api?.originAxesVisible === 'function' ? !! api.originAxesVisible() : false,
 		fog: typeof api?.fogVisible === 'function' ? !! api.fogVisible() : false,
 		xray: typeof api?.xrayActive === 'function' ? !! api.xrayActive() : false,
+		outline: typeof api?.selectionOutlineEnabled === 'function' ? !! api.selectionOutlineEnabled() : false,
 	};
 
 }
@@ -103,7 +104,8 @@ function same( a, b ) {
 
 	if ( ! a || ! b ) return false;
 	return a.section === b.section && a.fly === b.fly && a.ortho === b.ortho
-		&& a.grid === b.grid && a.axes === b.axes && a.fog === b.fog && a.xray === b.xray;
+		&& a.grid === b.grid && a.axes === b.axes && a.fog === b.fog
+		&& a.xray === b.xray && a.outline === b.outline;
 
 }
 

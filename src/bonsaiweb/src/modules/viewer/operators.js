@@ -1,6 +1,7 @@
 import { Operator } from '../../ops.js';
 import { Federation } from '../../tool/federation.js';
 import { Viewer, viewer } from '../../tool/Viewer.js';
+import { measure, resolvePick } from '../../tool/measure.js';
 import {
 	clearSection,
 	publishViewerTools,
@@ -190,6 +191,53 @@ function publishTools( context ) {
 
 }
 
+const MEASURE_MODES = Object.freeze( [ 'length', 'area', 'volume' ] );
+
+function publishMeasure( context ) {
+
+	const state = measure.snapshot();
+	context.signals.measureChanged.dispatch( state );
+	return state;
+
+}
+
+const ViewerMeasure = command( 'viewer.measure', 'Measure', ( context, mode ) => {
+
+	if ( ! MEASURE_MODES.includes( mode ) ) return { status: 'CANCELLED' };
+	const next = measure.mode() === mode ? null : mode;
+	measure.setMode( next );
+	if ( next === 'volume' ) measure.syncVolume( viewer );
+	return publishMeasure( context );
+
+}, true );
+
+const ViewerMeasureClick = command( 'viewer.measure_click', 'Measure Click', async ( context, click ) => {
+
+	const mode = measure.mode();
+	if ( mode !== 'length' && mode !== 'area' ) return { status: 'CANCELLED' };
+	const hit = await resolvePick( viewer, click, measure.snapshot().points );
+	if ( ! hit?.point ) return { status: 'CANCELLED' };
+	measure.add( hit );
+	return publishMeasure( context );
+
+}, true );
+
+const ViewerMeasureUndo = command( 'viewer.measure_undo', 'Undo Measure Point', ( context ) => {
+
+	if ( ! measure.mode() ) return { status: 'CANCELLED' };
+	measure.undo();
+	return publishMeasure( context );
+
+} );
+
+const ViewerMeasureClear = command( 'viewer.measure_clear', 'Clear Measure', ( context ) => {
+
+	if ( ! measure.mode() ) return { status: 'CANCELLED' };
+	measure.clear();
+	return publishMeasure( context );
+
+} );
+
 const ViewerXray = command( 'viewer.xray', 'Toggle X-ray', ( context ) => {
 
 	viewer.toggleXray();
@@ -225,23 +273,43 @@ const ViewerProjection = command( 'viewer.projection', 'Toggle Orthographic', ( 
 
 } );
 
-const ViewerGrid = command( 'viewer.grid', 'Toggle Grid', ( context ) => {
+// A checkbox passes the wanted boolean. A button omits it and flips the flag.
+function applyToggle( read, toggle, want ) {
 
-	toggleGrid( viewer );
+	if ( typeof want === 'boolean' && !! read() === want ) return want;
+	return toggle();
+
+}
+
+const ViewerGrid = command( 'viewer.grid', 'Toggle Grid', ( context, on ) => {
+
+	applyToggle(
+		() => ( typeof viewer.gridVisible === 'function' ? viewer.gridVisible() : false ),
+		() => toggleGrid( viewer ),
+		on,
+	);
 	return publishTools( context );
 
 } );
 
-const ViewerAxes = command( 'viewer.axes', 'Toggle Axes', ( context ) => {
+const ViewerAxes = command( 'viewer.axes', 'Toggle Axes', ( context, on ) => {
 
-	toggleAxes( viewer );
+	applyToggle(
+		() => ( typeof viewer.originAxesVisible === 'function' ? viewer.originAxesVisible() : false ),
+		() => toggleAxes( viewer ),
+		on,
+	);
 	return publishTools( context );
 
 } );
 
-const ViewerFogToggle = command( 'viewer.fog_toggle', 'Toggle Fog', ( context ) => {
+const ViewerFogToggle = command( 'viewer.fog_toggle', 'Toggle Fog', ( context, on ) => {
 
-	toggleFog( viewer );
+	applyToggle(
+		() => ( typeof viewer.fogVisible === 'function' ? viewer.fogVisible() : false ),
+		() => toggleFog( viewer ),
+		on,
+	);
 	const state = publishTools( context );
 	context.signals.fogChanged.dispatch( viewer.fog?.() ?? { enabled: state.fog } );
 	return state;
@@ -255,10 +323,14 @@ const ViewerClearColors = command( 'viewer.clear_colors', 'Clear Colors', ( cont
 
 } );
 
-const ViewerSelectionOutline = command( 'viewer.selection_outline', 'Toggle Selection Outline', () => {
+const ViewerSelectionOutline = command( 'viewer.selection_outline', 'Toggle Selection Outline', ( context, on ) => {
 
-	const on = ! viewer.selectionOutlineEnabled();
-	viewer.setSelectionOutline( on );
+	applyToggle(
+		() => viewer.selectionOutlineEnabled(),
+		() => viewer.setSelectionOutline( ! viewer.selectionOutlineEnabled() ),
+		on,
+	);
+	return publishTools( context );
 
 } );
 
@@ -301,6 +373,29 @@ const ViewerNavPreset = command( 'viewer.nav_preset', 'Navigation Preset', ( con
 const ViewerSetSelection = command( 'viewer.set_selection', 'Set Selection', ( _context, ids ) => {
 
 	viewer.setSelection( ids );
+
+}, true );
+
+const ViewerSelectGlobalId = command( 'viewer.select_global_id', 'Select GlobalId', async ( context, guid ) => {
+
+	const id = String( guid ?? '' ).trim();
+	if ( ! id ) return { status: 'CANCELLED' };
+
+	try {
+
+		await viewer.getObjects();
+		viewer.show( id );
+		viewer.setSelection( id );
+		viewer.frameSelection();
+		context.signals.visibilityChanged.dispatch( { action: 'show', target: viewer.getSelection() } );
+
+	} catch ( error ) {
+
+		const message = error?.message || 'No element with that GlobalId';
+		console.warn( 'Select GlobalId:', message );
+		return { status: 'CANCELLED', message };
+
+	}
 
 }, true );
 
@@ -501,6 +596,12 @@ class ViewerSelectionChanged extends Operator {
 
 		const ids = this.ids ?? viewer.getSelection();
 		this.context.signals.selectionChanged.dispatch( { ids } );
+		if ( measure.mode() === 'volume' ) {
+
+			measure.syncVolume( viewer, ids );
+			publishMeasure( this.context );
+
+		}
 		const serial = viewportPickSerial;
 		const generation = ++ boxGeneration;
 		queueMicrotask( () => {
@@ -539,6 +640,7 @@ export default [
 	ViewerStandardView,
 	ViewerNavPreset,
 	ViewerSetSelection,
+	ViewerSelectGlobalId,
 	ViewerAddToSelection,
 	ViewerRemoveFromSelection,
 	ViewerSetVisible,
@@ -552,6 +654,10 @@ export default [
 	ViewerSetFalseOrigin,
 	ViewerSetModelTransform,
 	ViewerClearModelTransform,
+	ViewerMeasure,
+	ViewerMeasureClick,
+	ViewerMeasureUndo,
+	ViewerMeasureClear,
 	ViewerObjectPicked,
 	ViewerSelectionChanged,
 ];
