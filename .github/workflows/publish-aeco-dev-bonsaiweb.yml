@@ -64,6 +64,12 @@ jobs:
             console.log("version " + version);
           '
 
+      # dist/ is not in git. This build, and the prepack build npm publish
+      # runs again, are what the tarball contains.
+      - name: Build dist
+        working-directory: src/bonsaiweb
+        run: npm run build
+
       - name: Publish
         working-directory: src/bonsaiweb
         env:
