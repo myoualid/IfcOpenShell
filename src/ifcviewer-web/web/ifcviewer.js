@@ -754,6 +754,31 @@
       viewAll:        function () { Module._view_all_c(); },
       frameSelection: function () { Module._frame_selection_c(); },
 
+      toggleProjection: function () {
+        if (Module._toggle_projection_c) Module._toggle_projection_c();
+        return this.projectionIsOrtho();
+      },
+      projectionIsOrtho: function () {
+        return Module._projection_is_ortho_c ? Module._projection_is_ortho_c() !== 0 : false;
+      },
+      toggleFly: function () {
+        if (Module._toggle_fly_c) Module._toggle_fly_c();
+        return this.flyActive();
+      },
+      flyActive: function () {
+        return Module._fly_is_active_c ? Module._fly_is_active_c() !== 0 : false;
+      },
+      toggleSection: function () {
+        if (Module._toggle_section_c) Module._toggle_section_c();
+        return this.sectionActive();
+      },
+      clearSection: function () {
+        if (Module._clear_section_c) Module._clear_section_c();
+      },
+      sectionActive: function () {
+        return Module._section_is_active_c ? Module._section_is_active_c() !== 0 : false;
+      },
+
       // ---- Selection -------------------------------------------------------
 
       // The selected objectIds, ascending.

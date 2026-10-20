@@ -1,6 +1,16 @@
 import { Operator } from '../../ops.js';
 import { Federation } from '../../tool/federation.js';
 import { Viewer, viewer } from '../../tool/Viewer.js';
+import {
+	clearSection,
+	publishViewerTools,
+	toggleAxes,
+	toggleFly,
+	toggleFog,
+	toggleGrid,
+	toggleProjection,
+	toggleSection,
+} from '../../tool/viewerTools.js';
 
 // Undoable visibility commands capture their ids on the first execute, so
 // redo (execute again) reuses them.
@@ -171,10 +181,70 @@ const ViewerIsolate = command( 'viewer.isolate', 'Isolate Selection', ( context 
 
 } );
 
+function publishTools( context ) {
+
+	const state = publishViewerTools( viewer );
+	context.signals.viewerToolsChanged.dispatch( state );
+	context.signals.xrayToggled.dispatch( { active: state.xray } );
+	return state;
+
+}
+
 const ViewerXray = command( 'viewer.xray', 'Toggle X-ray', ( context ) => {
 
 	viewer.toggleXray();
-	context.signals.xrayToggled.dispatch( { active: viewer.xrayActive() } );
+	return publishTools( context );
+
+} );
+
+const ViewerSection = command( 'viewer.section', 'Toggle Section', ( context ) => {
+
+	toggleSection( viewer );
+	return publishTools( context );
+
+} );
+
+const ViewerClearSection = command( 'viewer.clear_section', 'Clear Section Cuts', ( context ) => {
+
+	clearSection( viewer );
+	return publishTools( context );
+
+} );
+
+const ViewerFly = command( 'viewer.fly', 'Toggle Fly', ( context ) => {
+
+	toggleFly( viewer );
+	return publishTools( context );
+
+} );
+
+const ViewerProjection = command( 'viewer.projection', 'Toggle Orthographic', ( context ) => {
+
+	toggleProjection( viewer );
+	return publishTools( context );
+
+} );
+
+const ViewerGrid = command( 'viewer.grid', 'Toggle Grid', ( context ) => {
+
+	toggleGrid( viewer );
+	return publishTools( context );
+
+} );
+
+const ViewerAxes = command( 'viewer.axes', 'Toggle Axes', ( context ) => {
+
+	toggleAxes( viewer );
+	return publishTools( context );
+
+} );
+
+const ViewerFogToggle = command( 'viewer.fog_toggle', 'Toggle Fog', ( context ) => {
+
+	toggleFog( viewer );
+	const state = publishTools( context );
+	context.signals.fogChanged.dispatch( viewer.fog?.() ?? { enabled: state.fog } );
+	return state;
 
 } );
 
@@ -454,6 +524,13 @@ export default [
 	ViewerHideAll,
 	ViewerIsolate,
 	ViewerXray,
+	ViewerSection,
+	ViewerClearSection,
+	ViewerFly,
+	ViewerProjection,
+	ViewerGrid,
+	ViewerAxes,
+	ViewerFogToggle,
 	ViewerClearColors,
 	ViewerSelectionOutline,
 	ViewerClearSelection,

@@ -1,4 +1,5 @@
 import { viewerScripts } from '../../app/configuration/imports.js';
+import { publishViewerTools } from './viewerTools.js';
 
 // Must match IFCVIEW_VERSION. IfcViewer.create refuses to start without it.
 const SIDECAR_FORMAT_VERSION = 19;
@@ -73,6 +74,7 @@ export async function create( container, paths ) {
 		// would draw every resize twice.
 		onFrame( api ) {
 
+			publishViewerTools( api );
 			if ( x === screenX && y === screenY ) return;
 			x = screenX; y = screenY;
 			api.requestRedraw();

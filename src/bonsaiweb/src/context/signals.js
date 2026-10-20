@@ -52,10 +52,11 @@ export const Signals = {
 	// SCENE: VISIBILITY & DISPLAY
 	visibilityChanged: new Signal(), // ({ action, target? })
 	xrayToggled: new Signal(), // ({ active })
+	viewerToolsChanged: new Signal(), // ({ section, fly, ortho, grid, axes, fog, xray })
 	colorsChanged: new Signal(), // ({ action, target?, color? })
 	backgroundChanged: new Signal(), // ({ color })
 	fogChanged: new Signal(), // ({ enabled, mode, near, far, density })
-	geometryChanged: new Signal(), // ({ kernel, thread })
+	geometryChanged: new Signal(), // ({ kernel, thread, delivery })
 
 	// CAMERA
 	cameraChanged: new Signal(), // (cameraState)
