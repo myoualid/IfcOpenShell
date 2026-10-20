@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { Operator } from '../src/ops/Operator.js';
-import { Ops } from '../src/ops/Ops.js';
+import { Signals } from '../src/context/signals.js';
+import { Operator, Ops } from '../src/ops.js';
 
 class Increment extends Operator {
 
@@ -53,79 +53,128 @@ class Peek extends Operator {
 function session() {
 
 	const changes = [];
-	const context = {
-		value: 0,
-		signals: { historyChanged: { dispatch: ( op ) => changes.push( op ) } },
+	const onChange = ( op ) => changes.push( op );
+	Signals.historyChanged.add( onChange );
+
+	const context = { value: 0 };
+	const ops = new Ops().register( Increment ).register( Peek );
+	return {
+		context,
+		ops,
+		changes,
+		dispose() {
+
+			Signals.historyChanged.remove( onChange );
+
+		},
 	};
-	context.ops = new Ops( context ).register( Increment ).register( Peek );
-	return { context, changes };
 
 }
 
 test( 'undoable operators record, undo and redo in order', () => {
 
-	const { context, changes } = session();
-	assert.deepEqual( context.ops.execute( 'test.increment', 2 ), { status: 'FINISHED', result: 2 } );
-	new Increment( context, 3 ).run();
-	assert.equal( context.value, 5 );
+	const { context, ops, changes, dispose } = session();
+	try {
 
-	context.ops.undo();
-	assert.equal( context.value, 2 );
-	context.ops.redo();
-	assert.equal( context.value, 5 );
-	assert.equal( changes.length, 4 );
+		assert.deepEqual( ops.execute( 'test.increment', context, 2 ), { status: 'FINISHED', result: 2 } );
+		ops.execute( 'test.increment', context, 3 );
+		assert.equal( context.value, 5 );
 
-	context.ops.undo();
-	context.ops.execute( 'test.increment', 10 );
-	assert.equal( context.ops.redos.length, 0 );
+		ops.undo();
+		assert.equal( context.value, 2 );
+		ops.redo();
+		assert.equal( context.value, 5 );
+		assert.equal( changes.length, 4 );
+
+		ops.undo();
+		ops.execute( 'test.increment', context, 10 );
+		assert.equal( ops.redos.length, 0 );
+
+	} finally {
+
+		dispose();
+
+	}
 
 } );
 
 test( 'non-undoable, failed poll and cancelled operators stay out of history', () => {
 
-	const { context } = session();
-	assert.deepEqual( context.ops.execute( 'test.peek' ), { status: 'FINISHED', result: 0 } );
-	assert.equal( context.ops.execute( 'test.increment', 0 ).status, 'CANCELLED' );
-	assert.equal( context.ops.execute( 'test.increment', - 1 ).status, 'CANCELLED' );
-	assert.equal( context.ops.undos.length, 0 );
-	assert.equal( context.ops.undo(), undefined );
+	const { context, ops, dispose } = session();
+	try {
+
+		assert.deepEqual( ops.execute( 'test.peek', context ), { status: 'FINISHED', result: 0 } );
+		assert.equal( ops.execute( 'test.increment', context, 0 ).status, 'CANCELLED' );
+		assert.equal( ops.execute( 'test.increment', context, - 1 ).status, 'CANCELLED' );
+		assert.equal( ops.undos.length, 0 );
+		assert.equal( ops.undo(), undefined );
+
+	} finally {
+
+		dispose();
+
+	}
 
 } );
 
 test( 'the undo stack drops its oldest entry past the limit', () => {
 
-	const { context } = session();
-	context.ops.limit = 3;
-	for ( let by = 1; by <= 5; by ++ ) context.ops.execute( 'test.increment', by );
-	assert.deepEqual( context.ops.undos.map( ( op ) => op.by ), [ 3, 4, 5 ] );
+	const { context, ops, dispose } = session();
+	try {
+
+		ops.limit = 3;
+		for ( let by = 1; by <= 5; by ++ ) ops.execute( 'test.increment', context, by );
+		assert.deepEqual( ops.undos.map( ( op ) => op.by ), [ 3, 4, 5 ] );
+
+	} finally {
+
+		dispose();
+
+	}
 
 } );
 
 test( 'clear empties both stacks and reports the change', () => {
 
-	const { context, changes } = session();
-	context.ops.execute( 'test.increment', 1 );
-	context.ops.execute( 'test.increment', 2 );
-	context.ops.undo();
-	context.ops.clear();
-	assert.equal( context.ops.undos.length, 0 );
-	assert.equal( context.ops.redos.length, 0 );
-	assert.equal( changes.at( - 1 ), undefined );
+	const { context, ops, changes, dispose } = session();
+	try {
+
+		ops.execute( 'test.increment', context, 1 );
+		ops.execute( 'test.increment', context, 2 );
+		ops.undo();
+		ops.clear();
+		assert.equal( ops.undos.length, 0 );
+		assert.equal( ops.redos.length, 0 );
+		assert.equal( changes.at( - 1 ), undefined );
+
+	} finally {
+
+		dispose();
+
+	}
 
 } );
 
 test( 'an operator that throws during undo stays on the undo stack', () => {
 
-	const { context } = session();
-	const op = new Increment( context );
-	op.run();
-	op.undo = () => {
+	const { context, ops, dispose } = session();
+	try {
 
-		throw new Error( 'boom' );
+		ops.execute( 'test.increment', context );
+		const op = ops.undos[ 0 ];
+		op.undo = () => {
 
-	};
-	assert.throws( () => context.ops.undo() );
-	assert.deepEqual( context.ops.undos, [ op ] );
-	assert.equal( context.ops.redos.length, 0 );
+			throw new Error( 'boom' );
+
+		};
+		assert.throws( () => ops.undo() );
+		assert.deepEqual( ops.undos, [ op ] );
+		assert.equal( ops.redos.length, 0 );
+
+	} finally {
+
+		dispose();
+
+	}
 
 } );

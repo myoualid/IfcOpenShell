@@ -1,20 +1,18 @@
 import {
 	Button,
 	Caption,
+	Container,
 	InputText,
+	Operator,
 	ScrollViewer,
 	StackPanel,
 	TabView,
 	Text,
 } from '@aeco-dev/gui';
 
+import ops from '../../ops.js';
 import { Terminal } from '../../tool/index.js';
-import { setPanelMounted } from '../../ui/panels.js';
-import {
-	TerminalClear,
-	TerminalExecute,
-	TerminalNew,
-} from './operators.js';
+import { scriptScope } from '../code.scripting/core.js';
 
 const TOP_LEVEL = [
 	'bonsai',
@@ -74,7 +72,7 @@ function getCompletions( text, cursor, context ) {
 	try {
 
 		const fn = new Function( 'bonsai', `return (${ objExpr })` );
-		const obj = fn( context );
+		const obj = fn( scriptScope( context ) );
 		if ( obj == null ) return { completions: [], chain, partial };
 		const completions = allProps( obj ).filter(
 			( k ) => ! partial || k.startsWith( partial ),
@@ -103,12 +101,34 @@ function applyCompletion( text, cursor, chain, completion ) {
 
 const PROMPT = 'bonsai >';
 
-const SUGGESTED_COMMANDS = [
-	{ label: 'Log "Hello world"', command: 'console.log("Hello world")' },
-	{ label: 'Loaded models', command: 'await bonsai.getLoadedModels()' },
-	{ label: 'Active model schema', command: '(await bonsai.getActiveModel())?.schema' },
-	{ label: 'List walls', command: '(await bonsai.getActiveModel())?.byType(\'IfcWall\').length' },
-	{ label: 'Selection', command: 'bonsai.getSelection()' },
+// tool.Ifc.file() and tool.Ifc.entity() are null in view mode; the
+// snippets below that use them need a model opened for editing.
+const SNIPPETS = [
+	{
+		id: 'tool',
+		label: 'bonsai.tool',
+		items: [
+			{ label: 'Active model', command: 'bonsai.tool.Ifc.get()' },
+			{ label: 'Count walls', command: 'bonsai.tool.Ifc.file()?.byType(\'IfcWall\').length' },
+			{ label: 'Storeys', command: 'bonsai.tool.Ifc.file()?.byType(\'IfcBuildingStorey\').map((s) => bonsai.tool.Element.displayName(s))' },
+			{ label: 'Selected GlobalId', command: 'bonsai.tool.Ifc.globalId()' },
+			{ label: 'Selected attributes', command: 'bonsai.tool.Element.getAttributes(bonsai.tool.Ifc.entity())' },
+			{ label: 'Selected psets', command: 'bonsai.tool.Pset.getPsets(bonsai.tool.Ifc.entity())' },
+		],
+	},
+	{
+		id: 'ops',
+		label: 'bonsai.ops',
+		items: [
+			{ label: 'List operators', command: 'bonsai.ops.list()' },
+			{ label: 'New project', command: 'await bonsai.ops.execute(\'project.new\')' },
+			{ label: 'Top view', command: 'bonsai.ops.execute(\'viewer.standard_view\', \'TOP\')' },
+			{ label: 'View all', command: 'bonsai.ops.execute(\'viewer.view_all\')' },
+			{ label: 'Isolate selection', command: 'bonsai.ops.execute(\'viewer.isolate\')' },
+			{ label: 'Show all', command: 'bonsai.ops.execute(\'show.all\')' },
+			{ label: 'Undo', command: 'bonsai.ops.undo()' },
+		],
+	},
 ];
 
 function row( ...children ) {
@@ -132,6 +152,7 @@ class TerminalPanelUI {
 		label: 'Terminal',
 		icon: 'terminal',
 		title: 'Terminal',
+		autoShow: false,
 		panelStyles: { height: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column' },
 	};
 
@@ -191,8 +212,8 @@ class TerminalPanelUI {
 
 			this.refreshTerminalList();
 			if ( ! wasActive ) return;
-			const next = Terminal.list()[ 0 ];
-			if ( next ) this.selectTerminal( next.guid );
+			const next = Terminal.list()[ 0 ] ?? Terminal.create();
+			this.selectTerminal( next.guid );
 
 		};
 
@@ -370,11 +391,15 @@ class TerminalPanelUI {
 			this.promptInput,
 		).setStyle( 'flexWrap', [ 'nowrap' ] );
 
-		const suggestions = row( new Caption( 'Quick:' ) );
-		for ( const item of SUGGESTED_COMMANDS ) {
+		const snippets = new TabView().addClass( 'bonsai-terminal-snippets' );
+		for ( const group of SNIPPETS ) {
 
-			suggestions.add(
-				new Button( item.label )
+			const list = new StackPanel( { isVertical: true } )
+				.addClass( 'bonsai-terminal-snippet-list' )
+				.gap( '0.25rem' );
+			for ( const item of group.items ) {
+
+				list.add( new Button( item.label )
 					.addClass( 'secondary' )
 					.setTooltip( item.command )
 					.onClick( ( event ) => {
@@ -383,38 +408,63 @@ class TerminalPanelUI {
 						this.promptInput.setValue( item.command );
 						this._focusInput();
 
-					} ),
-			);
+					} ) );
+
+			}
+
+			const scroll = new ScrollViewer( { scrollable: true, fill: true } ).add( list );
+			snippets.addTab( `terminal-snippets-${ group.id }`, group.label, scroll );
 
 		}
 
-		suggestions.add(
-			new Button( 'New' )
-				.addClass( 'secondary' )
+		snippets.select( `terminal-snippets-${ SNIPPETS[ 0 ].id }` );
+
+		// The tab strip moves into the header; TabView keeps its own
+		// reference to it, so tab selection still works.
+		const header = row(
+			new Container().addClass( 'bonsai-terminal-tabs' ).add( this.tabs.tabsDiv ),
+			new Operator( 'add' )
 				.setTooltip( 'New terminal' )
 				.onClick( ( event ) => {
 
 					event.preventDefault();
-					new TerminalNew( this.context ).run();
+					ops.execute( 'terminal.new', this.context );
 
 				} ),
-			new Button( 'Clear' )
-				.addClass( 'secondary' )
+			new Operator( 'clear_all' )
 				.setTooltip( 'Clear terminal' )
 				.onClick( ( event ) => {
 
 					event.preventDefault();
-					new TerminalClear( this.context ).run();
+					ops.execute( 'code.terminal.clear', this.context );
 
 				} ),
-		);
+			new Operator( 'close' )
+				.setTooltip( 'Close terminal' )
+				.onClick( ( event ) => {
+
+					event.preventDefault();
+					ops.execute( 'code.terminal.close', this.context );
+
+				} ),
+		).addClass( 'bonsai-terminal-header' ).setStyle( 'flexWrap', [ 'nowrap' ] );
+
+		const output = new StackPanel( { isVertical: true } )
+			.addClass( 'bonsai-terminal-console' )
+			.gap( '0.5rem' )
+			.add( this.tabs, promptRow );
+
+		const body = new StackPanel( { isVertical: false } )
+			.addClass( 'bonsai-terminal-body' )
+			.gap( '0.75rem' )
+			.add( output, snippets );
 
 		this.root = new StackPanel( { isVertical: true } )
 			.addClass( 'bonsai-terminal' )
-			.gap( '0.75rem' )
+			.gap( '0.5rem' )
 			.setStyle( 'height', [ '100%' ] )
 			.setStyle( 'minHeight', [ '0' ] )
-			.add( this.tabs, promptRow, suggestions );
+			.add( header, body );
 
 	}
 
@@ -518,7 +568,15 @@ class TerminalPanelUI {
 
 	show() {
 
-		setPanelMounted( this.workspacePanel, true );
+		const panel = this.workspacePanel;
+		if ( panel && ! panel.isVisible() ) {
+
+			const layout = panel.layout;
+			const needsOpen = typeof layout?.isWorkspaceOpen === 'function'
+				&& ! layout.isWorkspaceOpen( panel.position );
+			panel.show( { open: needsOpen, select: needsOpen } );
+
+		}
 		this.visible = this.workspacePanel ? this.isVisible() : true;
 		if ( this.visible ) this._focusInput();
 		return this;
@@ -527,7 +585,8 @@ class TerminalPanelUI {
 
 	hide() {
 
-		setPanelMounted( this.workspacePanel, false );
+		const panel = this.workspacePanel;
+		if ( panel?.isVisible() ) panel.hide( { closeIfEmpty: true } );
 		this.visible = false;
 		this._closeCompletions();
 		return this;
@@ -631,11 +690,12 @@ class TerminalPanelUI {
 		this.historyIndex = - 1;
 		try {
 
-			await new TerminalExecute(
+			await ops.execute(
+				'code.terminal.execute',
 				this.context,
 				command,
 				this.activeTerminalGuid,
-			).run();
+			);
 
 		} finally {
 

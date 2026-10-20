@@ -1,10 +1,5 @@
 // bonsai.tool.Element — scalar / display helpers against an open
-// ifcopenshell file. Mirrors helpers/element.{h,cpp} in bonsaiviewer, and
-// delegates graph walks (getType / getContainer / getPredefinedType /
-// getSpatialDecomposition) to elementQuery for Python parity with the
-// CDN entity API.
-
-import { getContainer, getPredefinedType, getSpatialDecomposition, getType } from './elementQuery.js';
+// ifcopenshell file. Graph walks live in elementQuery.js.
 
 function safeGet( entity, name ) {
 
@@ -40,40 +35,6 @@ export class Element {
 		if ( typeof value === 'number' ) return String( value );
 		if ( typeof value === 'bigint' ) return value.toString();
 		return null;
-
-	}
-
-	// Construction type of an occurrence. Python: `util.element.get_type`.
-	static getType( entity, _file ) {
-
-		if ( ! entity ) return null;
-		return getType( entity );
-
-	}
-
-	// Prefer the type's PredefinedType, fall back to ElementType / ProcessType
-	// when USERDEFINED, then the occurrence's own PredefinedType / ObjectType.
-	// Python: `util.element.get_predefined_type`.
-	static getPredefinedType( entity, _file ) {
-
-		if ( ! entity ) return null;
-		return getPredefinedType( entity );
-
-	}
-
-	// Spatial container, walking through aggregates. Python:
-	// `util.element.get_container`.
-	static getContainer( entity, _file ) {
-
-		if ( ! entity ) return null;
-		return getContainer( entity );
-
-	}
-
-	// Project → Site → Building → Storey → products from IFC relations.
-	static getSpatialDecomposition( file ) {
-
-		return getSpatialDecomposition( file );
 
 	}
 

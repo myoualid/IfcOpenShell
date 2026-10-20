@@ -2,17 +2,18 @@ import {
 	Badge,
 	FloatingDialog,
 	InputList,
+	InputNumber,
 	LabeledBoxItem,
 	Operator as IconButton,
 	StackPanel,
 	Text,
+	Tooltip,
 } from '@aeco-dev/gui';
 
+import ops from '../../ops.js';
 import { writeStoredZip } from '../../pipeline/zip.js';
 import { Ifc, Loader } from '../../tool/index.js';
-import { HideSelectionOperator } from '../viewer/HideSelectionOperator.js';
-import { ShowSelectionOperator } from '../viewer/ShowOperator.js';
-import { ProjectDownloadView, ProjectModels } from './operators.js';
+import { viewer } from '../../tool/Viewer.js';
 
 function formatBytes( bytes ) {
 
@@ -63,6 +64,106 @@ function row( ...children ) {
 
 }
 
+function coordInput() {
+
+	const input = new InputNumber( 0 ).setPrecision( 4 ).setStep( 1 ).setNudge( 0.01 );
+	input.setValue( 0 );
+	input.setStyle( 'width', [ '100%' ] );
+	return input;
+
+}
+
+function angleInput() {
+
+	const input = new InputNumber( 0 ).setPrecision( 2 ).setStep( 1 ).setNudge( 0.1 );
+	input.setValue( 0 );
+	input.setStyle( 'width', [ '6rem' ] );
+	return input;
+
+}
+
+function hint( control, text ) {
+
+	new Tooltip( text ).attachTo( control );
+	return control;
+
+}
+
+function labeled( label, control, tip ) {
+
+	const caption = new Text( label );
+	caption.setStyle( 'fontSize', [ '0.7rem' ] );
+	if ( tip && ! control._hinted ) {
+
+		hint( control, tip );
+		control._hinted = true;
+
+	}
+
+	return new StackPanel( { isVertical: true } )
+		.gap( '0.15rem' )
+		.setStyle( 'flex', [ '1' ] )
+		.setStyle( 'minWidth', [ '4.25rem' ] )
+		.add( caption, control );
+
+}
+
+function originFields( onEdit ) {
+
+	const fields = {
+		x: coordInput(),
+		y: coordInput(),
+		z: coordInput(),
+		north: angleInput(),
+		hold: false,
+		seed: '',
+	};
+	for ( const input of [ fields.x, fields.y, fields.z, fields.north ] ) {
+
+		input.dom.addEventListener( 'input', () => {
+
+			fields.hold = true;
+			onEdit( fields );
+
+		} );
+		input.onChange( () => onEdit( fields ) );
+
+	}
+
+	return fields;
+
+}
+
+function readLive( fields ) {
+
+	const nums = [ fields.x, fields.y, fields.z, fields.north ].map( ( input ) => {
+
+		const raw = input.dom.value.trim();
+		if ( raw === '' || raw === '-' || raw === '.' || raw === '-.' ) return null;
+		const n = Number( raw );
+		return Number.isFinite( n ) ? n : null;
+
+	} );
+	if ( nums.some( ( n ) => n == null ) ) return null;
+	return { xyz: nums.slice( 0, 3 ), rzDeg: nums[ 3 ] };
+
+}
+
+function readOrigin() {
+
+	try {
+
+		if ( ! viewer?.getFalseOrigin ) return null;
+		return viewer.getFalseOrigin();
+
+	} catch {
+
+		return null;
+
+	}
+
+}
+
 class ProjectPanelUI {
 
 	static id = 'project';
@@ -83,12 +184,21 @@ class ProjectPanelUI {
 		this._visibleCaption = new Badge( '0 visible' );
 		this._list = new InputList();
 		this._list.dom.setAttribute( 'aria-label', 'models' );
+		this._modelFields = new Map();
+		this._applying = false;
+
 		this._viewDialog = new FloatingDialog( {
 			title: 'Download',
 			icon: 'download',
 			panelStyles: { width: '22rem' },
 		} );
 		this._downloadSourceId = null;
+		this._positionDialog = new FloatingDialog( {
+			title: 'Position',
+			icon: 'open_with',
+			panelStyles: { width: '22rem' },
+		} );
+		this._positionSourceId = null;
 		context.viewCacheDialog = {
 			toggle: ( sourceId ) => {
 
@@ -114,22 +224,67 @@ class ProjectPanelUI {
 			);
 
 		const { signals } = context;
+		signals.viewerReady.add( () => this.refresh() );
 		signals.modelLoaded.add( () => this.refresh() );
 		signals.liveIfcReady.add( () => this.refresh() );
 		signals.modelCleared.add( () => {
 
 			this._viewDialog.hide();
+			this._positionDialog.hide();
+			this._positionSourceId = null;
 			this.refresh();
 
 		} );
-		signals.historyChanged.add( ( cmd ) => {
-
-			const name = cmd?.constructor.operatorName;
-			if ( name === 'hide.selection' || name === 'show.selection' ) this.refresh();
-
-		} );
+		signals.visibilityChanged.add( () => this.refresh() );
 
 		this.refresh();
+
+	}
+
+	_positionIcon( sourceId, label ) {
+
+		const icon = new IconButton( 'open_with' ).setTooltip( 'Position' );
+		icon.setStyle( 'cursor', [ 'pointer' ] );
+		icon.dom.addEventListener( 'click', ( event ) => {
+
+			event.preventDefault();
+			event.stopPropagation();
+			this._togglePosition( sourceId, label );
+
+		} );
+		return icon;
+
+	}
+
+	_togglePosition( sourceId, label ) {
+
+		if ( this._positionDialog.isActive && this._positionSourceId === sourceId ) {
+
+			this._positionDialog.hide();
+			return;
+
+		}
+
+		this._positionSourceId = sourceId;
+		this._fillPosition( sourceId, label );
+		if ( ! this._positionDialog.isActive ) this._positionDialog.show();
+
+	}
+
+	_fillPosition( sourceId, label ) {
+
+		const fields = this._fieldsFor( sourceId );
+		this._positionDialog.setTitle( label || 'Position' );
+		this._positionDialog.content( new StackPanel( { isVertical: true } )
+			.gap( '0.5rem' )
+			.add(
+				row(
+					labeled( 'X', fields.x, 'World X where this model’s origin is placed.' ),
+					labeled( 'Y', fields.y, 'World Y where this model’s origin is placed.' ),
+					labeled( 'Z', fields.z, 'World Z where this model’s origin is placed.' ),
+				),
+				labeled( 'Grid °', fields.north, 'Grid north for this model, in degrees, about the survey point.' ),
+			) );
 
 	}
 
@@ -195,7 +350,7 @@ class ProjectPanelUI {
 		const token = ( this._refreshToken ?? 0 ) + 1;
 		this._refreshToken = token;
 
-		const { result } = await new ProjectModels( this.context ).run();
+		const { result } = await ops.execute( 'project.models', this.context );
 		if ( token !== this._refreshToken ) return;
 
 		const visibility = new Map( ( result ?? [] ).map( ( row ) => [ row.sourceId, row ] ) );
@@ -218,6 +373,20 @@ class ProjectPanelUI {
 		this._badge.setValue( `${ models.length } model${ models.length === 1 ? '' : 's' }` );
 		this._visibleCaption.setValue( `${ visibleCount } visible` );
 
+		const ids = new Set( models.map( ( model ) => model.sourceId ) );
+		for ( const id of this._modelFields.keys() ) {
+
+			if ( ! ids.has( id ) ) this._modelFields.delete( id );
+
+		}
+
+		if ( this._positionSourceId != null && ! ids.has( this._positionSourceId ) ) {
+
+			this._positionDialog.hide();
+			this._positionSourceId = null;
+
+		}
+
 		for ( const model of models ) {
 
 			const item = new LabeledBoxItem(
@@ -231,22 +400,91 @@ class ProjectPanelUI {
 
 			} );
 			const actions = item.dom.querySelector( '.LabeledBoxItem-actions' );
+			actions?.appendChild( this._syncIcon( () => this._resetModel( model.sourceId ) ).dom );
+			actions?.appendChild( this._positionIcon( model.sourceId, model.label ).dom );
 			actions?.appendChild( this._downloadIcon( () => {
 
-				new ProjectDownloadView( this.context, model.sourceId ).run();
+				ops.execute( 'project.download_view', this.context, model.sourceId );
 
 			} ).dom );
+			if ( this._positionDialog.isActive && this._positionSourceId === model.sourceId ) {
+
+				this._positionDialog.setTitle( model.label );
+
+			}
+
 			this._list.add( item );
 
 		}
 
 	}
 
+	_syncIcon( onClick ) {
+
+		const icon = new IconButton( 'sync' ).setTooltip( 'Reset placement' );
+		icon.setStyle( 'cursor', [ 'pointer' ] );
+		icon.dom.addEventListener( 'click', ( event ) => {
+
+			event.preventDefault();
+			event.stopPropagation();
+			onClick();
+
+		} );
+		return icon;
+
+	}
+
+	_fieldsFor( sourceId ) {
+
+		let fields = this._modelFields.get( sourceId );
+		if ( fields ) return fields;
+		fields = originFields( () => this._applyModel( sourceId, fields ) );
+		this._modelFields.set( sourceId, fields );
+		return fields;
+
+	}
+
+	_applyModel( sourceId, fields ) {
+
+		if ( this._applying ) return;
+		const pose = readLive( fields );
+		if ( ! pose ) return;
+		const pivot = readOrigin()?.xyz ?? [ 0, 0, 0 ];
+		ops.execute( 'viewer.set_model_transform', this.context, sourceId, {
+			aFrame: 'global',
+			a: [ 0, 0, 0 ],
+			b: pose.xyz,
+			rotationDeg: [ 0, 0, pose.rzDeg ],
+			pivot,
+		} );
+
+	}
+
+	_resetModel( sourceId ) {
+
+		const fields = this._modelFields.get( sourceId );
+		this._applying = true;
+		ops.execute( 'viewer.clear_model_transform', this.context, sourceId );
+		if ( fields ) {
+
+			fields.hold = false;
+			fields.seed = '';
+			fields.x.setValue( 0 );
+			fields.y.setValue( 0 );
+			fields.z.setValue( 0 );
+			fields.north.setValue( 0 );
+
+		}
+
+		this._applying = false;
+
+	}
+
 	_setModelVisible( objectIds, visible ) {
 
 		if ( ! objectIds?.length ) return;
-		const OperatorClass = visible ? ShowSelectionOperator : HideSelectionOperator;
-		new OperatorClass( this.context, objectIds ).run();
+		const name = visible ? 'show.selection' : 'hide.selection';
+		ops.execute( name, this.context, objectIds );
 
 	}
 

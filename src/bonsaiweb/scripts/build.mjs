@@ -8,10 +8,11 @@ const watch = process.argv.includes( '--watch' );
 const options = {
 	absWorkingDir: root,
 	entryPoints: {
-		bonsai: 'src/index.js',
-		'bonsai-headless': 'src/headless.js',
+		bonsai: 'src/gui.js',
+		'bonsai-headless': 'src/index.js',
 	},
 	bundle: true,
+	splitting: true,
 	format: 'esm',
 	outdir: 'build',
 	entryNames: '[name]',

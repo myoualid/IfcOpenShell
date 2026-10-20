@@ -1,2 +1,5 @@
 node_modules/
 build/
+vendor/
+bench/.cache/
+bench/.prof/

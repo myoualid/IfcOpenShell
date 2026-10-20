@@ -4,13 +4,10 @@
  * as an options object to override any of them for one call.
  */
 export const GeometryConfig = {
-	// 'ifc-lite' (Rust/wasm pipeline) or 'ifcopenshell' (CDN package, as in
-	// threejs.html; main thread only).
-	engine: 'ifc-lite',
 	// IfcOpenShell geometry kernel plugin: 'opencascade', 'manifold',
-	// 'hybrid-manifold-opencascade', 'passthrough', … Ignored by ifc-lite.
+	// 'hybrid-manifold-opencascade', 'passthrough', …
 	kernel: 'manifold',
-	// 'worker' keeps the UI responsive; 'main' runs on the main thread,
-	// which is easier to debug and profile. ifcopenshell needs 'main'.
+	// 'auto' and 'worker' convert in a worker at every size. 'main' is an
+	// explicit opt-in: it blocks frames and shares the live-file runtime.
 	thread: 'worker',
 };

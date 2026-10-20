@@ -1,7 +1,5 @@
-import { Operator } from '../../ops/Operator.js';
-import { HideSelectionOperator } from '../viewer/HideSelectionOperator.js';
-import { ShowSelectionOperator } from '../viewer/ShowOperator.js';
-import { Scene } from '../../tool/index.js';
+import { Operator } from '../../ops.js';
+import { Viewer, viewer } from '../../tool/Viewer.js';
 
 class SpatialSelect extends Operator {
 
@@ -24,9 +22,9 @@ class SpatialSelect extends Operator {
 
 	execute() {
 
-		if ( this.mode === 'add' ) Scene.addToSelection( this.ids );
-		else if ( this.mode === 'remove' ) Scene.removeFromSelection( this.ids );
-		else Scene.setSelection( this.ids );
+		if ( this.mode === 'add' ) viewer.addToSelection( this.ids );
+		else if ( this.mode === 'remove' ) viewer.removeFromSelection( this.ids );
+		else viewer.setSelection( this.ids );
 		return { status: 'FINISHED' };
 
 	}
@@ -53,9 +51,36 @@ class SpatialIsolate extends Operator {
 
 	execute() {
 
-		Scene.setSelection( this.ids );
-		Scene.isolateSelected();
+		viewer.setSelection( this.ids );
+		viewer.isolateSelected();
+		this.context.signals.visibilityChanged.dispatch( { action: 'isolate', target: this.ids } );
 		return { status: 'FINISHED' };
+
+	}
+
+}
+
+class SpatialHidden extends Operator {
+
+	static operatorName = 'spatial.hidden';
+	static operatorLabel = 'Hidden Objects';
+
+	poll() {
+
+		return Boolean( Viewer.get() );
+
+	}
+
+	execute() {
+
+		let hidden = [];
+		try {
+
+			hidden = viewer.getHidden();
+
+		} catch { /* element table is not ready until the first model is drawn */ }
+
+		return { status: 'FINISHED', result: new Set( hidden ) };
 
 	}
 
@@ -66,20 +91,20 @@ class SpatialObjects extends Operator {
 	static operatorName = 'spatial.objects';
 	static operatorLabel = 'Spatial Objects';
 
+	poll() {
+
+		return Boolean( Viewer.get() );
+
+	}
+
 	async execute() {
 
-		const objects = await Scene.getObjects().catch( () => [] );
+		const objects = await viewer.getObjects().catch( () => [] );
 		return { status: 'FINISHED', result: objects };
 
 	}
 
 }
 
-export {
-	HideSelectionOperator,
-	ShowSelectionOperator,
-	SpatialIsolate,
-	SpatialObjects,
-	SpatialSelect,
-};
-export default [ SpatialSelect, SpatialIsolate, SpatialObjects ];
+export { SpatialHidden, SpatialIsolate, SpatialObjects, SpatialSelect };
+export default [ SpatialSelect, SpatialIsolate, SpatialObjects, SpatialHidden ];

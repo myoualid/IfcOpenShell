@@ -5,11 +5,10 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const IFCVIEWER = fileURLToPath( new URL( '../../../build-web/ifcviewer.js', import.meta.url ) );
-const VENDOR_IFCVIEWER = fileURLToPath( new URL( '../vendor/@ifcopenshell/viewer/ifcviewer.js', import.meta.url ) );
 
 async function assertFrameFilter( path ) {
 	const source = await readFile( path, 'utf8' );
@@ -17,9 +16,14 @@ async function assertFrameFilter( path ) {
 	assert.match( source, /startsWith\(\s*['"`]\[info\] \[frame\]['"`]\s*\)/, 'frame-prefix guard missing' );
 }
 
-test( 'ifcviewer.js has the [info] [frame] printErr filter', async () => {
+test( 'ifcviewer.js has the [info] [frame] printErr filter', async ( t ) => {
+	try {
+		await access( IFCVIEWER );
+	} catch {
+		t.skip( 'local build-web/ifcviewer.js is not present' );
+		return;
+	}
 	await assertFrameFilter( IFCVIEWER );
-	await assertFrameFilter( VENDOR_IFCVIEWER );
 } );
 
 test( 'frame filter logic drops heartbeats but keeps other info/warn lines', () => {

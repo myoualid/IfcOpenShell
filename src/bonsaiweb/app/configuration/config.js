@@ -1,5 +1,6 @@
 import { GeometryConfig } from './config.geometry.js';
 import { CoreModules } from './config.modules.js';
+import { PathsConfig } from './config.paths.js';
 import { defaultWorkMode, ribbonButtons, workModes } from './config.ribbon.js';
 import { layoutConfig, WorldComponent } from './config.ui.js';
 
@@ -14,6 +15,7 @@ export const BonsaiWebConfiguration = {
 		CoreModules,
 	},
 	geometry: GeometryConfig,
+	paths: PathsConfig,
 	ribbon: {
 		workModes,
 		defaultWorkMode,

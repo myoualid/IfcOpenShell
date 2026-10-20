@@ -1,4 +1,27 @@
+import ops from '../../ops.js';
+import tool from '../../tool/index.js';
+
 const AsyncFunction = Object.getPrototypeOf( async function () {} ).constructor;
+
+/**
+ * The `bonsai` object user scripts see. `ops` is bound to the context, so
+ * scripts call `bonsai.ops.execute( 'viewer.view_all' )` without passing it.
+ * @param {object} context
+ */
+export function scriptScope( context ) {
+
+	return {
+		context,
+		tool,
+		ops: {
+			execute: ( name, ...args ) => ops.execute( name, context, ...args ),
+			undo: () => ops.undo()?.constructor.operatorName ?? null,
+			redo: () => ops.redo()?.constructor.operatorName ?? null,
+			list: () => [ ...ops.registry.keys() ].sort(),
+		},
+	};
+
+}
 
 // A live ifcopenshell File or EntityInstance has no enumerable fields, so
 // JSON.stringify would print `{}` and the terminal would look empty.
@@ -107,14 +130,14 @@ function describeIfcValue( value ) {
 }
 
 /**
- * Run user-supplied JavaScript with `bonsai` in scope.
- * @param {object} context - the Bonsai instance
+ * Run user-supplied JavaScript with `bonsai` (see scriptScope) in scope.
+ * @param {object} context - the Bonsai context
  * @param {string} code
  * @param {{ asExpression?: boolean }} [options]
  */
 export async function runUserCode( context, code, { asExpression = false } = {} ) {
 
-	const bonsai = context;
+	const bonsai = scriptScope( context );
 	const body = asExpression ? `return (${ code })` : code;
 
 	try {

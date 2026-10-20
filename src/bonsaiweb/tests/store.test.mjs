@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { activateStore, bindStore, createStore, getStore } from '../src/session/store.js';
+import { activateStore, bindStore, createStore, getStore } from '../src/context/store.js';
 
 function fakeSignals() {
 

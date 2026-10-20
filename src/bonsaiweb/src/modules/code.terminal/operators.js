@@ -1,4 +1,4 @@
-import { Operator } from '../../ops/Operator.js';
+import { Operator } from '../../ops.js';
 import { Terminal } from '../../tool/index.js';
 import { formatRunOutput, runUserCode } from '../code.scripting/core.js';
 
@@ -158,10 +158,54 @@ class TerminalClear extends Operator {
 
 }
 
+class TerminalClose extends Operator {
+
+	static operatorName = 'code.terminal.close';
+	static operatorLabel = 'Close Terminal';
+	static undoable = true;
+
+	constructor( context, terminalGuid ) {
+
+		super( context );
+		this.terminalGuid = terminalGuid;
+
+	}
+
+	poll() {
+
+		const guid = this.terminalGuid || this.context.terminal?.activeTerminalGuid;
+		return Boolean( this.context.terminal && guid && Terminal.get( guid ) );
+
+	}
+
+	execute() {
+
+		const guid = this.terminalGuid || this.context.terminal?.activeTerminalGuid;
+		const detached = Terminal.detach( guid );
+		if ( ! detached ) return { status: 'CANCELLED' };
+		this.terminalGuid = guid;
+		this.session = detached.session;
+		this.index = detached.index;
+		this.context.terminal?.onTerminalClosed?.( guid );
+		return { status: 'FINISHED' };
+
+	}
+
+	undo() {
+
+		if ( ! this.session ) return;
+		Terminal.attach( this.session, this.index );
+		this.context.terminal?.onTerminalCreated?.( this.session.guid );
+
+	}
+
+}
+
 export {
 	CodeShowTerminal,
 	TerminalNew,
 	TerminalExecute,
 	TerminalClear,
+	TerminalClose,
 };
-export default [ CodeShowTerminal, TerminalNew, TerminalExecute, TerminalClear ];
+export default [ CodeShowTerminal, TerminalNew, TerminalExecute, TerminalClear, TerminalClose ];
