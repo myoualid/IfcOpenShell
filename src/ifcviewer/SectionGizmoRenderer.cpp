@@ -355,7 +355,18 @@ int SectionGizmoRenderer::hitTest(int x, int y, const std::vector<SectionPlane>&
         // gizmo, but hit-test the unit arrow to mirror the desktop).
         Eigen::Vector2f s_origin, s_tip;
         if (!projectWorldToLogicalScreen(vp, plane.origin, viewport_w_px, viewport_h_px, s_origin)) continue;
-        if (!projectWorldToLogicalScreen(vp, plane.origin + plane.n * 1.0f, viewport_w_px, viewport_h_px, s_tip)) continue;
+        // The shaft is 1 m along the normal. Zoomed in, that tip can sit
+        // behind the camera while the visible part of the arrow is still on
+        // screen — keep shortening until a sample projects.
+        bool tip_ok = false;
+        for (float len = 1.0f; len >= 0.05f; len *= 0.5f) {
+            if (projectWorldToLogicalScreen(vp, plane.origin + plane.n * len,
+                                            viewport_w_px, viewport_h_px, s_tip)) {
+                tip_ok = true;
+                break;
+            }
+        }
+        if (!tip_ok) continue;
         const Eigen::Vector2f ab = s_tip - s_origin;
         const float ab_len2 = ab.squaredNorm();
         if (ab_len2 < 1e-3f) continue;
