@@ -14,8 +14,9 @@ self.addEventListener( 'unhandledrejection', ( ev ) => {
 
 } );
 
-const ZSTD_WASM = 'https://cdn.jsdelivr.net/npm/@ioai/wasm-zstd@latest/dist/wasm-zstd.wasm';
-configureCompressor( { wasmUrl: ZSTD_WASM } );
+const { zstdModule, zstdWasm } = self.bonsaiAssets ?? {};
+if ( ! zstdModule || ! zstdWasm ) throw new Error( 'convert worker missing dependency paths' );
+configureCompressor( { moduleUrl: zstdModule, wasmUrl: zstdWasm } );
 log.log( 'imports resolved' );
 
 // A trap inside the wasm (out-of-bounds access, unreachable) leaves the

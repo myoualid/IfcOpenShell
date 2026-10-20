@@ -4,7 +4,8 @@
 import { createLogger } from '../util/log.js';
 import { listZipEntries, readZipEntriesByExtension, readZipEntry } from '../pipeline/zip.js';
 import { resolveThread, THREADS } from '../pipeline/thread.js';
-import { createIfcOpenShellWorker, shimUrlFrom } from '../pipeline/worker-host.js';
+import { dependencyUrls } from '../../app/configuration/imports.js';
+import { createIfcOpenShellWorker } from '../pipeline/worker-host.js';
 import { Ifc } from './Ifc.js';
 import { viewer } from './Viewer.js';
 import {
@@ -30,6 +31,7 @@ const convertDefaults = { kernel: 'opencascade', thread: 'worker', delivery: 'st
 // stays an unbundled source file.
 const PACKAGE_ROOT = new URL( '../', import.meta.url );
 const CONVERT_WORKER = 'src/pipeline/worker.js';
+let paths = null;
 let convertWorker = null;
 let convertWorkerSeq = 0;
 const convertWorkerPending = new Map();
@@ -43,6 +45,19 @@ export class Loader {
 	// keys from their options/hooks argument to override them per call.
 	// delivery is 'stream' (parts as they finish) or 'end' (open the
 	// finished sidecar in one step).
+
+	static usePaths( next ) {
+
+		paths = next ?? null;
+
+	}
+
+	static _dependencyUrls() {
+
+		if ( ! paths ) throw new Error( 'Loader.usePaths() is required before conversion' );
+		return dependencyUrls( paths );
+
+	}
 
 	static configure( options = {} ) {
 
@@ -977,7 +992,11 @@ export class Loader {
 		// apply to a module worker, so conversion boots through a classic
 		// worker that installs the same map. The wasm URLs match the page,
 		// and the browser reuses the cached modules.
-		const worker = createIfcOpenShellWorker( workerUrl.href, { shimUrl: shimUrlFrom( PACKAGE_ROOT ) } );
+		const urls = Loader._dependencyUrls();
+		const worker = createIfcOpenShellWorker( workerUrl.href, {
+			shimUrl: urls.shim,
+			assets: { zstdModule: urls.zstdModule, zstdWasm: urls.zstdWasm },
+		} );
 		convertWorker = worker;
 		worker.onmessage = ( ev ) => {
 
@@ -1150,7 +1169,10 @@ export class Loader {
 
 		if ( thread === 'main' ) {
 
-			const { convertBytes } = await import( new URL( 'src/pipeline/main-thread.js', PACKAGE_ROOT ).href );
+			const mainThread = await import( new URL( 'src/pipeline/main-thread.js', PACKAGE_ROOT ).href );
+			const urls = Loader._dependencyUrls();
+			mainThread.configureAssets( { zstdModule: urls.zstdModule, zstdWasm: urls.zstdWasm } );
+			const { convertBytes } = mainThread;
 			const result = await convertBytes( bytes, filename, {
 				kernel,
 				numThreads,

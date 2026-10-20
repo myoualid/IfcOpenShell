@@ -27,6 +27,7 @@ export class Bonsai {
 
 		this.paths = configuration.paths;
 		this.context.geometry = configuration.geometry ?? null;
+		this.tool.Loader.usePaths( configuration.paths );
 		this.tool.Loader.configure( configuration.geometry );
 
 		listenStore( this.context.signals );

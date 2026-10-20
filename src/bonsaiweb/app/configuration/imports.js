@@ -42,6 +42,22 @@ export function viewerScripts( paths ) {
 
 }
 
+// File names for the pipeline dependencies. Callers pass these URLs through;
+// the pipeline modules do not pick a CDN themselves.
+export function dependencyUrls( paths ) {
+
+	const zstd = dir( paths.zstd );
+	const fzstd = dir( paths.fzstd );
+	const shim = dir( paths.shim );
+	return {
+		zstdModule: `${ zstd }index.js`,
+		zstdWasm: `${ zstd }wasm-zstd.wasm`,
+		fzstdModule: `${ fzstd }index.mjs`,
+		shim: `${ shim }es-module-shims.wasm.js`,
+	};
+
+}
+
 export function installImports( paths ) {
 
 	const map = document.createElement( 'script' );
