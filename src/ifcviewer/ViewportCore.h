@@ -232,6 +232,8 @@ public:
     // ---- Camera mutators / getters ------------------------------------------
 
     void viewAll();
+    bool initialViewApplied() const { return initial_view_applied_; }
+    void markInitialViewApplied() { initial_view_applied_ = true; }
     // viewAll scoped to specific models: frame the union of their world AABBs
     // with the same 1.10 padding, so "view this model" and "view everything"
     // sit the camera the same way. Returns whether it framed anything (an
@@ -561,6 +563,7 @@ public:
     // against the source_id before the load finished.
     void loadIfcViewMetadataWeb(int source_id, std::string source_label,
                                 std::function<void(std::uint32_t)> on_loaded = {});
+    void setModelFederationSource(std::uint32_t session_model_id, int source_id);
 
     // On-demand fetch of the v15 element metadata block (elements + string
     // table) for a web-streamed model — what a UI (object tree / selected-name
@@ -1581,6 +1584,7 @@ private:
     struct PendingWebChunk { std::uint32_t session_model_id; std::size_t ci; };
     std::vector<PendingWebChunk> web_pending_;
     std::size_t                  web_pending_head_ = 0;
+    std::unordered_map<std::uint32_t, std::vector<std::function<void(bool)>>> element_metadata_waiters_;
 
     // Settle burst: keep the render loop alive for a few frames after any
     // streaming activity so the cull→load→display latency (the draw + cull

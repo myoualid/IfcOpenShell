@@ -322,6 +322,10 @@ struct ModelGpuData {
     // -1 when the model came from somewhere else (a path read on desktop, the
     // embedded sample) — source id 0 is a real source, so it can't mean "none".
     int         web_source_id = -1;
+    // Host-facing federation source. Streamed .ifcview parts keep their own
+    // `web_source_id` for byte-range reads, but picks / getObjects / unload
+    // report this group id. -1 means "same as web_source_id".
+    int         federation_source_id = -1;
 
     // v15 element metadata (web, on-demand). The IFC element metadata
     // (elements + string_table — names/GUIDs, for UI/picking, never
@@ -338,6 +342,7 @@ struct ModelGpuData {
     uint64_t    element_metadata_comp_size   = 0;
     uint64_t    element_metadata_raw_size    = 0;
     bool        element_metadata_loaded      = false;
+    bool        element_metadata_loading     = false;
     // applyCachedModel rebases instance object_ids by this base to keep them
     // globally unique across models; element metadata records carry the .ifcview's
     // original (local) ids, so they're rebased by the same amount on load.

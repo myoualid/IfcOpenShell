@@ -3904,10 +3904,14 @@ void ViewportCore::applyCachedModel(std::uint32_t session_model_id,
         recomposeAndUploadModel(session_model_id);
     }
 
+#if !defined(__EMSCRIPTEN__)
     if (!initial_view_applied_) {
         viewAll();
         initial_view_applied_ = true;
     }
+#endif
+    // Web: WebFederation frames after the false-origin guess so the camera
+    // is not set twice against pre- and post-shift AABBs.
     ensureSelectionFlagsBuffer();
     host_->requestFrame();
 }
@@ -4443,6 +4447,12 @@ void ViewportCore::loadIfcViewMetadataWeb(int source_id, std::string source_labe
         });
 }
 
+void ViewportCore::setModelFederationSource(std::uint32_t session_model_id, int source_id) {
+    auto it = models_gpu_.find(session_model_id);
+    if (it == models_gpu_.end()) return;
+    it->second.federation_source_id = source_id;
+}
+
 void ViewportCore::loadElementMetadataWeb(std::uint32_t session_model_id,
                                           std::function<void(bool)> done) {
     // On-demand fetch of the v15 element metadata block (elements + string table)
@@ -4458,19 +4468,32 @@ void ViewportCore::loadElementMetadataWeb(std::uint32_t session_model_id,
         if (done) done(true);
         return;
     }
+    if (m.element_metadata_loading) {
+        if (done) element_metadata_waiters_[session_model_id].push_back(std::move(done));
+        return;
+    }
+    m.element_metadata_loading = true;
     const std::uint64_t raw_size = m.element_metadata_raw_size;
     webReadRangesAsync(m.web_source_id, 0,
         {{m.element_metadata_comp_offset, m.element_metadata_comp_size}},
         [this, session_model_id, raw_size, done](bool ok, std::vector<std::uint8_t>&& cz) {
+            auto finish = [this, session_model_id, done](bool result) {
+                auto mit = models_gpu_.find(session_model_id);
+                if (mit != models_gpu_.end()) mit->second.element_metadata_loading = false;
+                auto waiters = std::move(element_metadata_waiters_[session_model_id]);
+                element_metadata_waiters_.erase(session_model_id);
+                if (done) done(result);
+                for (auto& waiter : waiters) waiter(result);
+            };
             auto mit = models_gpu_.find(session_model_id);
-            if (mit == models_gpu_.end()) { if (done) done(false); return; }
+            if (mit == models_gpu_.end()) { finish(false); return; }
             std::vector<std::uint8_t> buf(static_cast<std::size_t>(raw_size));
             IfcViewData tmp;
             if (!ok ||
                 !decompressIfcViewFrame(cz.data(), cz.size(), buf.data(), buf.size()) ||
                 !parseIfcViewElementMetadata(buf.data(), buf.size(), tmp)) {
                 Log::warn() << "loadElementMetadataWeb: read/decompress/parse failed";
-                if (done) done(false);
+                finish(false);
                 return;
             }
             mit->second.elements             = std::move(tmp.elements);
@@ -4482,7 +4505,7 @@ void ViewportCore::loadElementMetadataWeb(std::uint32_t session_model_id,
             mit->second.element_metadata_loaded = true;
             Log::info() << "ifcviewer-web: loaded element metadata ("
                         << mit->second.elements.size() << " elements)";
-            if (done) done(true);
+            finish(true);
         });
 }
 
@@ -4584,7 +4607,7 @@ ViewportCore::ElementRef makeElementRef(const ModelGpuData& m, int model_index,
     ViewportCore::ElementRef ref;
     ref.object_id   = e.object_id;
     ref.model_index = model_index;
-    ref.source_id   = m.web_source_id;
+    ref.source_id   = m.federation_source_id >= 0 ? m.federation_source_id : m.web_source_id;
     ref.guid        = str(e.guid_offset, e.guid_length);
     ref.name        = str(e.name_offset, e.name_length);
     ref.type        = str(e.type_offset, e.type_length);
@@ -4629,7 +4652,7 @@ void ViewportCore::visitModelElements(
     for (const ElementTableRecord& e : m.elements) {
         ElementSlices out;
         out.object_id = e.object_id;
-        out.source_id = m.web_source_id;
+        out.source_id = m.federation_source_id >= 0 ? m.federation_source_id : m.web_source_id;
         slice(e.guid_offset, e.guid_length, out.guid, out.guid_len);
         slice(e.name_offset, e.name_length, out.name, out.name_len);
         slice(e.type_offset, e.type_length, out.type, out.type_len);
@@ -4677,6 +4700,9 @@ void ViewportCore::streamingByteProgress(std::uint64_t& total_bytes,
     }
 }
 
+// Desktop progressive finalise (P3.3): call this on a new session model every
+// N meshes (or feed web beginStream/appendPart, which is the same grouping).
+// Drawing still waits on this commit, matching docs/viewport_architecture.rst.
 void ViewportCore::finalizeModel(std::uint32_t session_model_id) {
     auto it = pending_direct_loads_.find(session_model_id);
     if (it == pending_direct_loads_.end()) {

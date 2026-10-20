@@ -830,6 +830,7 @@
     // added from, either null when unknown. A marquee box-select does NOT fire
     // this (it has no single object) — use onSelectionChange for that.
     Module.__ifcvOnSelect = function (objectId, guid, modelIndex, sourceId) {
+      if (partToGroup.has(sourceId)) sourceId = partToGroup.get(sourceId);
       const detail = {
         objectId: objectId >>> 0,
         guid: guid || null,
@@ -864,7 +865,9 @@
     // transform and (for the first model) the false-origin guess, so a handler
     // sees the model where it will actually sit rather than mid-placement.
     Module.__ifcvOnModelLoaded = function (sourceId, sessionModelId) {
+      if (partToGroup.has(sourceId)) sourceId = partToGroup.get(sourceId);
       const detail = { sourceId: sourceId | 0, sessionModelId: sessionModelId >>> 0 };
+      objectsPromise = null;
       modelLoadedListeners.forEach(function (cb) {
         try { cb(detail); } catch (e) { console.error(e); }
       });
@@ -881,6 +884,17 @@
     // its heap); Done resolves with the accumulated rows.
     const pendingObjects = new Map();
     let objectsToken = 0;
+    let objectsPromise = null;
+    const partToGroup = new Map();
+    const streamSessions = new Map();
+    // Without the native C stream exports, each part is its own source. Fan
+    // per-source calls out to those parts so federation still keys on the
+    // group sid bonsaiweb holds.
+    function streamPartIds(sourceId) {
+      const stream = streamSessions.get(sourceId);
+      if (stream && !stream.native && stream.parts.length) return stream.parts;
+      return [sourceId];
+    }
     Module.__ifcvOnObjectsBatch = function (token, json) {
       const pending = pendingObjects.get(token);
       if (!pending) return;
@@ -1076,19 +1090,22 @@
       // Resolving this is also what lets every other call accept GlobalIds; the
       // result is cached for that.
       getObjects: function () {
+        if (objectsPromise) return objectsPromise;
         const token = ++objectsToken;
-        return new Promise(function (resolve) {
+        objectsPromise = new Promise(function (resolve) {
           pendingObjects.set(token, { rows: [], resolve: resolve });
           Module._ifcv_request_objects_c(token);
         }).then(function (objects) {
           objectIndex = new Map();
           objectsById = new Map();
           objects.forEach(function (o) {
+            if (partToGroup.has(o.sourceId)) o.sourceId = partToGroup.get(o.sourceId);
             if (o.guid) objectIndex.set(o.guid, o.objectId);
             objectsById.set(o.objectId, o);
           });
           return objects;
         });
+        return objectsPromise;
       },
 
       // ---- Visibility ------------------------------------------------------
@@ -1145,6 +1162,10 @@
       clearScene: function () {
         objectIndex = null;
         objectsById = null;
+        objectsPromise = null;
+        streamSessions.clear();
+        partToGroup.clear();
+        Module.__ifcvSources = [];
         if (Module._clear_scene_c) Module._clear_scene_c();
       },
       toggleXray:   function () { Module._toggle_xray_c(); },
@@ -1449,10 +1470,25 @@
       // geometry in again on demand. loadModel resolves false when the
       // device cannot fit the model's buffers. This is the lever when
       // stats().workingSet.chunksMissing stays above zero.
-      unloadModel:    function (sourceId) { Module._ifcv_unload_model_c(sourceId | 0); },
-      loadModel:      function (sourceId) { return Module._ifcv_load_model_c(sourceId | 0) !== 0; },
-      modelUnloaded:  function (sourceId) { return Module._ifcv_model_unloaded_c(sourceId | 0) !== 0; },
-      modelVramBytes: function (sourceId) { return Module._ifcv_model_vram_bytes_c(sourceId | 0); },
+      unloadModel: function (sourceId) {
+        streamPartIds(sourceId).forEach(function (sid) { Module._ifcv_unload_model_c(sid | 0); });
+      },
+      loadModel: function (sourceId) {
+        return streamPartIds(sourceId).every(function (sid) {
+          return Module._ifcv_load_model_c(sid | 0) !== 0;
+        });
+      },
+      modelUnloaded: function (sourceId) {
+        const ids = streamPartIds(sourceId);
+        return ids.length > 0 && ids.every(function (sid) {
+          return Module._ifcv_model_unloaded_c(sid | 0) !== 0;
+        });
+      },
+      modelVramBytes: function (sourceId) {
+        return streamPartIds(sourceId).reduce(function (sum, sid) {
+          return sum + Module._ifcv_model_vram_bytes_c(sid | 0);
+        }, 0);
+      },
 
       registerFileSource: registerFile,
       registerUrlSource: registerUrl,
@@ -1468,7 +1504,53 @@
         const sid = registerFile(file);
         if (o && o.name) this.setModelName(sid, o.name);
         Module._load_ifcview_from_source_c(sid);
+        objectsPromise = null;
         return sid;
+      },
+      // One federated source, many .ifcview parts. beginStream mints the
+      // source id immediately (like addFile). appendPart registers a Blob
+      // byte-source and loads it as a part of that source. endStream fires
+      // onModelLoaded once. Falls back to addFile-per-part when the wasm
+      // build does not yet export the C entry points.
+      beginStream: function (o) {
+        o = o || {};
+        objectsPromise = null;
+        const sid = Module.__ifcvSources.length;
+        Module.__ifcvSources.push({ file: null, url: null, size: 0, stream: true });
+        if (o.name) this.setModelName(sid, o.name);
+        if (Module._ifcv_begin_stream_c) Module._ifcv_begin_stream_c(sid);
+        this._streams = streamSessions;
+        streamSessions.set(sid, { parts: [], name: o.name || '', native: !!Module._ifcv_begin_stream_c });
+        return sid;
+      },
+      appendPart: async function (sourceId, bytes) {
+        const stream = streamSessions.get(sourceId);
+        const name = (stream && stream.name) || 'model';
+        const partIndex = stream ? stream.parts.length : 0;
+        const file = bytes instanceof File
+          ? bytes
+          : new File([bytes], name.replace(/\.ifcview$/i, '') + '.part' + partIndex + '.ifcview');
+        assertSidecarHead(await readSidecarHead(file), sidecarFormatVersion);
+        const partSid = registerFile(file);
+        if (stream) stream.parts.push(partSid);
+        partToGroup.set(partSid, sourceId);
+        if (Module._ifcv_append_part_c) {
+          Module._ifcv_append_part_c(sourceId | 0, partSid);
+        } else {
+          Module._load_ifcview_from_source_c(partSid);
+        }
+        objectsPromise = null;
+        return partSid;
+      },
+      endStream: function (sourceId) {
+        objectsPromise = null;
+        if (Module._ifcv_end_stream_c) {
+          Module._ifcv_end_stream_c(sourceId | 0);
+          return;
+        }
+        const stream = streamSessions.get(sourceId);
+        const first = stream && stream.parts.length ? stream.parts[0] : 0;
+        if (Module.__ifcvOnModelLoaded) Module.__ifcvOnModelLoaded(sourceId | 0, first);
       },
       // `cache: true` keeps a local OPFS copy filled from the viewer's own
       // ranged reads (see the OPFS model cache section above): the next visit
@@ -1657,19 +1739,27 @@
         xf = xf || {};
         const a = xf.a || [0, 0, 0], b = xf.b || [0, 0, 0];
         const r = xf.rotationDeg || [0, 0, 0], p = xf.pivot || [0, 0, 0];
-        Module._ifcv_set_model_transform_c(
-          sourceId | 0, xf.aFrame === 'local' ? 0 : 1,
-          a[0], a[1], a[2], b[0], b[1], b[2],
-          r[0], r[1], r[2], p[0], p[1], p[2]);
+        const aFrame = xf.aFrame === 'local' ? 0 : 1;
+        streamPartIds(sourceId).forEach(function (sid) {
+          Module._ifcv_set_model_transform_c(
+            sid | 0, aFrame,
+            a[0], a[1], a[2], b[0], b[1], b[2],
+            r[0], r[1], r[2], p[0], p[1], p[2]);
+        });
       },
 
       clearModelTransform: function (sourceId) {
-        Module._ifcv_clear_model_transform_c(sourceId | 0);
+        streamPartIds(sourceId).forEach(function (sid) {
+          Module._ifcv_clear_model_transform_c(sid | 0);
+        });
       },
 
       setModelName: function (sourceId, name) {
-        Module.ccall('ifcv_set_model_name_c', null, ['number', 'string'],
-                     [sourceId | 0, String(name)]);
+        const label = String(name);
+        streamPartIds(sourceId).forEach(function (sid) {
+          Module.ccall('ifcv_set_model_name_c', null, ['number', 'string'],
+                       [sid | 0, label]);
+        });
       },
 
       // The georeferencing a model actually carries, read back from its
@@ -1679,7 +1769,7 @@
       getModelGeoref: function (sourceId) {
         const ptr = Module._malloc(19 * 8);
         try {
-          if (!Module._ifcv_get_model_georef_c(sourceId | 0, ptr)) return null;
+          if (!Module._ifcv_get_model_georef_c(streamPartIds(sourceId)[0] | 0, ptr)) return null;
           const d = Module.HEAPF64.subarray(ptr >>> 3, (ptr >>> 3) + 19);
           return {
             hasCoordinateOperation: d[0] !== 0,
