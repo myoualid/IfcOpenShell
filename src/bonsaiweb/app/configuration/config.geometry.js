@@ -10,4 +10,7 @@ export const GeometryConfig = {
 	// 'auto' and 'worker' convert in a worker at every size. 'main' is an
 	// explicit opt-in: it blocks frames and shares the live-file runtime.
 	thread: 'worker',
+	// 'stream' feeds tessellation parts into the viewer as they finish.
+	// 'end' waits for the finished sidecar, then opens it in one step.
+	delivery: 'stream',
 };
