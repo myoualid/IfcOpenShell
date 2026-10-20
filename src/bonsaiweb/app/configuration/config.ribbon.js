@@ -67,6 +67,8 @@ export const ribbonButtons = [
 	group( 'RG_Camera', 'Camera', 'Navigate', [
 		button( 'RB_ViewAll', 'View all', 'zoom_out_map', 'viewer.view_all' ),
 		button( 'RB_FrameSelection', 'Focus', 'center_focus_strong', 'viewer.frame_selection' ),
+		button( 'RB_Ortho', 'Ortho', 'crop_square', 'viewer.projection' ),
+		button( 'RB_Fly', 'Fly', 'videocam', 'viewer.fly' ),
 	] ),
 
 	group( 'RG_Controls', 'Controls', 'Navigate', [
@@ -94,8 +96,16 @@ export const ribbonButtons = [
 
 	group( 'RG_Display', 'Display', 'View', [
 		button( 'RB_Xray', 'X-ray', 'blur_on', 'viewer.xray' ),
+		button( 'RB_Grid', 'Grid', 'grid_on', 'viewer.grid' ),
+		button( 'RB_Axes', 'Axes', 'open_with', 'viewer.axes' ),
+		button( 'RB_Fog', 'Fog', 'foggy', 'viewer.fog_toggle' ),
 		button( 'RB_ClearColors', 'Clear colors', 'format_color_reset', 'viewer.clear_colors' ),
 		button( 'RB_SelectionOutline', 'Outline', 'highlight', 'viewer.selection_outline' ),
 		button( 'RB_ClearSelection', 'Clear selection', 'deselect', 'viewer.clear_selection' ),
+	] ),
+
+	group( 'RG_Section', 'Section', 'View', [
+		button( 'RB_Section', 'Section', 'content_cut', 'viewer.section' ),
+		button( 'RB_ClearSection', 'Clear cuts', 'delete_sweep', 'viewer.clear_section' ),
 	] ),
 ];

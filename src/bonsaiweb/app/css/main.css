@@ -232,6 +232,27 @@ body {
 	transform: none;
 }
 
+#viewer-tool-hint {
+	position: absolute;
+	top: 10px;
+	left: 50%;
+	z-index: 6;
+	transform: translateX(-50%);
+	max-width: min(36rem, calc(100% - 1.5rem));
+	pointer-events: none;
+	font: 12px/1.35 var(--dui-font-ui, sans-serif);
+	color: #d7dbe3;
+	background: rgba(15, 17, 23, .82);
+	border-radius: 4px;
+	padding: 6px 10px;
+	white-space: pre-line;
+	text-align: center;
+}
+
+#viewer-tool-hint[hidden] {
+	display: none;
+}
+
 #Footer .StatusBar {
 	width: auto;
 }

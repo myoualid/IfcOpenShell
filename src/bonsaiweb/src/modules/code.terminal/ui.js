@@ -125,6 +125,8 @@ const SNIPPETS = [
 			{ label: 'Top view', command: 'bonsai.ops.execute(\'viewer.standard_view\', \'TOP\')' },
 			{ label: 'View all', command: 'bonsai.ops.execute(\'viewer.view_all\')' },
 			{ label: 'Isolate selection', command: 'bonsai.ops.execute(\'viewer.isolate\')' },
+			{ label: 'Section', command: 'bonsai.ops.execute(\'viewer.section\')' },
+			{ label: 'Clear cuts', command: 'bonsai.ops.execute(\'viewer.clear_section\')' },
 			{ label: 'Show all', command: 'bonsai.ops.execute(\'show.all\')' },
 			{ label: 'Undo', command: 'bonsai.ops.undo()' },
 		],
