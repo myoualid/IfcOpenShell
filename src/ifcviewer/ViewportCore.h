@@ -928,7 +928,8 @@ public:
     // the sync pickObjectAt and the async pickSurfaceAtAsync.
     bool decodeMappedPickNormal(Eigen::Vector3f& out);
     // Logical (CSS-px) viewport size from the host framebuffer / DPR, for the
-    // section-gizmo hit-test + drag (which work in logical pixels).
+    // section-gizmo hit-test + drag (which work in logical pixels). DPR stays
+    // fractional: int(1.25) and int(1.5) would place the grab line off the arrow.
     void sectionLogicalViewport(int& w, int& h) const;
     // Decode the RGBA32F exact world position from the (already-mapped) position
     // staging buffer; unmaps. False if the texel was a miss (w == 0).

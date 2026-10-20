@@ -8677,12 +8677,15 @@ void ViewportCore::clearSectionPlanes() {
 }
 
 // Logical (CSS-px) viewport from the host framebuffer + DPR.
+// Mouse events are CSS pixels. Truncating DPR to int (1.25 and 1.5 both
+// become 1) stretches this size past the canvas, so the grab line misses
+// the arrow that was drawn.
 void ViewportCore::sectionLogicalViewport(int& w, int& h) const {
     int fb_w = 0, fb_h = 0;
     host_->framebufferSize(fb_w, fb_h);
-    const int dpr = std::max(1, int(host_->dpr()));
-    w = fb_w / dpr;
-    h = fb_h / dpr;
+    const float dpr = std::max(host_->dpr(), 1.0f);
+    w = std::max(1, int(std::lround(float(fb_w) / dpr)));
+    h = std::max(1, int(std::lround(float(fb_h) / dpr)));
 }
 
 int ViewportCore::hitTestSectionGizmo(int x, int y) {
@@ -8729,16 +8732,27 @@ void ViewportCore::updateSectionDrag(int mouse_x, int mouse_y) {
     };
     Eigen::Vector2f s_origin, s_n;
     if (!to_screen(section_drag_start_origin_, s_origin)) return;
-    if (!to_screen(section_drag_start_origin_ + p.n, s_n)) return;
+    // Same shortening as the hit test: a 1 m tip behind the camera must not
+    // freeze a drag that started on the visible part of the arrow.
+    bool tip_ok = false;
+    float axis_meters = 1.0f;
+    for (float len = 1.0f; len >= 0.05f; len *= 0.5f) {
+        if (to_screen(section_drag_start_origin_ + p.n * len, s_n)) {
+            axis_meters = len;
+            tip_ok = true;
+            break;
+        }
+    }
+    if (!tip_ok) return;
     const Eigen::Vector2f axis = s_n - s_origin;
     const float len2 = axis.squaredNorm();
     if (len2 < 1e-3f) return;  // arrow edge-on
 
-    // Project the pixel delta onto the screen-space normal axis; the axis is 1 m
-    // in world space, so (delta·axis)/|axis|² is the slide in metres.
+    // Project the pixel delta onto the screen-space normal. `axis` covers
+    // `axis_meters` of the normal, so the coefficient is scaled back to metres.
     const Eigen::Vector2f delta(float(mouse_x - section_drag_start_mx_),
                                 float(mouse_y - section_drag_start_my_));
-    const float meters = delta.dot(axis) / len2;
+    const float meters = delta.dot(axis) / len2 * axis_meters;
     p.origin = section_drag_start_origin_ + p.n * meters;
     p.d      = -p.n.dot(p.origin);
     host_->requestFrame();
