@@ -1,20 +1,33 @@
 # Example application
 
-`app/` is a BIM viewer built on the Bonsai Web host. Run `npm run build` in this package, then open `app/index.html` in a browser that has WebGPU. The page loads the viewer script, imports `build/bonsai.js` and `app/configuration/config.js`, and calls `start(document.body, BonsaiWebConfiguration)`. `npm run dev` rebuilds the bundle while you edit `src/`. Files under `app/configuration/` load in the browser, so those edits do not need a rebuild.
+`app/` is a BIM viewer built on the Bonsai Web host. Run `npm install` and `npm run build` in this package, then open `app/index.html` from a server whose root is this package. The build is `dist/`, next to `app/`. The page's import map points `@aeco-dev/bonsaiweb`, `@aeco-dev/gui`, `@aeco-dev/layout`, and `ifcopenshell` at `node_modules` and `dist`. `npm run dev` rebuilds `dist/` while you edit `src/`. Files under `app/configuration/` load in the browser, so those edits do not need a rebuild.
 
 ```html
-<script src="../vendor/@ifcopenshell/viewer/IfcViewerWeb.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "@aeco-dev/bonsaiweb": "../dist/bonsai.js",
+    "@aeco-dev/gui": "../node_modules/@aeco-dev/gui/gui.js",
+    "@aeco-dev/layout": "../node_modules/@aeco-dev/layout/layout.js",
+    "ifcopenshell": "../node_modules/ifcopenshell/dist/index.js",
+    "ifcopenshell/geom": "../node_modules/ifcopenshell/dist/geom/index.js",
+    "@ifcopenshell/wasm": "../node_modules/@ifcopenshell/wasm/browser.js",
+    "@ifcopenshell/wasm/api": "../node_modules/@ifcopenshell/wasm/wasm/ifcopenshell_api.mjs"
+  }
+}
+</script>
+<link rel="stylesheet" href="../node_modules/@aeco-dev/gui/gui.css">
+<link rel="stylesheet" href="../node_modules/@aeco-dev/layout/layout.css">
 <script type="module">
-  import * as BonsaiWeb from "../build/bonsai.js";
+  import { start } from "@aeco-dev/bonsaiweb";
   import { BonsaiWebConfiguration } from "./configuration/config.js";
-  const bonsai = await BonsaiWeb.start(document.body, BonsaiWebConfiguration);
-  window.bonsai = bonsai;
+  window.bonsai = await start(document.body, BonsaiWebConfiguration);
 </script>
 ```
 
-`app/headless.html` imports `build/bonsai-headless.js` instead. That page is the viewer and the operators, with no ribbon, panels, or CodeMirror. `window.bonsai.ops.execute` is how a host runs a command.
+`app/headless.html` imports `@aeco-dev/bonsaiweb/headless` instead. That page is the viewer and the operators, with no ribbon or panels. `window.bonsai.ops.execute` is how a host runs a command.
 
-The import map in that page points `ifcopenshell` at the jsDelivr build, and points `@aeco-dev/gui` and `@aeco-dev/layout` at the installed npm packages. Styles for the shell come from `gui.css`, `layout.css`, and `app/css/main.css`.
+A bundler imports the same names and does not need that map. Styles for the shell come from `gui.css`, `layout.css`, and `app/css/main.css`. See [distribution.md](distribution.md).
 
 `window.bonsai` is the live host: `signals`, `ops`, `tool`, `viewer`, and `store`. The boot logger prints phase timings on those signals. `appReady` fires once modules are mounted.
 
@@ -117,7 +130,7 @@ Panels is special. It has no `operator`. After modules activate, `bindPanelDialo
 
 Load IFC and the Project panel's add button both call `openModelFilePicker`, which accepts `.ifc`, `.ifcview`, and `.zip`. The chosen file goes to `Loader.loadLocalFile`. Drag-and-drop uses that same function.
 
-Load sample runs the `load.sample.ifc` operator, which fetches `app/files/ifc/window_wall.ifc` and passes it to `Loader.loadIfcUrl`. That path converts and opens the file without asking where to save the sidecar.
+Load sample runs the `load.sample.ifc` operator, which fetches the sample IFC copied from `app/files/ifc/window_wall.ifc` into `dist/` and passes it to `Loader.loadIfcUrl`. That path converts and opens the file without asking where to save the sidecar.
 
 For a `.ifc` that is not already in the scene, the sequence is:
 

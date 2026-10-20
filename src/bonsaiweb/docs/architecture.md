@@ -5,8 +5,8 @@ Bonsai Web loads an IFC model, draws it in a WebGPU viewer, and lets panels and 
 `src/index.js` is `Bonsai`, the session, and its `start()` is the headless host: viewer and operators, no shell. `start()` in `src/gui.js` is the GUI host: it builds the shell and wraps the same `Bonsai`. The page passes `BonsaiWebConfiguration` from `app/configuration/config.js`; that folder is not part of the bundle, so edits apply on refresh. `window.bonsai` is assigned by the page after `start()` returns.
 
 ```text
-app/index.html          full GUI  → build/bonsai.js           (src/gui.js)
-app/headless.html       viewer    → build/bonsai-headless.js  (src/index.js)
+app/index.html          full GUI  → dist/bonsai.js           (src/gui.js)
+app/headless.html       viewer    → dist/bonsai-headless.js  (src/index.js)
 
 src/
   index.js              Bonsai: context, operator registration, viewer boot. Headless start().
@@ -21,7 +21,7 @@ src/
     <id>/operators.js   operator classes for one module
     <id>/ui.js          panel classes for one module
   tool/                 Ifc, Loader, Element, Pset, Terminal, Viewer (IfcViewer host)
-  pipeline/             convert worker, zip
+  pipeline/             convert worker, zip, .ifcview sidecar writer
   util/log.js           timestamped logger
 vendor/                 gitignored local copies; the page loads its dependencies from jsDelivr
 ```
@@ -172,14 +172,19 @@ The Panels button is not an operator. `bindPanelDialog` builds a checkbox dialog
 
 ## Bundles
 
-`npm run build` writes two ESM files with esbuild. Bare imports (`ifcopenshell`, `@aeco-dev/gui`, `@aeco-dev/layout`) stay external and resolve through the page import map. Convert workers stay source files under `src/pipeline/`; the bundle points at them with `new URL( '../…', import.meta.url )`, which resolves from `build/*.js`, so those paths are relative to the bundle and not to the source file.
+`npm run build` writes ESM files with esbuild into `dist/`. Bare imports (`ifcopenshell`, `@aeco-dev/gui`, `@aeco-dev/layout`) stay external. A bundler resolves them from `node_modules`. A page without a bundler maps the same names in an import map. See [distribution.md](distribution.md).
+
+Conversion is its own entry, `dist/convert-worker.js` and `dist/convert-main.js`, so the host bundle does not contain the tessellator. The host loads those files with `new URL` relative to itself. The build copies `src/paths.js` to `dist/paths.js` and the sample IFC to `dist/window_wall.ifc`.
 
 | Output | Entry | Initial graph |
 |--------|--------|----------------|
-| `build/bonsai-headless.js` | `src/index.js` | Viewer, tools, operators. No gui2, layout, or CodeMirror. |
-| `build/bonsai.js` | `src/gui.js` | That runtime, plus the shell and every module UI. |
+| `dist/bonsai-headless.js` | `src/index.js` | Viewer, tools, operators. No gui2, layout, or CodeMirror. |
+| `dist/bonsai.js` | `src/gui.js` | That runtime, plus the shell and every module UI. |
+| `dist/convert-worker.js` | `src/pipeline/worker.js` | `.ifc` → `.ifcview` in a worker. `ifcopenshell` stays external. |
+| `dist/convert-main.js` | `src/pipeline/main-thread.js` | The same conversion on the main thread. |
+| `dist/paths.js` | `src/paths.js` | CDN directories for the viewer, stylesheets, and zstd. Copied, not bundled. |
 
-esbuild puts the runtime both entries share in one `chunk-*.js`. There is no chunk per module: the GUI mounts every active panel before `appReady`, so those chunks would all download on that first tick. What stays independent is the source entry: `modules/operators.js` never imports `ui.js`. A panel `ui.js` imports the ops singleton and calls `ops.execute(name, context, ...)`. `operators.js` does not import `ui.js`. The headless bundle imports only the operator registry. A later lazy panel is a dynamic `import()` of that module's `ui.js` from the GUI host.
+Each entry is one file. The GUI and headless bundles both contain the runtime they need. What stays independent is the source entry: `modules/operators.js` never imports `ui.js`. A panel `ui.js` imports the ops singleton and calls `ops.execute(name, context, ...)`. `operators.js` does not import `ui.js`. The headless bundle imports only the operator registry.
 
 ## Where to change things
 

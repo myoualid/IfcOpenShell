@@ -1,5 +1,5 @@
 node_modules/
-build/
+dist/
 vendor/
 bench/.cache/
 bench/.prof/

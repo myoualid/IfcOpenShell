@@ -8,12 +8,12 @@
 
 import * as ifcopenshell from 'ifcopenshell';
 import * as ifcopenshellGeom from 'ifcopenshell/geom';
-import { SidecarMeshAccumulator } from '../../../dist/core/IfcPipeline/sidecar/mesh-builder.js';
-import { writeViewerSidecarBytes } from '../../../dist/core/IfcPipeline/sidecar/serialize.js';
-import { detectFormat } from '../../../dist/core/IfcPipeline/detect.js';
+import { SidecarMeshAccumulator } from '../sidecar/mesh-builder.js';
+import { writeViewerSidecarBytes } from '../sidecar/serialize.js';
+import { detectFormat } from '../detect.js';
 import { resolveNumThreads } from '../thread.js';
-import { warmSidecarCompressor } from '../../../dist/core/IfcPipeline/sidecar/compress.js';
-export { configureCompressor } from '../../../dist/core/IfcPipeline/sidecar/compress.js';
+import { warmSidecarCompressor } from '../sidecar/compress.js';
+export { configureCompressor } from '../sidecar/compress.js';
 
 const TESSELLATION_START = 0.25;
 const TESSELLATION_SPAN = 0.6;

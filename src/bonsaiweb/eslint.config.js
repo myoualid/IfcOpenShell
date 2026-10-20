@@ -8,7 +8,7 @@ export default [
 		name: 'files to ignore',
 		ignores: [
 			'**/node_modules/**',
-			'**/build/**',
+			'dist/**',
 			'**/vendor/**',
 		]
 	},

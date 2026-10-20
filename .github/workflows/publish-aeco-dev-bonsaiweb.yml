@@ -1,0 +1,82 @@
+name: Publish @aeco-dev/bonsaiweb
+
+# Packs src/bonsaiweb and publishes @aeco-dev/bonsaiweb from this fork, ahead
+# of IfcOpenShell/IfcOpenShell. The version is chosen here and is not committed.
+#
+# Authentication: repository secret IFCVIEWER, the npm token that publishes
+# the @aeco-dev scope. Same secret as Publish @aeco-dev/viewer.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, for example 0.1.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Pack and run npm publish --dry-run, without uploading"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-aeco-dev-bonsaiweb
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'myoualid/IfcOpenShell'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+          cache-dependency-path: src/bonsaiweb/package-lock.json
+
+      - name: Install and set version
+        working-directory: src/bonsaiweb
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          npm ci
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const version = process.env.RELEASE_VERSION.trim();
+            if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+              console.error("::error::version must be a semver such as 0.1.0");
+              process.exit(1);
+            }
+            const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+            pkg.version = version;
+            writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+            console.log("version " + version);
+          '
+
+      - name: Publish
+        working-directory: src/bonsaiweb
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.IFCVIEWER }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::The IFCVIEWER secret is empty. Add the npm token under Settings, Secrets and variables, Actions, secret name IFCVIEWER."
+            exit 1
+          fi
+          echo "::add-mask::$NODE_AUTH_TOKEN"
+          if [ "$DRY_RUN" = "true" ]; then
+            npm publish --dry-run --access public
+          else
+            npm publish --access public
+          fi

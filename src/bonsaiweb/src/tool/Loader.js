@@ -27,12 +27,13 @@ let ifcRuntime = null;
 // Startup values come from configuration.geometry via Loader.configure().
 const DELIVERIES = [ 'stream', 'end' ];
 const convertDefaults = { kernel: 'opencascade', thread: 'worker', delivery: 'stream' };
-// Resolved from the bundle in build/, not from this source file. The pipeline
-// stays an unbundled source file.
-const PACKAGE_ROOT = new URL( '../', import.meta.url );
-const CONVERT_WORKER = 'src/pipeline/worker.js';
+// esbuild writes these next to the bundle in dist/. The names are split so
+// esbuild does not treat them as assets of this source file.
+const CONVERT_WORKER_URL = new URL( './convert-' + 'worker.js', import.meta.url );
+const CONVERT_MAIN_URL = new URL( './convert-' + 'main.js', import.meta.url );
 let paths = null;
 let convertWorker = null;
+let convertWorkerPromise = null;
 let convertWorkerSeq = 0;
 const convertWorkerPending = new Map();
 // Sidecars this session built from an .ifc. Keyed by viewer sourceId.
@@ -143,7 +144,7 @@ export class Loader {
 		const { kernel } = convertDefaults;
 		try {
 
-			const worker = Loader._getConvertWorker();
+			const worker = await Loader._getConvertWorker();
 			const id = ++ convertWorkerSeq;
 			await new Promise( ( resolve, reject ) => {
 
@@ -984,93 +985,106 @@ export class Loader {
 	// Spawned on first use and reused afterwards.
 	static _getConvertWorker() {
 
-		if ( convertWorker ) return convertWorker;
+		convertWorkerPromise ??= Loader._spawnConvertWorker();
+		return convertWorkerPromise;
 
-		const workerUrl = new URL( CONVERT_WORKER, PACKAGE_ROOT );
-		log.log( 'spawning convert worker:', workerUrl.href );
+	}
+
+	static async _spawnConvertWorker() {
+
+		log.log( 'spawning convert worker:', CONVERT_WORKER_URL.href );
 		// ifcopenshell imports bare specifiers. The page import map does not
 		// apply to a module worker, so conversion boots through a classic
 		// worker that installs the same map. The wasm URLs match the page,
 		// and the browser reuses the cached modules.
-		const urls = Loader._dependencyUrls();
-		const worker = createIfcOpenShellWorker( workerUrl.href, {
-			shimUrl: urls.shim,
-			assets: { zstdModule: urls.zstdModule, zstdWasm: urls.zstdWasm },
-		} );
-		convertWorker = worker;
-		worker.onmessage = ( ev ) => {
+		try {
 
-			const { id, type } = ev.data;
-			const pending = convertWorkerPending.get( id );
-			if ( ! pending ) return;
-			if ( type === 'progress' ) {
+			const urls = Loader._dependencyUrls();
+			const worker = await createIfcOpenShellWorker( CONVERT_WORKER_URL.href, {
+				shimUrl: urls.shim,
+				assets: { zstdModule: urls.zstdModule, zstdWasm: urls.zstdWasm },
+			} );
+			convertWorker = worker;
+			worker.onmessage = ( ev ) => {
 
-				pending.onConvertProgress?.( ev.data.progress );
+				const { id, type } = ev.data;
+				const pending = convertWorkerPending.get( id );
+				if ( ! pending ) return;
+				if ( type === 'progress' ) {
 
-			} else if ( type === 'part' ) {
+					pending.onConvertProgress?.( ev.data.progress );
 
-				pending.partChain = ( pending.partChain ?? Promise.resolve() )
-					.then( () => pending.onPart?.( ev.data.bytes ) )
-					.catch( ( err ) => log.error( 'onPart failed:', err ) );
+				} else if ( type === 'part' ) {
 
-			} else if ( type === 'warmed' ) {
+					pending.partChain = ( pending.partChain ?? Promise.resolve() )
+						.then( () => pending.onPart?.( ev.data.bytes ) )
+						.catch( ( err ) => log.error( 'onPart failed:', err ) );
 
-				convertWorkerPending.delete( id );
-				if ( ev.data.ok ) pending.resolve?.( ev.data );
-				else pending.reject?.( new Error( ev.data.error || 'Convert worker warm failed' ) );
+				} else if ( type === 'warmed' ) {
 
-			} else if ( type === 'result' ) {
+					convertWorkerPending.delete( id );
+					if ( ev.data.ok ) pending.resolve?.( ev.data );
+					else pending.reject?.( new Error( ev.data.error || 'Convert worker warm failed' ) );
 
-				convertWorkerPending.delete( id );
-				const finish = () => {
+				} else if ( type === 'result' ) {
 
-					if ( ev.data.ok ) {
+					convertWorkerPending.delete( id );
+					const finish = () => {
 
-						pending.resolve( ev.data );
+						if ( ev.data.ok ) {
 
-					} else if ( ev.data.fatal ) {
+							pending.resolve( ev.data );
 
-						// The wasm trapped: its heap is suspect, so this worker
-						// must not take another job.
-						const err = new Error( ev.data.error || 'Conversion crashed' );
-						err.fatal = true;
-						err.bytes = ev.data.bytes;
-						pending.reject( err );
-						Loader._dropConvertWorker( worker, `convert worker crashed: ${ err.message }` );
+						} else if ( ev.data.fatal ) {
 
-					} else {
+							// The wasm trapped: its heap is suspect, so this worker
+							// must not take another job.
+							const err = new Error( ev.data.error || 'Conversion crashed' );
+							err.fatal = true;
+							err.bytes = ev.data.bytes;
+							pending.reject( err );
+							Loader._dropConvertWorker( worker, `convert worker crashed: ${ err.message }` );
 
-						pending.reject( new Error( ev.data.error || 'Conversion failed' ) );
+						} else {
 
-					}
+							pending.reject( new Error( ev.data.error || 'Conversion failed' ) );
 
-				};
+						}
 
-				if ( pending.partChain ) pending.partChain.then( finish, finish );
-				else finish();
+					};
 
-			}
+					if ( pending.partChain ) pending.partChain.then( finish, finish );
+					else finish();
 
-		};
+				}
 
-		// A worker that fails to load its module graph fires 'error'
-		// once and never answers postMessage — reject pending promises.
-		worker.onerror = ( ev ) => {
+			};
 
-			const detail = ev?.error?.stack || ev?.error?.message || ev?.message || 'worker failed';
-			const msg = `convert worker error: ${ detail }`;
-			log.error( msg, ev );
-			Loader._dropConvertWorker( worker, msg );
+			// A worker that fails to load its module graph fires 'error'
+			// once and never answers postMessage — reject pending promises.
+			worker.onerror = ( ev ) => {
 
-		};
+				const detail = ev?.error?.stack || ev?.error?.message || ev?.message || 'worker failed';
+				const msg = `convert worker error: ${ detail }`;
+				log.error( msg, ev );
+				Loader._dropConvertWorker( worker, msg );
 
-		worker.onmessageerror = ( ev ) => {
+			};
 
-			log.error( 'convert worker messageerror:', ev );
+			worker.onmessageerror = ( ev ) => {
 
-		};
+				log.error( 'convert worker messageerror:', ev );
 
-		return worker;
+			};
+
+			return worker;
+
+		} catch ( err ) {
+
+			convertWorkerPromise = null;
+			throw err;
+
+		}
 
 	}
 
@@ -1086,7 +1100,13 @@ export class Loader {
 
 		}
 
-		if ( convertWorker === worker ) convertWorker = null;
+		if ( convertWorker === worker ) {
+
+			convertWorker = null;
+			convertWorkerPromise = null;
+
+		}
+
 		worker.terminate();
 
 	}
@@ -1169,7 +1189,7 @@ export class Loader {
 
 		if ( thread === 'main' ) {
 
-			const mainThread = await import( new URL( 'src/pipeline/main-thread.js', PACKAGE_ROOT ).href );
+			const mainThread = await import( CONVERT_MAIN_URL.href );
 			const urls = Loader._dependencyUrls();
 			mainThread.configureAssets( { zstdModule: urls.zstdModule, zstdWasm: urls.zstdWasm } );
 			const { convertBytes } = mainThread;
@@ -1224,9 +1244,9 @@ export class Loader {
 
 	}
 
-	static _convertInWorker( kernel, bytes, filename, numThreads, hooks ) {
+	static async _convertInWorker( kernel, bytes, filename, numThreads, hooks ) {
 
-		const worker = Loader._getConvertWorker();
+		const worker = await Loader._getConvertWorker();
 		const id = ++ convertWorkerSeq;
 		return new Promise( ( resolve, reject ) => {
 

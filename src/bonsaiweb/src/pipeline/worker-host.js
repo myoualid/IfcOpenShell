@@ -6,7 +6,7 @@
 // The blob worker has no base URL of its own, so every URL here is absolute.
 
 // Bundled callers pass `shimUrl` and `assets` from configuration.paths.
-// import.meta.url then points into build/, so this file does not choose a CDN.
+// The convert worker is dist/convert-worker.js, a sibling of the bundle.
 
 function absoluteImportMap( map, base ) {
 
@@ -21,24 +21,28 @@ function absoluteImportMap( map, base ) {
 
 }
 
-export function readPageImportMap() {
+export async function readPageImportMap() {
 
 	const node = document.querySelector( 'script[type="importmap"]' );
-	if ( ! node?.textContent ) {
+	const inline = node?.textContent?.trim();
+	if ( inline ) return absoluteImportMap( JSON.parse( inline ), document.baseURI );
+	if ( node?.src ) {
 
-		throw new Error( 'IfcOpenShell worker needs the page import map' );
+		const response = await fetch( node.src );
+		if ( ! response.ok ) throw new Error( `import map ${ node.src } failed: ${ response.status }` );
+		return absoluteImportMap( await response.json(), node.src );
 
 	}
 
-	return absoluteImportMap( JSON.parse( node.textContent ), document.baseURI );
+	throw new Error( 'IfcOpenShell worker needs the page import map' );
 
 }
 
-export function createIfcOpenShellWorker( moduleUrl, { shimUrl, assets } = {} ) {
+export async function createIfcOpenShellWorker( moduleUrl, { shimUrl, assets } = {} ) {
 
 	if ( ! shimUrl ) throw new Error( 'convert worker needs a shim URL' );
 	if ( ! assets?.zstdModule || ! assets?.zstdWasm ) throw new Error( 'convert worker needs zstd paths' );
-	const importMap = readPageImportMap();
+	const importMap = await readPageImportMap();
 	const source = `
 		self.bonsaiAssets = ${ JSON.stringify( assets ) };
 		let installed = false;
