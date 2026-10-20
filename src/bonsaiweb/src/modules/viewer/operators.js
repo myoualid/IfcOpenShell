@@ -1,4 +1,5 @@
 import { Operator } from '../../ops.js';
+import { Federation } from '../../tool/federation.js';
 import { Viewer, viewer } from '../../tool/Viewer.js';
 
 // Undoable visibility commands capture their ids on the first execute, so
@@ -298,24 +299,28 @@ const ViewerSetCamera = command( 'viewer.set_camera', 'Set Camera', ( context, s
 const ViewerSetFederationUnit = command( 'viewer.set_federation_unit', 'Set Federation Unit', ( _context, unit ) => {
 
 	viewer.setFederationUnit( unit );
+	Federation.setUnit( unit );
 
 }, true );
 
 const ViewerSetFalseOrigin = command( 'viewer.set_false_origin', 'Set False Origin', ( _context, origin ) => {
 
 	viewer.setFalseOrigin( origin );
+	Federation.setOrigin( origin );
 
 }, true );
 
 const ViewerSetModelTransform = command( 'viewer.set_model_transform', 'Set Model Transform', ( _context, sourceId, transform ) => {
 
 	viewer.setModelTransform( sourceId, transform );
+	Federation.setTransform( sourceId, transform );
 
 }, true );
 
 const ViewerClearModelTransform = command( 'viewer.clear_model_transform', 'Clear Model Transform', ( _context, sourceId ) => {
 
 	viewer.clearModelTransform( sourceId );
+	Federation.clearTransform( sourceId );
 
 }, true );
 

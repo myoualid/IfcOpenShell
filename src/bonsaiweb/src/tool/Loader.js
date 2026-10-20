@@ -2,17 +2,30 @@
 // bookkeeping that goes with it (counts, progress, VRAM, names).
 
 import { createLogger } from '../util/log.js';
-import { readZipEntriesByExtension } from '../pipeline/zip.js';
+import { listZipEntries, readZipEntriesByExtension, readZipEntry } from '../pipeline/zip.js';
 import { resolveThread, THREADS } from '../pipeline/thread.js';
 import { createIfcOpenShellWorker, shimUrlFrom } from '../pipeline/worker-host.js';
 import { Ifc } from './Ifc.js';
 import { viewer } from './Viewer.js';
+import {
+	Federation,
+	bagFromEntries,
+	basename,
+	isProjectPath,
+	isStepBytes,
+	lookupFile,
+	parseIfcfed,
+	sidecarPath,
+	textOf,
+	viewerTransform,
+} from './federation.js';
 
 const log = createLogger( 'loader' );
 
 let ifcRuntime = null;
 // Startup values come from configuration.geometry via Loader.configure().
-const convertDefaults = { kernel: 'opencascade', thread: 'worker' };
+const DELIVERIES = [ 'stream', 'end' ];
+const convertDefaults = { kernel: 'opencascade', thread: 'worker', delivery: 'stream' };
 // Resolved from the bundle in build/, not from this source file. The pipeline
 // stays an unbundled source file.
 const PACKAGE_ROOT = new URL( '../', import.meta.url );
@@ -26,8 +39,10 @@ const sidecarCache = new Map();
 export class Loader {
 
 	// ---- Conversion settings ----------------------------------------
-	// { kernel, thread }. The load methods below also read these keys from
-	// their options/hooks argument to override them per call.
+	// { kernel, thread, delivery }. The load methods below also read these
+	// keys from their options/hooks argument to override them per call.
+	// delivery is 'stream' (parts as they finish) or 'end' (open the
+	// finished sidecar in one step).
 
 	static configure( options = {} ) {
 
@@ -49,7 +64,7 @@ export class Loader {
 	static _pickConvertOptions( options ) {
 
 		const picked = {};
-		for ( const key of [ 'kernel', 'thread' ] ) {
+		for ( const key of [ 'kernel', 'thread', 'delivery' ] ) {
 
 			if ( options?.[ key ] != null ) picked[ key ] = options[ key ];
 
@@ -59,15 +74,20 @@ export class Loader {
 
 	}
 
-	static _validateConvertOptions( { thread } ) {
+	static _validateConvertOptions( { thread, delivery } ) {
 
 		if ( ! THREADS.includes( thread ) ) resolveThread( thread );
+		if ( ! DELIVERIES.includes( delivery ) ) {
+
+			throw new Error( `unknown geometry delivery "${ delivery }" (expected ${ DELIVERIES.join( ' | ' ) })` );
+
+		}
 
 	}
 
-	// Pre-load the live-file schema and spawn the convert worker after
+	// Pre-load the live-file schemas and spawn the convert worker after
 	// appReady, so the first model does not pay those cold starts on the
-	// interaction path. One worker at a time: parallel plugin loads contend.
+	// interaction path. One plugin at a time: parallel loads contend.
 	static warmRuntimes() {
 
 		const idle = globalThis.requestIdleCallback
@@ -87,10 +107,11 @@ export class Loader {
 
 			const ifcopenshell = await import( 'ifcopenshell' );
 			ifcRuntime ??= await ifcopenshell.init();
-			if ( ! ifcRuntime.loadedPlugins().includes( 'schema:ifc4' ) ) {
+			for ( const schema of [ 'ifc4', 'ifc2x3' ] ) {
 
-				log.log( 'pre-warming main-thread schema:ifc4' );
-				await ifcRuntime.loadPlugin( 'schema', 'ifc4' );
+				if ( ifcRuntime.loadedPlugins().includes( `schema:${ schema }` ) ) continue;
+				log.log( `pre-warming main-thread schema:${ schema }` );
+				await ifcRuntime.loadPlugin( 'schema', schema );
 
 			}
 
@@ -156,6 +177,7 @@ export class Loader {
 
 		}
 
+		Loader._track( sourceId, name );
 		return sourceId;
 
 	}
@@ -201,6 +223,12 @@ export class Loader {
 
 	}
 
+	static canStream() {
+
+		return Loader._canStream();
+
+	}
+
 	static _canStream() {
 
 		// The JS helpers exist, but the current wasm does not export
@@ -219,6 +247,7 @@ export class Loader {
 		const sidecarName = Loader._sidecarName( ifcName );
 		const sourceId = viewer.beginStream( { name: sidecarName } );
 		Ifc.setView( sourceId, sidecarName );
+		Loader._track( sourceId, sidecarName );
 		return sourceId;
 
 	}
@@ -298,11 +327,44 @@ export class Loader {
 
 	}
 
+	static _track( sourceId, name ) {
+
+		if ( sourceId == null || Federation.isOpening() ) return;
+		Federation.ensureLocal( sourceId, name );
+
+	}
+
 	static clear() {
 
 		viewer?.clearScene();
 		Ifc.clear();
 		sidecarCache.clear();
+		if ( ! Federation.isOpening() ) Federation.reset();
+
+	}
+
+	// The first addFile of an empty scene calls clearScene, which drops a
+	// false origin set beforehand. Re-apply after every model is queued.
+	static _applyProjectPlacement() {
+
+		const project = Federation.get();
+		if ( ! viewer?.setFederationUnit ) return;
+		viewer.setFederationUnit( {
+			name: project.unit.name,
+			prefix: project.unit.prefix,
+		} );
+		viewer.setFalseOrigin( {
+			xyz: project.origin.xyz,
+			rzDeg: project.origin.rzDeg,
+		} );
+
+	}
+
+	static _applyProjectModel( sourceId ) {
+
+		const model = Federation.modelForSource( sourceId );
+		const xf = viewerTransform( model?.transform );
+		if ( xf ) viewer.setModelTransform( sourceId, xf );
 
 	}
 
@@ -328,7 +390,41 @@ export class Loader {
 
 			if ( lower.endsWith( '.zip' ) ) {
 
-				return Loader._dropZipBundle( file, hooks );
+				const zipBytes = new Uint8Array( await file.arrayBuffer() );
+				const entries = listZipEntries( zipBytes );
+				const named = [];
+				for ( const entry of entries ) {
+
+					if ( ! entry.name || entry.name.endsWith( '/' ) ) continue;
+					named.push( { path: entry.name, entry } );
+
+				}
+
+				const bag = bagFromEntries( named.map( ( row ) => ( { path: row.path, bytes: null } ) ) );
+				if ( bag.projects.length ) {
+
+					const files = [];
+					for ( const row of named ) {
+
+						files.push( {
+							path: row.path,
+							bytes: await readZipEntry( zipBytes, row.entry ),
+						} );
+
+					}
+
+					return Loader.openProjectBag( files, hooks, file.name );
+
+				}
+
+				return Loader._openModelZip( zipBytes, hooks, file.name );
+
+			}
+
+			if ( isProjectPath( file.name ) ) {
+
+				const bytes = new Uint8Array( await file.arrayBuffer() );
+				return Loader.openProjectBag( [ { path: file.name, bytes } ], hooks, file.name );
 
 			}
 
@@ -362,6 +458,8 @@ export class Loader {
 	}
 
 	// ---- Drag & drop -------------------------------------------------
+	// One file stays a model drop. A folder, or several files that include
+	// an `.ifcfed`, is a project bag: `{ entries: [{ path, bytes }], label }`.
 	static enableDragDrop( target, onFile ) {
 
 		const stop = ( e ) => {
@@ -385,20 +483,238 @@ export class Loader {
 		target.addEventListener( 'drop', async ( e ) => {
 
 			stop( e );
-			const file = e.dataTransfer?.files?.[ 0 ];
-			if ( ! file ) return;
-			onFile?.( file );
+			const payload = await Loader.collectDrop( e.dataTransfer );
+			if ( payload ) onFile?.( payload );
 
 		} );
 
 	}
 
-	// Handle a dropped `.zip` by looking inside for a (.ifc, .ifcview) pair.
-	// Fast path: the .ifcview streams straight into the viewer; the .ifc
-	// feeds openIfcFile so ifcopenshell can resolve picks to entities.
-	static async _dropZipBundle( zipFile, hooks ) {
+	static async collectDrop( dataTransfer ) {
 
-		const zipBytes = new Uint8Array( await zipFile.arrayBuffer() );
+		if ( ! dataTransfer ) return null;
+		const items = [ ...( dataTransfer.items ?? [] ) ];
+		const walked = [];
+		const canWalk = items.some( ( item ) => typeof item.webkitGetAsEntry === 'function' );
+		if ( canWalk ) {
+
+			for ( const item of items ) {
+
+				const entry = item.webkitGetAsEntry?.();
+				if ( ! entry ) continue;
+				await Loader._walkEntry( entry, '', walked );
+
+			}
+
+		}
+
+		const project = walked.filter( ( row ) => isProjectPath( row.path ) );
+		if ( project.length ) {
+
+			return {
+				entries: walked.map( ( row ) => ( { path: row.path, bytes: row.bytes } ) ),
+				label: basename( project[ 0 ].path ),
+			};
+
+		}
+
+		if ( walked.length === 1 ) return { file: walked[ 0 ].file };
+		if ( walked.length > 1 ) {
+
+			return {
+				files: walked
+					.filter( ( row ) => /\.(ifc|ifcview|zip)$/i.test( row.path ) )
+					.map( ( row ) => row.file ),
+			};
+
+		}
+
+		const file = dataTransfer.files?.[ 0 ];
+		return file ? { file } : null;
+
+	}
+
+	static async _walkEntry( entry, prefix, out ) {
+
+		if ( entry.isFile ) {
+
+			const file = await new Promise( ( resolve, reject ) => entry.file( resolve, reject ) );
+			out.push( {
+				path: `${ prefix }${ entry.name }`,
+				bytes: new Uint8Array( await file.arrayBuffer() ),
+				file,
+			} );
+			return;
+
+		}
+
+		if ( ! entry.isDirectory ) return;
+		const reader = entry.createReader();
+		const children = await Loader._readAllEntries( reader );
+		for ( const child of children ) {
+
+			await Loader._walkEntry( child, `${ prefix }${ entry.name }/`, out );
+
+		}
+
+	}
+
+	static _readAllEntries( reader ) {
+
+		return new Promise( ( resolve, reject ) => {
+
+			const all = [];
+			const next = () => {
+
+				reader.readEntries( ( batch ) => {
+
+					if ( ! batch.length ) resolve( all );
+					else {
+
+						all.push( ...batch );
+						next();
+
+					}
+
+				}, reject );
+
+			};
+
+			next();
+
+		} );
+
+	}
+
+	// A project bag is an `.ifcfed` plus the relative files it names. `entries`
+	// is `{ path, bytes }`. A zip and a dropped folder both end here.
+	static async openProjectBag( entries, hooks, label = 'project.ifcfed' ) {
+
+		const bag = bagFromEntries( entries );
+		if ( bag.projects.length === 0 ) {
+
+			throw new Error( `${ label } has no .ifcfed` );
+
+		}
+
+		if ( bag.projects.length > 1 ) {
+
+			throw new Error( `${ label } has more than one .ifcfed: ${ bag.projects.join( ', ' ) }` );
+
+		}
+
+		const fedPath = bag.projects[ 0 ];
+		const parsed = parseIfcfed( textOf( bag.files.get( fedPath ) ) );
+		if ( ! parsed.doc.name ) parsed.doc.name = basename( fedPath ).replace( /\.ifcfed$/i, '' );
+		const manifest = lookupFile( bag.files, `${ fedPath }.manifest` );
+		if ( manifest ) {
+
+			try {
+
+				parsed.doc.manifest = JSON.parse( textOf( manifest.bytes ) );
+
+			} catch ( err ) {
+
+				parsed.warnings.push( `Ignoring malformed manifest ${ fedPath }.manifest: ${ err.message }` );
+
+			}
+
+		}
+
+		Federation.beginOpen();
+		try {
+
+			Loader.clear();
+			Federation.adopt( parsed.doc );
+			Loader._applyProjectPlacement();
+			const loaded = [];
+			for ( const model of parsed.doc.models ) {
+
+				if ( model.connector !== 'local' ) {
+
+					parsed.warnings.push( `${ model.displayName }: connector '${ model.connector }' is not loaded in the browser.` );
+					continue;
+
+				}
+
+				Federation.expectModel();
+				let sourceId = null;
+				try {
+
+					sourceId = await Loader._loadBagModel( bag.files, model, hooks );
+
+				} catch ( err ) {
+
+					Federation.modelArrived( viewer );
+					throw err;
+
+				}
+
+				if ( sourceId == null ) {
+
+					Federation.modelArrived( viewer );
+					parsed.warnings.push( `${ model.displayName }: missing ${ model.path }.` );
+					continue;
+
+				}
+
+				Federation.bind( model.id, sourceId );
+				Loader._applyProjectPlacement();
+				Loader._applyProjectModel( sourceId );
+				loaded.push( sourceId );
+
+			}
+
+			if ( ! loaded.length && parsed.doc.homeView ) viewer?.setCamera?.( parsed.doc.homeView );
+			if ( parsed.warnings.length ) log.warn( parsed.warnings.join( '\n' ) );
+			return { sourceIds: loaded, warnings: parsed.warnings, name: parsed.doc.name };
+
+		} finally {
+
+			Federation.endOpen();
+
+		}
+
+	}
+
+	static async _loadBagModel( files, model, hooks ) {
+
+		const main = lookupFile( files, model.path );
+		if ( ! main ) return null;
+		const fileName = basename( model.path );
+		const step = isStepBytes( main.bytes );
+		if ( /\.ifcview$/i.test( model.path ) && ! step ) {
+
+			return Loader.addFile( new File( [ main.bytes ], fileName ), { replace: false } );
+
+		}
+
+		const ifcName = step && /\.ifcview$/i.test( fileName )
+			? fileName.replace( /\.ifcview$/i, '.ifc' )
+			: fileName;
+		const sideName = sidecarPath( ifcName );
+		const side = sideName && sideName.toLowerCase() !== model.path.toLowerCase()
+			? lookupFile( files, sideName )
+			: null;
+		if ( side && ! isStepBytes( side.bytes ) ) {
+
+			return Loader._pairLiveIfc( main.bytes, ifcName, side.bytes, hooks );
+
+		}
+
+		if ( step || /\.ifc$/i.test( model.path ) ) {
+
+			const live = main.bytes.slice();
+			return Loader._convertAndPair( main.bytes, live, ifcName, hooks );
+
+		}
+
+		return null;
+
+	}
+
+	// A zip with no `.ifcfed`: one `.ifc` / `.ifcview` pair, as before.
+	static async _openModelZip( zipBytes, hooks, zipName ) {
 
 		let found;
 		try {
@@ -407,7 +723,7 @@ export class Loader {
 
 		} catch ( err ) {
 
-			log.error( `zip read failed for ${ zipFile.name }:`, err );
+			log.error( `zip read failed for ${ zipName }:`, err );
 			throw err;
 
 		}
@@ -417,14 +733,14 @@ export class Loader {
 
 		if ( ! ifcview && ! ifcEntry ) {
 
-			throw new Error( `zip ${ zipFile.name } contains neither .ifcview nor .ifc` );
+			throw new Error( `zip ${ zipName } contains neither .ifcview nor .ifc` );
 
 		}
 
 		if ( ! ifcview && ifcEntry ) {
 
 			const ifcName = ifcEntry.entry.name.split( '/' ).pop();
-			log.log( `zip ${ zipFile.name } has only ${ ifcEntry.entry.name } — converting via worker` );
+			log.log( `zip ${ zipName } has only ${ ifcEntry.entry.name } — converting via worker` );
 			const liveBytes = ifcEntry.bytes.slice();
 			const existing = Loader._sourceIdBeside( ifcName );
 			if ( existing != null ) {
@@ -449,7 +765,7 @@ export class Loader {
 
 		}
 
-		log.log( `zip ${ zipFile.name } fast path: streaming ${ sidecarName } (${ ifcview.bytes.byteLength } bytes)` );
+		log.log( `zip ${ zipName } fast path: streaming ${ sidecarName } (${ ifcview.bytes.byteLength } bytes)` );
 		const sourceId = await Loader.addFile(
 			new File( [ ifcview.bytes ], sidecarName ), { replace: false },
 		);
@@ -460,7 +776,7 @@ export class Loader {
 
 		} else {
 
-			log.log( `zip ${ zipFile.name } has no .ifc — properties panel will stay sidecar-only` );
+			log.log( `zip ${ zipName } has no .ifc — properties panel will stay sidecar-only` );
 
 		}
 
@@ -581,6 +897,7 @@ export class Loader {
 		}
 
 		hooks?.onLiveIfc?.( { sourceId, name, file } );
+		Federation.ensureLocal( sourceId, name );
 		return file;
 
 	}
@@ -596,7 +913,14 @@ export class Loader {
 	static async _convertAndPair( bytes, liveBytes, ifcName, hooks ) {
 
 		const liveTask = Loader._parseLiveIfc( liveBytes, ifcName );
-		const streaming = Loader._canStream();
+		const { delivery } = Loader.convertOptions( hooks );
+		const streaming = delivery === 'stream' && Loader._canStream();
+		if ( delivery === 'stream' && ! streaming ) {
+
+			log.warn( 'streaming requested but the viewer has no stream API; opening geometry when conversion finishes' );
+
+		}
+
 		const sourceId = streaming ? Loader._startStream( ifcName ) : null;
 		const convertHooks = streaming
 			? {
