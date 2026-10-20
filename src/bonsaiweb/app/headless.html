@@ -8,8 +8,31 @@
 			html, body { margin: 0; height: 100%; background: #1a1a1a; }
 			body { position: relative; }
 		</style>
+		<script type="importmap">
+			{
+				"imports": {
+					"@aeco-dev/bonsaiweb": "../dist/bonsai.js",
+					"@aeco-dev/bonsaiweb/headless": "../dist/bonsai-headless.js",
+					"@aeco-dev/bonsaiweb/paths": "../dist/paths.js",
+					"@aeco-dev/gui": "../node_modules/@aeco-dev/gui/gui.js",
+					"@aeco-dev/layout": "../node_modules/@aeco-dev/layout/layout.js",
+					"ifcopenshell": "../node_modules/ifcopenshell/dist/index.js",
+					"ifcopenshell/geom": "../node_modules/ifcopenshell/dist/geom/index.js",
+					"ifcopenshell/util": "../node_modules/ifcopenshell/dist/util/index.js",
+					"@ifcopenshell/wasm": "../node_modules/@ifcopenshell/wasm/browser.js",
+					"@ifcopenshell/wasm/api": "../node_modules/@ifcopenshell/wasm/wasm/ifcopenshell_api.mjs"
+				}
+			}
+		</script>
 	</head>
 	<body>
-		<script type="module" src="./boot-headless.js"></script>
+		<script type="module">
+			import { start } from '@aeco-dev/bonsaiweb/headless';
+			import { BonsaiWebConfiguration } from './configuration/config.js';
+
+			window.bonsai = await start( document.body, BonsaiWebConfiguration );
+
+
+		</script>
 	</body>
 </html>

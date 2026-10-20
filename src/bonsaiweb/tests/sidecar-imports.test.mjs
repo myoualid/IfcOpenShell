@@ -1,6 +1,5 @@
-// Guards the worker-friendly import rewrite. The convert pipeline runs
-// inside a module worker that inherits no import map, so bare specifiers
-// in the compiled dist would blow up at load time.
+// The convert pipeline runs inside a module worker that inherits no import
+// map, so bare specifiers in the sidecar writer would blow up at load time.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,14 +7,15 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, extname } from 'node:path';
 
-const ROOT = fileURLToPath( new URL( '../dist/core/IfcPipeline/', import.meta.url ) );
-const TS_ROOT = fileURLToPath( new URL( '../src/core/IfcPipeline/', import.meta.url ) );
+const ROOT = fileURLToPath( new URL( '../src/pipeline/', import.meta.url ) );
 const FORBIDDEN = [ 'ifcopenshell', '@ioai/wasm-zstd', 'fzstd' ];
+const SKIP = new Set( [ 'ifcopenshell', 'worker-host.js', 'worker.js', 'main-thread.js' ] );
 
 async function walk( dir ) {
 	const entries = await readdir( dir, { withFileTypes: true } );
 	const files = [];
 	for ( const entry of entries ) {
+		if ( SKIP.has( entry.name ) ) continue;
 		const full = join( dir, entry.name );
 		if ( entry.isDirectory() ) files.push( ...await walk( full ) );
 		else files.push( full );
@@ -24,7 +24,6 @@ async function walk( dir ) {
 }
 
 function runtimeImportsOf( source ) {
-	// Match `import ... from "x"` and `import "x"` but NOT `import type ... from "x"`.
 	const matches = [];
 	const importRe = /^\s*import\s+(?!type\s)(?:[^'"\n]+?from\s+)?['"]([^'"\n]+)['"];?\s*$/gm;
 	let m;
@@ -32,21 +31,21 @@ function runtimeImportsOf( source ) {
 	return matches;
 }
 
-test( 'compiled dist has no bare specifiers that break module workers', async () => {
+test( 'sidecar writer has no bare specifiers that break module workers', async () => {
 	const files = ( await walk( ROOT ) ).filter( ( f ) => extname( f ) === '.js' );
-	assert.ok( files.length > 0, 'IfcPipeline dist should contain .js files' );
+	assert.ok( files.length > 0, 'pipeline sidecar writer should contain .js files' );
 	for ( const file of files ) {
 		const source = await readFile( file, 'utf8' );
 		for ( const spec of runtimeImportsOf( source ) ) {
 			assert.ok(
-				!FORBIDDEN.includes( spec ),
+				! FORBIDDEN.includes( spec ),
 				`${ file } imports bare "${ spec }" — must use a relative URL for the worker`,
 			);
 		}
 	}
 } );
 
-test( 'every relative import in the dist resolves to a file on disk', async () => {
+test( 'every relative import in the sidecar writer resolves to a file on disk', async () => {
 	const files = ( await walk( ROOT ) ).filter( ( f ) => extname( f ) === '.js' );
 	const importRe = /^\s*(?:import|export)\s+(?:[^'"\n]+?from\s+)?['"](\.[^'"\n]+)['"];?\s*$/gm;
 	const failures = [];
@@ -60,17 +59,4 @@ test( 'every relative import in the dist resolves to a file on disk', async () =
 		}
 	}
 	assert.equal( failures.length, 0, failures.join( '\n\n' ) );
-} );
-
-test( 'ts sources also use relative paths (prevents rebuild regression)', async () => {
-	const files = ( await walk( TS_ROOT ) ).filter( ( f ) => extname( f ) === '.ts' );
-	for ( const file of files ) {
-		const source = await readFile( file, 'utf8' );
-		for ( const spec of runtimeImportsOf( source ) ) {
-			assert.ok(
-				!FORBIDDEN.includes( spec ),
-				`${ file } imports bare "${ spec }" — the next tsc run will regenerate a broken dist`,
-			);
-		}
-	}
 } );

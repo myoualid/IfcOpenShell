@@ -8,7 +8,25 @@
 		<link rel="manifest" href="./manifest.json">
 		<link rel="shortcut icon" href="./files/favicon_white.ico" media="(prefers-color-scheme: dark)"/>
 		<link rel="shortcut icon" href="./files/favicon.ico" media="(prefers-color-scheme: light)" />
+		<link rel="stylesheet" href="../node_modules/@aeco-dev/gui/gui.css">
+		<link rel="stylesheet" href="../node_modules/@aeco-dev/layout/layout.css">
 		<link rel="stylesheet" href="./css/main.css">
+		<script type="importmap">
+			{
+				"imports": {
+					"@aeco-dev/bonsaiweb": "../dist/bonsai.js",
+					"@aeco-dev/bonsaiweb/headless": "../dist/bonsai-headless.js",
+					"@aeco-dev/bonsaiweb/paths": "../dist/paths.js",
+					"@aeco-dev/gui": "../node_modules/@aeco-dev/gui/gui.js",
+					"@aeco-dev/layout": "../node_modules/@aeco-dev/layout/layout.js",
+					"ifcopenshell": "../node_modules/ifcopenshell/dist/index.js",
+					"ifcopenshell/geom": "../node_modules/ifcopenshell/dist/geom/index.js",
+					"ifcopenshell/util": "../node_modules/ifcopenshell/dist/util/index.js",
+					"@ifcopenshell/wasm": "../node_modules/@ifcopenshell/wasm/browser.js",
+					"@ifcopenshell/wasm/api": "../node_modules/@ifcopenshell/wasm/wasm/ifcopenshell_api.mjs"
+				}
+			}
+		</script>
 	</head>
 	<body>
 		<script>
@@ -20,6 +38,21 @@
 				window.__bootError = reason && ( reason.stack || reason.message ) || String( reason );
 			} );
 		</script>
-		<script type="module" src="./boot.js"></script>
+		<script type="module" >
+			import { start } from '@aeco-dev/bonsaiweb';
+			import { BonsaiWebConfiguration } from './configuration/config.js';
+
+			const bonsai = await start( document.body, BonsaiWebConfiguration );
+
+			window.bonsai = bonsai;
+
+			bonsai.context.signals.appReady.add( ( payload ) => {
+
+				console.log( '[bonsai] appReady', payload );
+
+			} );
+
+
+		</script>
 	</body>
 </html>

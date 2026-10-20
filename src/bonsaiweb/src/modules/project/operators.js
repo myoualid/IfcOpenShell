@@ -4,8 +4,10 @@ import { Federation } from '../../tool/federation.js';
 import { Ifc, Loader } from '../../tool/index.js';
 import { Viewer, viewer } from '../../tool/Viewer.js';
 
-// Resolved from the bundle in build/, not from this source file.
-const SAMPLE_IFC_URL = new URL( '../app/files/ifc/window_wall.ifc', import.meta.url ).href;
+// Real file is app/files/ifc/window_wall.ifc. scripts/build.mjs copies it to
+// dist/window_wall.ifc. The name is split so esbuild leaves this URL
+// relative to the output file.
+const SAMPLE_IFC_URL = new URL( './window_wall.' + 'ifc', import.meta.url ).href;
 
 let nextProjectIndex = 1;
 

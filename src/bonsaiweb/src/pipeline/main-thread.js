@@ -1,5 +1,5 @@
-// Main-thread counterpart of worker.js. Loaded unbundled through fromRoot,
-// like the worker, so the pipeline stays out of the bundle.
+// Main-thread counterpart of worker.js. Built to dist/convert-main.js so the
+// host bundle can import it by URL without pulling the pipeline into itself.
 
 import { createLogger } from '../util/log.js';
 
