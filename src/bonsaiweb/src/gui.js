@@ -92,6 +92,7 @@ function bindRibbon( context, ribbon, layout ) {
 			if ( el && spec.workMode ) el.dataset.workMode = spec.workMode;
 			if ( el ) toggles.push( { el, workMode: spec.workMode } );
 			for ( const child of spec.children ?? [] ) bindNode( child );
+			if ( el ) packRibbonChecks( el );
 			return;
 
 		}
@@ -106,6 +107,20 @@ function bindRibbon( context, ribbon, layout ) {
 		}
 
 		if ( ! spec.operator ) return;
+
+		if ( spec.type === 'Search' ) {
+
+			bindRibbonSearch( el, spec, context );
+			return;
+
+		}
+
+		if ( spec.type === 'Checkbox' ) {
+
+			bindRibbonCheckbox( el, spec, context );
+			return;
+
+		}
 
 		if ( spec.type === 'Dropdown' ) {
 
@@ -184,6 +199,112 @@ function bindRibbon( context, ribbon, layout ) {
 
 	context.setWorkMode = setWorkMode;
 	setWorkMode( ribbon.defaultWorkMode );
+
+}
+
+/**
+ * Layout paints buttons and dropdowns. A Search node arrives as an empty
+ * shell; this fills it with a field. Enter selects that GlobalId.
+ */
+function bindRibbonSearch( el, spec, context ) {
+
+	const input = el instanceof HTMLInputElement ? el : document.createElement( 'input' );
+	if ( input.parentElement !== el ) {
+
+		input.type = 'search';
+		input.className = 'InputSearch';
+		input.autocomplete = 'off';
+		input.spellcheck = false;
+		el.classList.add( 'RibbonSearch' );
+		el.replaceChildren( input );
+
+	}
+
+	const placeholder = spec.placeholder || 'GlobalId';
+	input.placeholder = placeholder;
+	input.setAttribute( 'aria-label', placeholder );
+	input.title = 'Select by GlobalId';
+
+	const submit = () => {
+
+		const value = input.value.trim();
+		if ( ! value || ! spec.operator ) return;
+		void Promise.resolve( ops.execute( spec.operator, context, value ) ).then( ( result ) => {
+
+			if ( result?.status === 'CANCELLED' ) {
+
+				input.setCustomValidity( result.message || 'No element with that GlobalId' );
+				input.reportValidity();
+				return;
+
+			}
+
+			input.setCustomValidity( '' );
+
+		} );
+
+	};
+
+	input.addEventListener( 'keydown', ( event ) => {
+
+		event.stopPropagation();
+		if ( event.key !== 'Enter' ) return;
+		event.preventDefault();
+		submit();
+
+	} );
+	input.addEventListener( 'input', () => input.setCustomValidity( '' ) );
+	input.addEventListener( 'pointerdown', ( event ) => event.stopPropagation() );
+
+}
+
+/**
+ * Checkboxes in one group share a grid: two rows, then the next column.
+ * A third checkbox sits beside the first two instead of making the ribbon taller.
+ */
+function packRibbonChecks( group ) {
+
+	const items = group.querySelector( ':scope > .RibbonGroup-items' ) ?? group;
+	const checks = [ ...items.children ].filter( ( el ) => el.classList.contains( 'RibbonCheck' ) );
+	if ( checks.length === 0 ) return;
+
+	const pack = document.createElement( 'div' );
+	pack.className = 'RibbonChecks';
+	checks[ 0 ].before( pack );
+	for ( const check of checks ) pack.append( check );
+
+}
+
+/**
+ * Layout paints buttons and dropdowns. A Checkbox node arrives as an empty
+ * shell; this fills it with a labeled checkbox. The change passes the
+ * checked value to the operator.
+ */
+function bindRibbonCheckbox( el, spec, context ) {
+
+	const input = document.createElement( 'input' );
+	input.type = 'checkbox';
+	input.className = 'Checkbox';
+	input.setAttribute( 'aria-label', spec.name || '' );
+
+	const text = document.createElement( 'span' );
+	text.textContent = spec.name || '';
+
+	const label = document.createElement( 'label' );
+	label.append( input, text );
+
+	el.classList.add( 'RibbonCheck' );
+	el.replaceChildren( label );
+
+	input.addEventListener( 'change', () => {
+
+		const want = input.checked;
+		const result = ops.execute( spec.operator, context, want );
+		if ( result?.status === 'CANCELLED' ) input.checked = ! want;
+
+	} );
+	label.addEventListener( 'pointerdown', ( event ) => event.stopPropagation() );
+	input.addEventListener( 'keydown', ( event ) => event.stopPropagation() );
 
 }
 

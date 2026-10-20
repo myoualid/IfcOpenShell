@@ -5,6 +5,58 @@
 	display: none !important;
 }
 
+#RibbonBar .RibbonSearch {
+	align-self: center;
+	box-sizing: border-box;
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	padding: 0 4px;
+}
+
+#RibbonBar .RibbonSearch .InputSearch {
+	height: 1.7rem;
+	min-width: 11rem;
+	width: 13rem;
+}
+
+/* Two rows, then the next column. Tracks must be max-content: a flex/grid
+   item otherwise collapses to the 14px checkbox and the label paints over
+   the next column. */
+#RibbonBar .RibbonChecks {
+	align-content: center;
+	align-self: center;
+	column-gap: 0.75rem;
+	display: grid;
+	flex: 0 0 auto;
+	grid-auto-columns: max-content;
+	grid-auto-flow: column;
+	grid-template-rows: repeat(2, auto);
+	min-width: max-content;
+	row-gap: 0.2rem;
+	width: max-content;
+}
+
+#RibbonBar .RibbonCheck {
+	min-width: max-content;
+	width: max-content;
+}
+
+#RibbonBar .RibbonCheck label {
+	align-items: center;
+	color: var(--dui-color-text);
+	cursor: pointer;
+	display: flex;
+	gap: 0.35rem;
+	font-family: var(--dui-font-ui);
+	font-size: var(--dui-font-size-sm);
+	font-weight: 500;
+	line-height: 1.2;
+	min-width: max-content;
+	user-select: none;
+	white-space: nowrap;
+}
+
 html,
 body {
 	height: 100%;
@@ -250,6 +302,20 @@ body {
 }
 
 #viewer-tool-hint[hidden] {
+	display: none;
+}
+
+#measure-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 6;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	overflow: visible;
+}
+
+#measure-overlay[hidden] {
 	display: none;
 }
 
