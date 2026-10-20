@@ -8,28 +8,9 @@
 		<link rel="manifest" href="./manifest.json">
 		<link rel="shortcut icon" href="./files/favicon_white.ico" media="(prefers-color-scheme: dark)"/>
 		<link rel="shortcut icon" href="./files/favicon.ico" media="(prefers-color-scheme: light)" />
-		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/gui@latest/gui.css">
-		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/layout@latest/layout.css">
 		<link rel="stylesheet" href="./css/main.css">
-		<script type="importmap">
-			{
-				"imports": {
-					"ifcopenshell": "https://cdn.jsdelivr.net/npm/ifcopenshell@latest/dist/index.js",
-					"ifcopenshell/geom": "https://cdn.jsdelivr.net/npm/ifcopenshell@latest/dist/geom/index.js",
-					"ifcopenshell/util": "https://cdn.jsdelivr.net/npm/ifcopenshell@latest/dist/util/index.js",
-					"@ifcopenshell/wasm": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@latest/browser.js",
-					"@ifcopenshell/wasm/api": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@latest/wasm/ifcopenshell_api.mjs",
-					"@aeco-dev/gui": "https://cdn.jsdelivr.net/npm/@aeco-dev/gui@latest/gui.js",
-					"@aeco-dev/layout": "https://cdn.jsdelivr.net/npm/@aeco-dev/layout@latest/layout.js",
-					"@ioai/wasm-zstd": "https://cdn.jsdelivr.net/npm/@ioai/wasm-zstd@latest/dist/index.js",
-					"fzstd": "https://cdn.jsdelivr.net/npm/fzstd@latest/esm/index.mjs",
-					"ifcviewer": "../src/viewer/host.js"
-				}
-			}
-		</script>
 	</head>
 	<body>
-		<script src="../vendor/@ifcopenshell/viewer/IfcViewerWeb.js"></script>
 		<script>
 			window.addEventListener( "error", ( event ) => {
 				window.__bootError = event.message + " @ " + event.filename + ":" + event.lineno;
@@ -39,18 +20,6 @@
 				window.__bootError = reason && ( reason.stack || reason.message ) || String( reason );
 			} );
 		</script>
-		<script type="module">
-			import * as BonsaiWeb from "../build/bonsai.js";
-			import { BonsaiWebConfiguration } from "./configuration/config.js";
-
-			window.URL = window.URL || window.webkitURL;
-			window.BlobBuilder = window.BlobBuilder || window.WebKitBlobBuilder || window.MozBlobBuilder;
-
-			const bonsai = await BonsaiWeb.start( document.body, BonsaiWebConfiguration );
-			window.bonsai = bonsai;
-			bonsai.signals.appReady.add( ( payload ) => {
-				console.log( "[bonsai] appReady", payload );
-			} );
-		</script>
+		<script type="module" src="./boot.js"></script>
 	</body>
 </html>

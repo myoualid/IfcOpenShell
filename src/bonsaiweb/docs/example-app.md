@@ -26,19 +26,19 @@ The import map in that page points `ifcopenshell` at the jsDelivr build, and poi
 |------|--------|--------|
 | `config.ui.js` | `WorldComponent`, `layoutConfig` | The widget tree and the sizes of the four workspaces |
 | `config.modules.js` | `CoreModules` | Which modules activate, in order |
-| `config.geometry.js` | `GeometryConfig` | Convert engine, IfcOpenShell kernel, and worker or main thread |
+| `config.geometry.js` | `GeometryConfig` | IfcOpenShell kernel, and worker or main thread |
 | `config.ribbon.js` | `workModes`, `ribbonButtons`, `defaultWorkMode` | Header tabs and the buttons on the ribbon |
 
 `GeometryConfig` sets the startup defaults for converting `.ifc` to `.ifcview`:
 
 ```js
-{ engine: "ifc-lite", kernel: "opencascade", thread: "worker" }
+{ kernel: "manifold", thread: "auto" }
 ```
 
-`engine` is `ifc-lite` or `ifcopenshell`. `kernel` is the IfcOpenShell geometry plugin (`opencascade`, `manifold`, `passthrough`, …) and is ignored by ifc-lite. `thread` is `worker` or `main`. `project.open_file`, `load.ifc`, and `load.sample.ifc` take the same keys as an options argument to override them for one load, so a ribbon button can pin an engine:
+`kernel` is the IfcOpenShell geometry plugin (`opencascade`, `manifold`, `passthrough`, …). `thread` is `auto`, `worker`, or `main`. `auto` and `worker` convert in a worker at every file size; `main` is an explicit opt-in. `project.open_file`, `load.ifc`, and `load.sample.ifc` take the same keys as an options argument to override them for one load, so a ribbon button can pin a kernel:
 
 ```js
-button( "RB_LoadIfcOcc", "Load (IfcOpenShell)", "add", "Project", "project.open_file", [ { engine: "ifcopenshell", kernel: "opencascade" } ] )
+button( "RB_LoadIfcOcc", "Load (OpenCascade)", "add", "Project", "project.open_file", [ { kernel: "opencascade" } ] )
 ```
 
 At runtime, `bonsai.tool.Loader.configure( { thread: "main" } )` changes the defaults for later loads.
@@ -85,7 +85,6 @@ The header starts on the **Project** work mode. A button with a `workMode` is sh
 | Project | Load IFC, Load sample |
 | Navigate | Front, back, left, right, top, bottom, view all, frame selection, and the Blender, Rhino, Revit, and web navigation presets |
 | Viewer | Hide and show selection, show all, hide all, isolate, x-ray, clear colours, selection outline, clear selection |
-| Hack | Show terminal, new session, clear |
 
 A button is data:
 
@@ -108,7 +107,7 @@ Panels is special. It has no `operator`. After modules activate, `bindPanelDialo
 - In edit mode it lists the entity class, predefined type, scalar attributes, type and container, property sets, and quantity sets.
 - In view mode, or while conversion is still opening the live file, it shows the type, name, and GlobalId stored on the sidecar pick.
 
-**Bottom, Terminal.** A JavaScript prompt (`bonsai >`) with sessions, history, and completions. The Hack ribbon shows it, starts a session, or clears output. Suggested commands read loaded models and the selection through the host.
+**Bottom, Terminal.** A JavaScript prompt (`bonsai >`) with sessions, history, and completions. The header holds the session tabs and icons to create, clear, and close a session. A side column holds snippets in two scrollable tabs: `bonsai.tool` queries the model and selection, and `bonsai.ops` runs operators (`bonsai.ops.execute( name, ...args )` fills in the context). Open or close the panel from Panels.
 
 **Viewport.** `#viewer-canvas` fills the Viewport region. Orbit uses the Blender preset until a Navigate button changes it. Dropping a file on the viewport loads it. Drops anywhere else on the window are cancelled so the browser does not navigate away.
 
@@ -123,7 +122,7 @@ Load sample runs the `load.sample.ifc` operator, which fetches `app/files/ifc/wi
 For a `.ifc` that is not already in the scene, the sequence is:
 
 1. `modelLoadStarted` fires with the filename. The footer and the boot log follow the convert phases.
-2. The bytes are tessellated into a `.ifcview` with the engine, kernel, and thread from `GeometryConfig` (by default ifc-lite in a worker), unless the operator was given overrides.
+2. The bytes are tessellated into a `.ifcview` with the kernel and thread from `GeometryConfig` (by default manifold in a worker), unless the operator was given overrides.
 3. The browser asks where to save the sidecar (`showSaveFilePicker`, or a download link). Cancelling the save still streams the sidecar that was just built.
 4. The viewer loads the sidecar. `modelLoaded` fires. The Project panel gains a row, in view mode.
 5. The main thread opens the same bytes with IfcOpenShell, after loading the schema plugin named in the file header. `liveIfcReady` fires. The model switches to edit mode, and the spatial tree and properties panel fill in.
@@ -140,7 +139,7 @@ Pressing **Front**:
 2. The click handler calls `bonsai.ops.execute("viewer.standard_view", "FRONT")`.
 3. The viewer module registered that operator at boot. `poll()` requires a live viewer.
 4. The operator is not `undoable`, so it runs without touching the undo stack.
-5. `Camera.standardView` maps `"FRONT"` to the viewer's view id and applies it.
+5. The operator maps `"FRONT"` to the viewer's view id and calls `viewer.setStandardView`.
 6. `standardViewSet` fires with that id.
 
 Pressing **Hide** is the path that records history. `hide.selection` stores the selected ids, hides them, and can undo with Ctrl+Z.

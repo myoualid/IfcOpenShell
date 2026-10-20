@@ -12,7 +12,8 @@
   "dependencies": {
     "@aeco-dev/gui": "^0.2.2",
     "@aeco-dev/layout": "^0.2.2",
-    "@ifcopenshell-js/web": "file:../../packages/ifcopenshell-js"
+    "@ifcopenshell-js/web": "file:../../packages/ifcopenshell-js",
+    "signals": "1.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

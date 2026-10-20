@@ -6,8 +6,18 @@
 // null in view mode. `globalId()` reads the selected element's GlobalId
 // in both modes — the viewer pick carries it, and so does the live entity.
 
-import * as ifcopenshell from 'ifcopenshell';
-import { getStore } from '../session/store.js';
+// 'ifcopenshell' is imported where it is used, never at the top: a static
+// import would hold the session (and the GUI) until its CDN graph loads.
+import { getStore } from '../context/store.js';
+
+let ifcopenshellMod = null;
+
+async function ifcopenshellApi() {
+
+	ifcopenshellMod ??= await import( 'ifcopenshell' );
+	return ifcopenshellMod;
+
+}
 
 const STD64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const IFC64 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
@@ -47,6 +57,7 @@ function named( file, ifcClass, name ) {
 
 async function ensureSchema( schema ) {
 
+	const ifcopenshell = await ifcopenshellApi();
 	const runtime = await ifcopenshell.init();
 	const id = schema.toLowerCase();
 	if ( ! runtime.loadedPlugins().includes( `schema:${ id }` ) ) {
@@ -92,12 +103,6 @@ export class Ifc {
 	static EDIT = 'edit';
 	static VIEW = 'view';
 
-	static all() {
-
-		return getStore().models;
-
-	}
-
 	// The model record. With no key, the selected element's model, or the
 	// most recently opened model when nothing is selected. A key may be a
 	// filename (.ifc or .ifcview), a sourceId, or a viewer pick.
@@ -131,37 +136,12 @@ export class Ifc {
 
 	}
 
-	// 'edit', 'view', or null. Same key rules as get().
-	static mode( key ) {
-
-		return Ifc.get( key )?.mode ?? null;
-
-	}
-
-	static isEdit( key ) {
-
-		return Ifc.mode( key ) === Ifc.EDIT;
-
-	}
-	static isView( key ) {
-
-		return Ifc.mode( key ) === Ifc.VIEW;
-
-	}
-
 	// The live ifcopenshell file. Null in view mode and when nothing matches.
 	static file( key ) {
 
 		const model = Ifc.get( key );
 		if ( model?.mode !== Ifc.EDIT ) return null;
 		return model.file ?? null;
-
-	}
-
-	static has( key ) {
-
-		if ( key === undefined ) return getStore().models.length > 0;
-		return Ifc.get( key ) != null;
 
 	}
 
@@ -253,6 +233,7 @@ export class Ifc {
 	// The caller keeps the file and registers it with setEdit.
 	static async createBlank( name = 'Project' ) {
 
+		const ifcopenshell = await ifcopenshellApi();
 		await ensureSchema( 'IFC4' );
 		const file = new ifcopenshell.File( 'IFC4' );
 

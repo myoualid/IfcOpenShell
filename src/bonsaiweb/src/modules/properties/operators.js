@@ -1,5 +1,7 @@
-import { Operator } from '../../ops/Operator.js';
+import { Operator } from '../../ops.js';
+import { getContainer, getPredefinedType, getRelationships, getType } from '../../tool/elementQuery.js';
 import { Element, Ifc, Pset } from '../../tool/index.js';
+import { viewer } from '../../tool/Viewer.js';
 
 function rowsFromSet( sets ) {
 
@@ -19,6 +21,21 @@ function rowsFromSet( sets ) {
 	}
 
 	return result;
+
+}
+
+function selectedElement( pick ) {
+
+	if ( ! pick?.objectId ) return null;
+	try {
+
+		return viewer.getSelectedObjects().find( ( row ) => row.objectId === pick.objectId ) ?? null;
+
+	} catch {
+
+		return null;
+
+	}
 
 }
 
@@ -44,13 +61,14 @@ class PropertiesForPick extends Operator {
 			quantity_sets: [],
 		};
 
+		if ( ! this.pick?.objectId && ! this.pick?.guid ) return { status: 'FINISHED', result: state };
 		const selection = Ifc.entity( this.pick );
-		if ( ! this.pick?.objectId ) return { status: 'FINISHED', result: state };
+		const row = this.pick?.objectId ? selectedElement( this.pick ) : null;
 
 		if ( selection ) {
 
 			state.entity.entity_class = selection.isA();
-			const predefinedType = Element.getPredefinedType( selection );
+			const predefinedType = getPredefinedType( selection );
 			if ( predefinedType ) state.entity.predefined_type = predefinedType;
 
 			for ( const [ name, value ] of Element.getAttributes( selection ) ) {
@@ -59,24 +77,41 @@ class PropertiesForPick extends Operator {
 
 			}
 
-			const type = Element.getType( selection );
-			if ( type ) state.relationships.push( { key: 'Type', value: Element.displayName( type ) } );
+			state.relationships = getRelationships( selection );
 
-			const container = Element.getContainer( selection );
-			if ( container ) state.relationships.push( { key: 'Container', value: Element.displayName( container ) } );
+			const type = getType( selection );
+			if ( type && ! state.relationships.some( ( row ) => row.key === 'Type' ) ) {
+
+				state.relationships.push( { key: 'Type', value: Element.displayName( type ) } );
+
+			}
+
+			const container = getContainer( selection );
+			const containerName = container ? Element.displayName( container ) : '';
+			if ( containerName && ! state.relationships.some( ( row ) => row.key === 'Container' && row.value === containerName ) ) {
+
+				state.relationships.push( { key: 'Container', value: containerName } );
+
+			}
 
 			state.property_sets = rowsFromSet( Pset.getPsets( selection, { psetsOnly: true } ) );
 			state.quantity_sets = rowsFromSet( Pset.getPsets( selection, { qtosOnly: true } ) );
 
 		} else {
 
-			if ( this.pick.type ) state.entity.entity_class = this.pick.type;
+			// No live IFC. The v19 element row is {objectId, guid, name, type,
+			// model, sourceId}; `type` is the IFC class. A click does not
+			// carry name or class — getSelectedObjects() does, once the
+			// element table has been fetched.
+			const ifcClass = row?.type || this.pick.type;
+			const name = row?.name || this.pick.name;
+			if ( ifcClass ) state.entity.entity_class = ifcClass;
 			state.entity.predefined_type = 'N/A';
-			if ( this.pick.name ) state.attributes.push( { key: 'Name', value: this.pick.name } );
+			if ( name ) state.attributes.push( { key: 'Name', value: name } );
 
 		}
 
-		const guid = Ifc.globalId( this.pick );
+		const guid = Ifc.globalId( this.pick ) || row?.guid;
 		if ( guid && ! state.attributes.some( ( row ) => row.key === 'GlobalId' ) ) {
 
 			state.attributes.unshift( { key: 'GlobalId', value: guid } );

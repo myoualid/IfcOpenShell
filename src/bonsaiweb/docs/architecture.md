@@ -2,49 +2,49 @@
 
 Bonsai Web loads an IFC model, draws it in a WebGPU viewer, and lets panels and ribbon buttons query and change that model. The shape follows Bonsai in Blender: tools hold state, operators perform actions, and modules contribute both.
 
-`start()` in `src/index.js` is the GUI host. The page passes `BonsaiWebConfiguration` from `app/configuration/config.js`; that folder is not part of the bundle, so edits apply on refresh. `start()` in `src/headless.js` is the viewer host: same session and operators, no shell. `window.bonsai` is assigned by the page after `start()` returns.
+`src/index.js` is `Bonsai`, the session, and its `start()` is the headless host: viewer and operators, no shell. `start()` in `src/gui.js` is the GUI host: it builds the shell and wraps the same `Bonsai`. The page passes `BonsaiWebConfiguration` from `app/configuration/config.js`; that folder is not part of the bundle, so edits apply on refresh. `window.bonsai` is assigned by the page after `start()` returns.
 
 ```text
-app/index.html          full GUI  → build/bonsai.js
-app/headless.html       viewer    → build/bonsai-headless.js
-        │
-        ▼
-src/headless.js       re-exports boot/headless.js
-src/index.js          re-exports boot/gui.js
-boot/                 shared runtime, GUI start, headless start
-session/              Bonsai, signals, per-session store, viewer attach
-  modules/registry.js    registerOperators. Does not import panels.
-  modules/ops.js         module id → operator classes. Does not import panels.
-  modules/*/operators.js operator classes for one module
-  modules/ui.js          panel classes for the GUI host. Not imported by headless.
-  modules/*/ui.js        panel classes. Not imported by headless.
-  ops/                Operator, registry, undo history, keyboard
-  tool/               Ifc, Loader, Scene, Camera, Controls, Element, Pset, Terminal
-  ui/                 shell, ribbon, panel dialog, progress
-  pipeline/           convert workers, ifc-lite converter, zip
-  viewer/host.js      IfcViewer wrapper
-  util/log.js         timestamped logger
-  root.js             package-root URLs (stays here; see Bundles)
-vendor/               gui2 layout, IfcViewer, ifc-lite, zstd, CodeMirror
+app/index.html          full GUI  → build/bonsai.js           (src/gui.js)
+app/headless.html       viewer    → build/bonsai-headless.js  (src/index.js)
+
+src/
+  index.js              Bonsai: context, operator registration, viewer boot. Headless start().
+  gui.js                GUI start(): shell, ribbon, panel dialog, progress bar
+  ops.js                Operator, Ops, the ops singleton, Ctrl+Z / Ctrl+Y
+  context/
+    signals.js          the signal bus, plus the boot/load logger
+    store.js            models and selection
+  modules/
+    operators.js        module id → operator classes, registerOperators. Does not import panels.
+    ui.js               panel classes for the GUI host. Not imported by headless.
+    <id>/operators.js   operator classes for one module
+    <id>/ui.js          panel classes for one module
+  tool/                 Ifc, Loader, Element, Pset, Terminal, Viewer (IfcViewer host)
+  pipeline/             convert worker, zip
+  util/log.js           timestamped logger
+vendor/                 gitignored local copies; the page loads its dependencies from jsDelivr
 ```
 
 ## Boot
 
-`start(container, configuration)` on the GUI entry (`src/index.js`) runs in this order:
+`start(container, configuration)` on the GUI entry (`src/gui.js`) builds chrome first, then starts the viewer in the background:
 
-1. **Shell.** `mountShell` builds the gui2 `World` from `config.ui` and wraps it in a `Layout`. The viewport and footer elements exist before anything else loads, so progress has somewhere to land.
-2. **Dependencies.** `loadDependencies({ gui: true })` reads `src/dependencies.json` and appends styles and classic scripts, including `signals.min.js` and CodeMirror. Operators and the signal bus both need `globalThis.signals` and `globalThis.Signal`.
-3. **IfcOpenShell.** `ifcopenshell.init()` on the main thread. This instance is for opening live IFC files. Geometry conversion uses a separate instance inside a worker.
-4. **Host object.** `new Bonsai(container)` creates `ops`, `store`, and the signal map. The shell's viewport, world, and layout are stored on `bonsai.app`. Panels receive this object as `context`.
-5. **Input and chrome.** Keyboard shortcuts, the ribbon, and the footer progress bar bind to that object.
-6. **Viewer.** `create()` appends `#viewer-canvas` to the viewport and starts IfcViewer. A `ResizeObserver` reports the viewport's CSS box on `viewportResized`. The viewer samples the canvas itself; the host does not write `canvas.width` or `canvas.height`. See [viewer-redraw.md](viewer-redraw.md). `attachViewer` does not import feature operators.
-7. **Operators.** `registerOperators` walks `config.app.CoreModules`, registers each module's operator classes, and lets `project` and `viewer` subscribe to loader and scene callbacks. Drag-and-drop on the viewport runs `LoadIfc`. This import graph does not include panel widgets.
-8. **Panels.** `mountModuleUi` mounts the UI entry for each active module that has one. The Panels ribbon button lists those panels.
-9. **Ready.** `appReady` fires. From here the page can load a file.
+1. **Shell.** `mountShell` builds the gui2 `World` from `config.ui` and wraps it in a `Layout`.
+2. **Session.** `new Bonsai(container, configuration, viewport)` applies `config.geometry`, builds `context = { signals, store, dom }`, registers operators into the ops singleton, binds the keyboard, and starts the session watcher. js-signals is bundled, and `ifcopenshell` is only ever imported dynamically, so nothing here waits on a download.
+3. **Chrome.** `bindRibbon` and `mountUi` take `bonsai.context`. Panels are constructed with `{ context }`. Progress listens on `context.signals`.
 
-`start(container)` on the headless entry (`src/headless.js`) skips the shell, ribbon, progress bar, CodeMirror, and `mountModuleUi`. It still loads signals, initializes IfcOpenShell, creates the viewer in the container you pass, and calls `registerOperators` with no config so every built-in operator is registered. Terminal commands stay registered; their `poll()` returns false until a terminal panel exists.
+`void bonsai.boot()` then runs without blocking the return:
 
-`destroy()` disconnects the resize observer, unbinds Scene and Loader, removes the canvas, and drops the viewer reference. IfcViewer has no teardown method of its own.
+4. **Viewer.** `create()` appends `#viewer-canvas` to the viewport and starts IfcViewer. Picks, selection changes and model loads call `ops.execute(name, context, ...)`. Drag-and-drop is wired. `viewerReady` fires. The viewer samples the canvas itself; the host does not write `canvas.width` or `canvas.height`. See [viewer-redraw.md](viewer-redraw.md).
+5. **IfcOpenShell.** `ifcopenshell.init()` on the main thread. This instance is for opening live IFC files. Geometry conversion uses a separate instance inside a worker.
+6. **Ready.** `appReady` fires.
+
+Operators that need the viewer return false from `poll()` until step 4, so a ribbon click during boot does nothing rather than throwing.
+
+`start(container)` on the headless entry (`src/index.js`) creates `Bonsai` with the container as viewport and awaits `boot()`, with no chrome. With no config, every built-in operator is registered. Terminal commands stay registered; their `poll()` returns false until a terminal panel exists.
+
+`destroy()` disconnects the resize observer, removes the canvas, and drops the viewer reference. IfcViewer has no teardown method of its own; its listeners go with it.
 
 ## Two copies of a model
 
@@ -65,7 +65,7 @@ A loaded model is geometry plus, when possible, a live IFC file.
 | `.zip` | A pair of `.ifc` and `.ifcview` inside the archive streams the sidecar and opens the IFC. An archive with only `.ifc` goes through conversion. |
 | URL | `loadIfcUrl` fetches, converts, and pairs, with no save prompt. The sample button uses this. |
 
-Conversion settings come from `configuration.geometry` (`app/configuration/config.geometry.js`), applied at boot with `Loader.configure()`. `engine: 'ifc-lite'` uses `src/pipeline/worker-lite.js`; `engine: 'ifcopenshell'` uses `src/pipeline/ifcopenshell/convert.js`, which tessellates with the import-mapped CDN `ifcopenshell` package the same way `threejs.html` does, with `kernel` as the geometry library. That package resolves its `@ifcopenshell/wasm` imports through the page import map, so it only runs with `thread: 'main'`; asking for a worker fails with an error. `thread: 'main'` runs the pipelines through `src/pipeline/main-thread.js` instead of a worker. Load operators and the `Loader` load methods accept `{ engine, kernel, thread }` to override the defaults per call. Both paths zstd-compress the sidecar and report progress that the host re-dispatches on `modelLoadStarted`.
+Conversion settings come from `configuration.geometry` (`app/configuration/config.geometry.js`), applied at boot with `Loader.configure()`. Conversion uses `src/pipeline/ifcopenshell/convert.js`, the same `ifcopenshell` package and geometry settings as `threejs.html`, with `kernel` as the geometry library. `thread: 'auto'` and `thread: 'worker'` run the `.ifc` → `.ifcview` conversion in a worker at every file size. A single `iterator.next()` can block for 100 ms or more, and a kernel crash in the worker cannot poison the main-thread runtime that holds live files. That worker is a classic worker: it installs the page import map with es-module-shims from jsDelivr, then loads the wasm glue from the same URLs the page already fetched. The worker tessellation loop does not yield. `thread: 'main'` is an explicit opt-in and yields every 30 ms so the page can paint. `numThreads` is 1 unless the ifcopenshell runtime reports `threadsSupported` (a pthreads build) and the page is cross-origin isolated; only then does it follow the core count, up to 8. The current wasm build has no pthreads, so explicit `numThreads` values are clamped to 1 as well. Load operators and `Loader.benchmark(file, options)` accept `{ kernel, thread, numThreads, settings }`. Headless: `await bonsai.ops.execute('project.benchmark', bonsai.context, file, { kernel: 'manifold' })`. Both paths zstd-compress the sidecar and report progress that the host re-dispatches on `modelLoadStarted`.
 
 `openIfcFile` reads `FILE_SCHEMA` from the first 4KB, loads that schema plugin if it is missing, then calls `ifcopenshell.open`. On success it promotes the source to edit mode and fires `liveIfcReady`.
 
@@ -73,7 +73,7 @@ Models are additive. Passing `{ replace: true }` to `addFile`, or calling `Loade
 
 ## The model record
 
-`context.js` exports a module-level `store`:
+`src/context/store.js` exports a module-level `Store`:
 
 ```js
 { models: [], selection: null }
@@ -86,11 +86,13 @@ Each entry in `store.models` is `{ sourceId, name, viewName, mode, file }`.
 
 `tool.Ifc` is the API over that store. `get()` resolves the current selection, the most recently opened model, a filename, a `sourceId`, or a viewer pick. `file()` and `entity()` return null in view mode. `globalId()` works in both modes because the viewer pick's `guid` is the IFC GlobalId.
 
-`bindStore()` listens to that same bus and keeps `store.selection` in step: `objectPicked` with an `objectId` stores the pick, `liveIfcReady` dispatches that pick again so a selection made during conversion fills in once the file opens, and `modelCleared` clears it. A click that clears the viewer selection does not reset the properties panel. `modelCleared` does.
+`listenStore()` listens to the signal bus and keeps `store.selection` in step: `objectPicked` with an `objectId` stores the pick, `liveIfcReady` dispatches that pick again so a selection made during conversion fills in once the file opens, and `modelCleared` clears it. A click that clears the viewer selection does not reset the properties panel. `modelCleared` does.
 
-## Signals
+## Context and signals
 
-`addSignals()` builds one bus on `bonsai.signals`. Tools dispatch these. Panels subscribe here, the same way a bonsai-web panel uses `context.signals`. The UI constructor receives the session as `context`, so that subscription is `context.signals.objectPicked.add(...)`.
+`context` is `{ signals, store, dom: { container, viewport } }`. Operators and panels receive that object. The live viewer and `tool` live on `Bonsai` (`bonsai.viewer`, `bonsai.tool`); `bonsai.ops` is a console convenience that points at the ops singleton.
+
+`Signals` is the session bus. Tools and operators dispatch on it. Panels subscribe with `context.signals.objectPicked.add(...)`.
 
 | Group | Signals |
 |-------|---------|
@@ -100,20 +102,17 @@ Each entry in `store.models` is `{ sourceId, name, viewName, mode, file }`.
 | Camera and controls | `cameraChanged`, `standardViewSet`, `navPresetChanged` |
 | History | `historyChanged` |
 
-`bonsai.addSignal(name)` adds a `Signal` if that name is missing. `start()` also attaches a logger to every signal so boot and load phases print timings. Panels and tools share this bus.
+`bonsai.addSignal(name)` adds a `Signal` if that name is missing. Boot also attaches a logger to every signal so boot and load phases print timings.
 
 ## Tools
 
-`bonsai.tool` is a namespace of classes whose public API is static methods, the same shape as `bonsai.tool` in Python. The live viewer is `bonsai.viewer`. Tools reach it through the singleton in `viewer.js`.
+`bonsai.tool` is a namespace of classes whose public API is static methods, the same shape as `bonsai.tool` in Python. Selection, visibility, colour, camera, and navigation call `bonsai.viewer` directly.
 
 | Tool | Role |
 |------|------|
-| `Loader` | Add, convert, pair, cache, and clear sources. Drag-and-drop. |
+| `Loader` | Add, convert, pair, and clear sources. Drag-and-drop. |
 | `Ifc` | The model list, view versus edit, the live file, the entity for a pick. |
-| `Scene` | Selection, visibility, colour, x-ray, outline, federation placement. Forwards viewer pick and selection callbacks onto signals. |
-| `Camera` | Orbit state, the six standard views, view-all, frame-selection. |
-| `Controls` | Navigation presets: `blender`, `rhino`, `revit`, `web`. |
-| `Element` | Scalar attributes, display name, type, predefined type, spatial container, spatial decomposition. |
+| `Element` | Scalar attributes and display names. |
 | `Pset` | Property sets and quantity sets, with type inheritance, formatted for a table cell. |
 | `Terminal` | In-memory JavaScript REPL sessions. |
 
@@ -128,13 +127,15 @@ An operator is a class extending `Operator`:
 - `execute()` does the work.
 - `undo()` reverses it. Only classes with `static undoable = true` are recorded.
 
-`ops.execute(name, ...args)` constructs the registered class with the bonsai object and those args, then calls `run()`. `new SomeOperator(bonsai, ...args).run()` does the same without the name lookup. `run()` returns `{ status: 'CANCELLED' }` when `poll()` fails; otherwise it returns whatever `execute()` returns, unchanged.
+`ops` is a module singleton (`src/ops.js`). UI panels and operators import it; it is not stored on `context`.
+
+`ops.execute(name, context, ...args)` looks up the class, constructs it with `context` and those args, runs `poll()`, then `execute()`. It returns `{ status: 'CANCELLED' }` when `poll()` fails; otherwise it returns whatever `execute()` returns, unchanged. That is the only entry point.
 
 Operators are not recorded by default. Camera, navigation, selection and query operators leave the flag off. Undoable commands, such as `hide.selection`, capture the affected ids on their first `execute`, restore them in `undo`, and reuse them when `execute` runs again for redo. An undoable command is recorded after `execute` returns, unless it returned `{ status: 'CANCELLED' }` or threw. An async `execute` is recorded when it starts. History lives on `ops.undos` and `ops.redos`, holds at most 50 commands (`ops.limit`), dispatches `historyChanged` on every change, and is not serialized.
 
-Loading a model is not undoable. The viewer has no way to drop one model: `clearScene` removes them all, and `unloadModel` only frees GPU buffers. `project.clear` drops every model and calls `ops.clear()`, because every recorded command refers to objects that no longer exist. Ctrl+Z and Ctrl+Y call `undo` and `redo`, and they do nothing while focus is in a text field.
+Loading a model is not undoable. The viewer has no way to drop one model: `clearScene` removes them all, and `unloadModel` only frees GPU buffers. `project.clear` drops every model and calls `ops.clear()`, because every recorded command refers to objects that no longer exist. Ctrl+Z and Ctrl+Y call `ops.undo` and `ops.redo`, and they do nothing while focus is in a text field.
 
-Modules register their operator classes at activation. A ribbon button stores the operator name and optional `args`; a click calls `bonsai.ops.execute(name, ...args)`.
+Modules register their operator classes at boot. A ribbon button stores the operator name and optional `args`; a click calls `ops.execute(name, context, ...args)`.
 
 ## Modules
 
@@ -145,9 +146,9 @@ Each module has two entry points, and neither imports the other:
 | Operators | `src/modules/<id>/operators.js` | an array of operator classes |
 | UI | `src/modules/<id>/ui.js` | an array of panel classes |
 
-`src/modules/ops.js` lists every module id and its operator array, including modules whose array is empty. `registerOperators(bonsai, configs)` in `src/modules/registry.js` walks the config list in order, skips entries with `active: false`, and registers that module's operator classes. Called with no config, it registers every built-in module. `src/headless.js` reaches the registry and not `src/modules/ui.js`. `src/index.js` imports the registry, then `src/modules/ui.js`, which lists the panel classes.
+`src/modules/operators.js` lists every module id and its operator array, including modules whose array is empty. Its `registerOperators(configs)` walks the config list in order, skips entries with `active: false`, and registers that module's operator classes into the ops singleton. Called with no config, it registers every built-in module. `src/index.js` reaches that file and not `src/modules/ui.js`. `src/gui.js` imports `src/index.js`, then `src/modules/ui.js`, which lists the panel classes.
 
-A panel class has a static `id` (the module id) and a static `spec` (group, position, label, icon). The GUI host constructs it with `{ context: bonsai }`. The class builds its gui2 tree, exposes it as `root`, and subscribes to `context.signals`. `createWorkspacePanel` docks that root into the region named by `position` (`left`, `right`, or `bottom`). A module with no panel, such as `viewer`, has no `ui.js`.
+A panel class has a static `id` (the module id) and a static `spec` (group, position, label, icon). The GUI host constructs it with `{ context }`. The class builds its gui2 tree, exposes it as `root`, and subscribes to `context.signals`. `createWorkspacePanel` docks that root into the region named by `position` (`left`, `right`, or `bottom`). A module with no panel, such as `viewer`, has no `ui.js`.
 
 | Id | Operators | Panel |
 |----|-----------|-------|
@@ -155,9 +156,9 @@ A panel class has a static `id` (the module id) and a static `spec` (group, posi
 | `spatial-hierarchy` | None. The panel calls tools directly. | Left: Project → Site → Building → Storey, from the live file |
 | `properties` | None. The panel follows the selection. | Right: attributes, relationships, psets, qtos |
 | `viewer` | Camera, navigation, visibility, colour, federation | None. The ribbon and other modules call these. |
-| `code.terminal` | Show, new session, clear | Bottom: a JavaScript REPL |
+| `code.terminal` | Show, new session, clear, close session | Bottom: a JavaScript REPL |
 
-The spatial tree calls `Element.getSpatialDecomposition` only when the model record has a live file. Until `liveIfcReady`, that panel has the model root and no storeys. The properties panel fills GlobalId in both modes, and fills attributes and property sets once an entity exists.
+The spatial tree calls `getSpatialDecomposition` only when the model record has a live file. Until `liveIfcReady`, that panel has the model root and no storeys. The properties panel fills GlobalId in both modes, and fills attributes and property sets once an entity exists.
 
 The terminal evaluates JavaScript against the live session. Its completions and result formatting know about IfcOpenShell files and entities, which otherwise stringify as `{}`.
 
@@ -167,18 +168,18 @@ The terminal evaluates JavaScript against the live session. Its completions and 
 
 `app/css/main.css` is host chrome on top of gui2: header alignment, work-mode tabs, and the rule that hides ribbon buttons belonging to another mode (`.is-work-mode-hidden`).
 
-The Panels button is not an operator. `bindPanelDialog` builds a checkbox dialog from the panels `mountModuleUi` returned. Each checkbox shows or hides that panel without closing the workspace region.
+The Panels button is not an operator. `bindPanelDialog` builds a checkbox dialog from the panels `mountUi` returned. Each checkbox shows or hides that panel without closing the workspace region.
 
 ## Bundles
 
-`npm run build` writes two ESM files with esbuild. Bare imports (`ifcopenshell`, `@aeco-dev/gui`, `@aeco-dev/layout`) stay external and resolve through the page import map. Convert workers stay source files under `src/pipeline/`; the bundle points at them with `fromRoot`. `src/root.js` stays one directory below the package root so `../` resolves both from that file during development and from `build/*.js`.
+`npm run build` writes two ESM files with esbuild. Bare imports (`ifcopenshell`, `@aeco-dev/gui`, `@aeco-dev/layout`) stay external and resolve through the page import map. Convert workers stay source files under `src/pipeline/`; the bundle points at them with `new URL( '../…', import.meta.url )`, which resolves from `build/*.js`, so those paths are relative to the bundle and not to the source file.
 
 | Output | Entry | Initial graph |
 |--------|--------|----------------|
-| `build/bonsai-headless.js` | `src/headless.js` | Viewer, tools, operators. No gui2, layout, or CodeMirror. |
-| `build/bonsai.js` | `src/index.js` | That runtime, plus the shell and every module UI. |
+| `build/bonsai-headless.js` | `src/index.js` | Viewer, tools, operators. No gui2, layout, or CodeMirror. |
+| `build/bonsai.js` | `src/gui.js` | That runtime, plus the shell and every module UI. |
 
-The two bundles stay one file each. The GUI mounts every active panel before `appReady`, so a chunk per module would all download on that first tick. What stays independent is the source entry: `modules/ops.js` never imports `ui.js`. A panel `ui.js` may import that module's `operators.js` and run `context.ops.execute`. `operators.js` does not import `ui.js`. The headless bundle imports only the operator registry. A later lazy panel is a dynamic `import()` of that module's `ui.js` from the GUI host.
+esbuild puts the runtime both entries share in one `chunk-*.js`. There is no chunk per module: the GUI mounts every active panel before `appReady`, so those chunks would all download on that first tick. What stays independent is the source entry: `modules/operators.js` never imports `ui.js`. A panel `ui.js` imports the ops singleton and calls `ops.execute(name, context, ...)`. `operators.js` does not import `ui.js`. The headless bundle imports only the operator registry. A later lazy panel is a dynamic `import()` of that module's `ui.js` from the GUI host.
 
 ## Where to change things
 
@@ -188,8 +189,8 @@ The two bundles stay one file each. The GUI mounts every active panel before `ap
 | Turn a module on or off | `app/configuration/config.modules.js` |
 | Move or resize a region | `app/configuration/config.ui.js` |
 | Add a docked panel | A class in that module's `ui.js` with `id` and `spec`, exported in the default array, then imported from `src/modules/ui.js` |
-| Add a module's operators | Export the classes from that module's `operators.js`. A new module id also goes in `src/modules/ops.js` |
+| Add a module's operators | Export the classes from that module's `operators.js`. A new module id also goes in `src/modules/operators.js` |
 | Add a command | An `Operator` subclass, registered by the module that owns it |
 | Read or change the open model | `tool.Ifc`, `tool.Element`, `tool.Pset` |
 | Change load, conversion, or drag-and-drop | `src/tool/Loader.js` |
-| Change what the viewer draws | `src/tool/Scene.js`, `Camera.js`, `Controls.js` |
+| Change what the viewer draws | Viewer operators in `src/modules/viewer/operators.js`, calling `viewer` from `src/tool/Viewer.js` |

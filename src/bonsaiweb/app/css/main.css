@@ -1,52 +1,10 @@
-/* Host chrome for the gui2 workspace shell. Region layout lives in layout.css. */
+/* Bonsai Web host styles. Theme, tabs, ribbon and region layout come from
+   @aeco-dev/gui and @aeco-dev/layout. */
 
-.World .HeaderBar {
-	width: 100%;
-	justify-content: flex-start;
-	overflow: hidden;
-}
-
-#Logo,
-#HeaderMenu {
-	flex: 0 0 auto;
-}
-
-#HeaderMenu {
-	margin-left: auto;
-}
-
-#WorkModeBar {
-	display: flex;
-	flex: 1 1 auto;
-	align-items: stretch;
-	min-width: 0;
-	height: 100%;
-	overflow: hidden;
-}
-
-#RibbonWorkModes {
-	flex: 1 1 auto;
-	min-width: 0;
-	height: 100%;
-}
-
-#RibbonWorkModes .TabView-content {
+#RibbonBar .is-work-mode-hidden {
 	display: none !important;
 }
 
-#RibbonWorkModes .TabView-tabs {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	height: 100%;
-	min-width: 0;
-	overflow-x: auto;
-	scrollbar-width: none;
-}
-
-#RibbonBar > .is-work-mode-hidden {
-	display: none !important;
-}
 html,
 body {
 	height: 100%;
@@ -59,6 +17,25 @@ body {
 
 .bonsai-panel-body {
 	box-sizing: border-box;
+	min-height: 0;
+}
+
+/* Fit the settings dialog to the open tab. Panel content is a flex child
+   with a zero basis, which collapses a height:fit-content dialog. */
+.FloatingDialog.SettingsDialog {
+	height: auto;
+	max-height: min(32rem, calc(100% - 2rem));
+}
+
+.FloatingDialog.SettingsDialog > .PanelContent {
+	flex: 0 1 auto;
+	min-height: 0;
+	overflow: auto;
+}
+
+.FloatingDialog.SettingsDialog > .PanelContent > .TabView,
+.FloatingDialog.SettingsDialog > .PanelContent > .TabView .TabView-content {
+	flex: 0 1 auto;
 	min-height: 0;
 }
 
@@ -88,8 +65,134 @@ body {
 }
 
 #WorkspaceLeft .TreeView,
-#WorkspaceLeft .TreeView-content {
+#WorkspaceLeft .TreeView-content,
+#WorkspaceLeft .NavigationList,
+#WorkspaceLeft .NavigationList-content {
 	min-height: 0;
+}
+
+/* The view switcher stays put; the active tree or drill-down list scrolls. */
+.SpatialNavigator {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.SpatialNavigator-viewbar {
+	flex-shrink: 0;
+	padding: 0 var(--dui-space-3);
+}
+
+.SpatialNavigator-viewbar .Operator {
+	border-radius: var(--dui-radius);
+	color: var(--dui-color-text-muted);
+	cursor: pointer;
+	padding: 0.15rem;
+}
+
+.SpatialNavigator-viewbar .Operator:hover,
+.SpatialNavigator-viewbar .Operator.is-active {
+	background: var(--dui-color-surface-selected);
+	color: var(--dui-color-accent);
+}
+
+.SpatialNavigator-views {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.SpatialNavigator-views > .TreeView,
+.SpatialNavigator-views > .NavigationList {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.SpatialNavigator-views > [hidden] {
+	display: none;
+}
+
+.SpatialNavigator .TreeView-content,
+.SpatialNavigator .NavigationList-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+}
+
+/* Spatial rows: actions appear on hover, focus or selection. A row that
+   hides anything keeps its eye on screen, so hidden state reads at a glance. */
+.TreeView-item .SpatialTree-actions,
+.NavigationList-item .SpatialTree-actions {
+	visibility: hidden;
+}
+
+.TreeView-item:hover .SpatialTree-actions,
+.TreeView-item:focus-within .SpatialTree-actions,
+.TreeView-item.is-selected .SpatialTree-actions,
+.TreeView-item.is-hidden .SpatialTree-eye,
+.TreeView-item.is-partially-hidden .SpatialTree-eye,
+.NavigationList-item:hover .SpatialTree-actions,
+.NavigationList-item:focus-within .SpatialTree-actions,
+.NavigationList-item.is-selected .SpatialTree-actions,
+.NavigationList-item.is-hidden .SpatialTree-eye,
+.NavigationList-item.is-partially-hidden .SpatialTree-eye {
+	visibility: visible;
+}
+
+.SpatialTree-actions .Operator {
+	cursor: pointer;
+	color: var(--dui-color-text-muted);
+}
+
+.SpatialTree-actions .Operator:hover {
+	color: var(--dui-color-accent);
+}
+
+/* The class caption gives way before the name; the actions never shrink. */
+.SpatialTree .TreeView-label,
+.SpatialNav .NavigationList-label {
+	flex: 0 1 auto;
+	white-space: nowrap;
+}
+
+.SpatialNav .NavigationList-chevron {
+	cursor: pointer;
+}
+
+.SpatialTree-type {
+	flex: 0 1000 auto;
+	margin-left: 0.35rem;
+	min-width: 0;
+	opacity: 0.7;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.SpatialTree-actions {
+	flex-shrink: 0;
+}
+
+.TreeView-item.is-hidden > .TreeView-label,
+.TreeView-item.is-hidden > .SpatialTree-type,
+.NavigationList-item.is-hidden > .NavigationList-label,
+.NavigationList-item.is-hidden > .SpatialTree-type {
+	opacity: 0.4;
+}
+
+.TreeView-item.is-partially-hidden .SpatialTree-eye,
+.NavigationList-item.is-partially-hidden .SpatialTree-eye {
+	opacity: 0.55;
+}
+
+.SpatialTree-summary {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-sm);
+	padding: 0 var(--dui-space-3);
+}
+
+.SpatialTree-summary[hidden] {
+	display: none;
 }
 
 /* The viewer canvas fills the viewport. layout.css pads every canvas. */
@@ -97,9 +200,40 @@ body {
 	padding: 0;
 }
 
+/* Box-select rubber-band. main_web positions this in canvas-relative CSS px. */
+#marquee {
+	position: absolute;
+	display: none;
+	z-index: 5;
+	pointer-events: none;
+	border: 1px solid #4a9eff;
+	background: rgba(74, 158, 255, 0.15);
+}
+
+/* Click the amber survey marker. bindOriginReadout places this next to it. */
+#origin-readout {
+	position: fixed;
+	z-index: 12;
+	pointer-events: none;
+	transform: translate(10px, -50%);
+	font: 11px/1.2 ui-monospace, Menlo, Consolas, monospace;
+	color: #d7dbe3;
+	background: rgba(15, 17, 23, .72);
+	border-radius: 3px;
+	padding: 2px 6px;
+	white-space: pre;
+}
+
+#origin-readout.moved {
+	color: #f6e05e;
+}
+
+#origin-readout.docked {
+	transform: none;
+}
+
 #Footer .StatusBar {
-	flex: 1;
-	min-width: 0;
+	width: auto;
 }
 
 #Footer .StatusBar.is-indeterminate .StatusBar-fill {
@@ -107,51 +241,256 @@ body {
 	animation: bonsai-indeterminate 1.1s ease-in-out infinite;
 }
 
+#Footer .ProfilerFooter {
+	align-items: center;
+	flex: 0 0 auto;
+	margin-left: auto;
+	order: 2;
+}
+
+#Footer .ProfilerFooter-readout {
+	align-items: baseline;
+	color: var(--dui-color-text-muted);
+	cursor: pointer;
+	font-family: var(--dui-font-mono, ui-monospace, Menlo, Consolas, monospace);
+	font-size: var(--dui-font-size-xs);
+	font-variant-numeric: tabular-nums;
+	gap: var(--dui-space-2);
+	line-height: 1;
+	padding: 0 var(--dui-space-1);
+	user-select: none;
+}
+
+#Footer .ProfilerFooter-readout:hover,
+#Footer .ProfilerFooter-readout.is-open {
+	color: var(--dui-color-text);
+}
+
+#Footer .ProfilerFooter-fps.is-good {
+	color: var(--dui-color-accent);
+}
+
+#Footer .ProfilerFooter-fps.is-ok {
+	color: var(--dui-color-warning, #d29922);
+}
+
+#Footer .ProfilerFooter-fps.is-low {
+	color: var(--dui-color-danger, #e5534b);
+}
+
+#Footer .ProfilerGraph,
+.ProfilerWindow .ProfilerGraph {
+	display: block;
+	flex: 0 0 72px;
+	height: 72px;
+	max-height: 72px;
+	width: 100%;
+}
+
+.ProfilerWindow {
+	height: auto !important;
+	max-width: min(360px, calc(100% - 28px));
+}
+
+.ProfilerGauge-header {
+	justify-content: space-between;
+	padding: 0 0.5rem;
+	width: 100%;
+}
+
+.ProfilerGauge-stat {
+	align-items: center;
+	flex: 1 1 0;
+	min-width: 0;
+	text-align: center;
+}
+
+.ProfilerGauge-stat .Caption {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+}
+
+.ProfilerGauge-statValue {
+	font-family: var(--dui-font-mono, ui-monospace, Menlo, Consolas, monospace);
+	font-size: var(--dui-font-size-sm);
+	font-variant-numeric: tabular-nums;
+}
+
+.ProfilerGauge-canvas {
+	display: block;
+	height: 200px;
+	width: 100%;
+}
+
+.ProfilerWindow > .FloatingWindow-content {
+	flex: 0 1 auto;
+}
+
+.World.is-compact .Footer .ProfilerFooter {
+	background: var(--dui-surface-raised-bg);
+	border: 1px solid var(--dui-color-border-strong);
+	border-radius: 999px;
+	bottom: var(--dui-space-4);
+	margin-left: 0;
+	padding: 0 var(--dui-space-3);
+	pointer-events: auto;
+	position: absolute;
+	right: var(--dui-space-4);
+}
+
 @keyframes bonsai-indeterminate {
 	0% { transform: translateX(-100%); }
 	100% { transform: translateX(250%); }
 }
 
-/* Bottom dock: keep the prompt pinned and scroll the session output. */
-#WorkspaceBottom .WorkspacePanel {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
-	min-height: 0;
+/* Bottom dock: layout.css lets #WorkspaceBottom scroll, so a long session
+   would scroll the whole panel. Every element from the dock down to the
+   terminal is pinned to the dock's height instead; only the output and the
+   snippet lists scroll. A collapsed panel keeps its header-only height. */
+#WorkspaceBottom:has(.bonsai-terminal) {
+	overflow: hidden;
 }
 
-#WorkspaceBottom .WorkspacePanel:not(.collapsed) > .PanelContent {
+#WorkspaceBottom *:has(.bonsai-terminal):not(.collapsed, .collapsed > .PanelContent) {
 	display: flex;
-	flex: 1 1 auto;
+	flex: 1 1 0;
 	flex-direction: column;
 	min-height: 0;
 	overflow: hidden;
 }
 
 #WorkspaceBottom .bonsai-terminal {
+	container-type: inline-size;
 	display: flex;
-	flex: 1 1 auto;
+	flex: 1 1 0;
 	flex-direction: column;
 	min-height: 0;
-}
-
-#WorkspaceBottom .bonsai-terminal > .TabView {
-	display: flex;
-	flex: 1 1 auto;
-	flex-direction: column;
-	height: auto;
-	min-height: 0;
-}
-
-#WorkspaceBottom .bonsai-terminal .TabView-content,
-#WorkspaceBottom .bonsai-terminal .ScrollViewer {
-	flex: 1 1 auto;
-	min-height: 0;
-	overflow: auto;
+	overflow: hidden;
 }
 
 .bonsai-terminal {
 	font-family: var(--dui-font-mono);
+}
+
+/* Header: session tabs on the left, new / clear / close on the right. */
+.bonsai-terminal-header {
+	border-bottom: 1px solid var(--dui-color-border);
+}
+
+.bonsai-terminal-tabs {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.bonsai-terminal-tabs > .TabView-tabs {
+	border-bottom: 0;
+	overflow-x: auto;
+}
+
+/* Body: output + prompt on the left, snippets in a side column. */
+.bonsai-terminal-body {
+	align-items: stretch;
+	flex: 1 1 0;
+	min-height: 0;
+}
+
+.bonsai-terminal-header .Operator {
+	cursor: pointer;
+	padding: 0.25rem;
+}
+
+.bonsai-terminal-header .Operator:hover {
+	color: var(--dui-color-accent);
+}
+
+.bonsai-terminal-console {
+	flex: 1 1 auto;
+	min-height: 0;
+	min-width: 0;
+}
+
+#WorkspaceBottom .bonsai-terminal-console > .TabView {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	height: auto;
+	max-width: none;
+	min-height: 0;
+	min-width: 0;
+}
+
+#WorkspaceBottom .bonsai-terminal-console > .TabView > .TabView-content {
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	height: auto;
+	min-height: 0;
+	overflow: hidden;
+}
+
+#WorkspaceBottom .bonsai-terminal .ScrollViewer {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: auto;
+}
+
+/* Snippets: a tool / ops TabView; each tab's list scrolls on its own. */
+#WorkspaceBottom .bonsai-terminal-snippets {
+	border-left: 1px solid var(--dui-color-border);
+	display: flex;
+	flex: 0 0 240px;
+	flex-direction: column;
+	height: auto;
+	min-height: 0;
+	min-width: 0;
+	padding-left: 0.75rem;
+}
+
+#WorkspaceBottom .bonsai-terminal-snippets > .TabView-content {
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	height: auto;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.bonsai-terminal-snippet-list {
+	padding: 0.5rem 0.25rem 0.5rem 0;
+}
+
+.bonsai-terminal-snippet-list .Button {
+	flex: 0 0 auto;
+	justify-content: flex-start;
+	overflow: hidden;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	width: 100%;
+}
+
+/* Narrow dock: snippets drop below the prompt, buttons wrap in rows. */
+@container (max-width: 560px) {
+
+	.bonsai-terminal-body {
+		flex-direction: column;
+	}
+
+	#WorkspaceBottom .bonsai-terminal-snippets {
+		border-left: 0;
+		border-top: 1px solid var(--dui-color-border);
+		flex: 0 0 40%;
+		padding: 0.25rem 0 0;
+	}
+
+	.bonsai-terminal-snippet-list {
+		flex-flow: row wrap;
+	}
+
+	.bonsai-terminal-snippet-list .Button {
+		width: auto;
+	}
+
 }
 
 .bonsai-completions {

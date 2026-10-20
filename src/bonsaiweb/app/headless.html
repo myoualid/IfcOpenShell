@@ -8,27 +8,8 @@
 			html, body { margin: 0; height: 100%; background: #1a1a1a; }
 			body { position: relative; }
 		</style>
-		<script type="importmap">
-			{
-				"imports": {
-					"ifcopenshell": "https://cdn.jsdelivr.net/npm/ifcopenshell@latest/dist/index.js",
-					"ifcopenshell/geom": "https://cdn.jsdelivr.net/npm/ifcopenshell@latest/dist/geom/index.js",
-					"ifcopenshell/util": "https://cdn.jsdelivr.net/npm/ifcopenshell@latest/dist/util/index.js",
-					"@ifcopenshell/wasm": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@latest/browser.js",
-					"@ifcopenshell/wasm/api": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@latest/wasm/ifcopenshell_api.mjs",
-					"@ioai/wasm-zstd": "https://cdn.jsdelivr.net/npm/@ioai/wasm-zstd@latest/dist/index.js",
-					"fzstd": "https://cdn.jsdelivr.net/npm/fzstd@latest/esm/index.mjs"
-				}
-			}
-		</script>
 	</head>
 	<body>
-		<script src="../vendor/@ifcopenshell/viewer/IfcViewerWeb.js"></script>
-		<script type="module">
-			import * as BonsaiWeb from "../build/bonsai-headless.js";
-
-			const bonsai = await BonsaiWeb.start( document.body );
-			window.bonsai = bonsai;
-		</script>
+		<script type="module" src="./boot-headless.js"></script>
 	</body>
 </html>
