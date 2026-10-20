@@ -1,23 +1,23 @@
 # Example application
 
-`app/` is a BIM viewer built on the Bonsai Web host. Run `npm install` and `npm run build` in this package, then open `app/index.html` from a server whose root is this package. The build is `dist/`, next to `app/`. The page's import map points `@aeco-dev/bonsaiweb`, `@aeco-dev/gui`, `@aeco-dev/layout`, and `ifcopenshell` at `node_modules` and `dist`. `npm run dev` rebuilds `dist/` while you edit `src/`. Files under `app/configuration/` load in the browser, so those edits do not need a rebuild.
+`app/` is a BIM viewer built on the Bonsai Web host. Run `npm run build` in this package, then open `app/index.html` from a server that can see `dist/`. The page loads this build from `../dist/`. `@aeco-dev/gui`, `@aeco-dev/layout`, and `ifcopenshell` come from jsDelivr, at the versions in `package.json`. `npm run dev` rebuilds `dist/` while you edit `src/`. Files under `app/configuration/` load in the browser, so those edits do not need a rebuild.
 
 ```html
 <script type="importmap">
 {
   "imports": {
     "@aeco-dev/bonsaiweb": "../dist/bonsai.js",
-    "@aeco-dev/gui": "../node_modules/@aeco-dev/gui/gui.js",
-    "@aeco-dev/layout": "../node_modules/@aeco-dev/layout/layout.js",
-    "ifcopenshell": "../node_modules/ifcopenshell/dist/index.js",
-    "ifcopenshell/geom": "../node_modules/ifcopenshell/dist/geom/index.js",
-    "@ifcopenshell/wasm": "../node_modules/@ifcopenshell/wasm/browser.js",
-    "@ifcopenshell/wasm/api": "../node_modules/@ifcopenshell/wasm/wasm/ifcopenshell_api.mjs"
+    "@aeco-dev/gui": "https://cdn.jsdelivr.net/npm/@aeco-dev/gui@0.2.4/gui.js",
+    "@aeco-dev/layout": "https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.js",
+    "ifcopenshell": "https://cdn.jsdelivr.net/npm/ifcopenshell@0.9.0/dist/index.js",
+    "ifcopenshell/geom": "https://cdn.jsdelivr.net/npm/ifcopenshell@0.9.0/dist/geom/index.js",
+    "@ifcopenshell/wasm": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@0.9.0/browser.js",
+    "@ifcopenshell/wasm/api": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@0.9.0/wasm/ifcopenshell_api.mjs"
   }
 }
 </script>
-<link rel="stylesheet" href="../node_modules/@aeco-dev/gui/gui.css">
-<link rel="stylesheet" href="../node_modules/@aeco-dev/layout/layout.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/gui@0.2.4/gui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.css">
 <script type="module">
   import { start } from "@aeco-dev/bonsaiweb";
   import { BonsaiWebConfiguration } from "./configuration/config.js";
