@@ -11,6 +11,7 @@
 // import would hold the session (and the GUI) until its CDN graph loads.
 import { context } from '../context/context.js';
 import { store } from '../context/store.js';
+import { initIfcOpenShell } from '../runtime.js';
 
 function dispose( file ) {
 
@@ -92,7 +93,7 @@ export class Ifc {
 	static async createBlank( name = 'Project' ) {
 
 		const ifcopenshell = await import( 'ifcopenshell' );
-		const runtime = await ifcopenshell.init();
+		const runtime = await initIfcOpenShell();
 		if ( ! runtime.loadedPlugins().includes( 'schema:ifc4' ) ) {
 
 			await runtime.loadPlugin( 'schema', 'ifc4' );

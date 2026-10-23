@@ -13,6 +13,7 @@ import { writeViewerSidecarBytes } from '../sidecar/serialize.js';
 import { detectFormat } from '../detect.js';
 import { resolveNumThreads } from '../thread.js';
 import { warmSidecarCompressor } from '../sidecar/compress.js';
+import { initIfcOpenShell } from '../../runtime.js';
 export { configureCompressor } from '../sidecar/compress.js';
 
 const TESSELLATION_START = 0.25;
@@ -186,7 +187,7 @@ async function flushPart( state, metadata, options, force ) {
  */
 export async function warmRuntime( kernel = 'opencascade' ) {
 
-	runtime ??= await ifcopenshell.init();
+	runtime ??= await initIfcOpenShell();
 	await ensurePlugin( 'schema', 'ifc4' );
 	await ensurePlugin( 'mapping', 'ifc4' );
 	for ( const plugin of kernelPlugins( kernel ) ) await ensurePlugin( 'kernel', plugin );
@@ -221,7 +222,7 @@ export async function convertBytes( bytes, filename = 'model.ifc', options = {} 
 	const started = performance.now();
 	options.onProgress?.( { phase: 'parsing', message: `Opening ${ filename }…`, ratio: 0.05 } );
 	const initStarted = performance.now();
-	runtime ??= await ifcopenshell.init();
+	runtime ??= await initIfcOpenShell();
 	const numThreads = resolveNumThreads( options.numThreads, globalThis, runtime.threadsSupported === true );
 	const schema = readSchema( view );
 	await ensurePlugin( 'schema', schema );

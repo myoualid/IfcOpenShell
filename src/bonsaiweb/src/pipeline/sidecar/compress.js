@@ -9,7 +9,7 @@ let initPromise = null;
 /**
  * Provide the wasm-zstd module and WASM asset before the first compress call.
  * `moduleUrl` is the package entry; `wasmUrl` or `wasmBinary` is what that module inits with.
- * Both come from configuration.paths, resolved by dependencyUrls().
+ * Both come from src/assets.js.
  */
 export function configureCompressor( { moduleUrl, ...initOptions } = {} ) {
 
@@ -28,7 +28,7 @@ async function ensureZstdReady() {
 			if ( ! zstdModuleUrl || ! configuredInit || ( ! configuredInit.wasmUrl && ! configuredInit.wasmBinary ) ) {
 
 				throw new Error( 'Sidecar compressor needs wasm-zstd assets. Call configureCompressor({ moduleUrl, wasmUrl }) ' +
-					'with the URLs from configuration.paths before the first IFC conversion.' );
+					'with the URLs from src/assets.js before the first IFC conversion.' );
 
 			}
 

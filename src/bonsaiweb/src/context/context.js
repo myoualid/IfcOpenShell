@@ -39,7 +39,9 @@ Signals.navPresetChanged.add( ( payload ) => {
 
 export const context = {
 	signals: Signals,
-	dom: { container: null, viewport: null },
+	// The page element Bonsai lives in, and the element it owns for the canvas.
+	dom: null,
+	viewport: null,
 	get scene() {
 
 		return store.scene;

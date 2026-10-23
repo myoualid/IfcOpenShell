@@ -238,10 +238,7 @@ class ProfilerHudUI {
 
 	mountWindow() {
 
-		const mount = this.context.dom?.viewport
-			|| document.getElementById( 'Viewport' )
-			|| document.getElementById( 'World' )
-			|| document.body;
+		const mount = this.context.viewport ?? document.body;
 		this.panel.mountFloating( mount );
 		const host = mount.getBoundingClientRect();
 		this.panel.dom.style.width = `${ Math.min( 360, Math.max( 240, host.width - 28 ) ) }px`;

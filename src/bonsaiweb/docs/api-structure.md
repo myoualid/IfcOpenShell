@@ -2,7 +2,7 @@
 
 # API structure
 
-`start()` returns a `Bonsai` object with four parts:
+`new Bonsai()` has four parts:
 
 | Part | What it is | Where |
 |---|---|---|
@@ -91,7 +91,8 @@ context.activeObject   // the last pick { objectId, guid, sourceId, ... }, or nu
 context.selectedIds    // selected objectIds, ascending
 context.activeModel    // the store.models entry of activeObject, or null
 context.signals        // the event bus
-context.dom            // { container, viewport }
+context.dom            // the page element Bonsai was given
+context.viewport       // the element Bonsai owns for the canvas and its overlays
 ```
 
 Every value is plain data. You can keep it, compare it, log it or hand it to another function. Nothing on `context` changes the scene.

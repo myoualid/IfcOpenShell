@@ -1,4 +1,4 @@
-import { viewerScripts } from '../../app/configuration/imports.js';
+import { assets } from '../assets.js';
 import { Signals } from '../context/signals.js';
 
 // Must match IFCVIEW_VERSION. IfcViewer.create refuses to start without it.
@@ -23,11 +23,11 @@ function appendScript( src ) {
 
 }
 
-function overlay( container, id ) {
+function overlay( viewport, id ) {
 
 	const el = document.createElement( 'div' );
 	el.id = id;
-	container.appendChild( el );
+	viewport.appendChild( el );
 	overlays.push( el );
 	return el;
 
@@ -52,7 +52,7 @@ export function readControls( api ) {
 
 // Called once, by Bonsai.start(). The viewer is only reachable through
 // Viewer.get() once it is ready.
-export async function createViewer( container, paths ) {
+export async function createViewer( viewport ) {
 
 	if ( viewer ) throw new Error( 'bonsai: the viewer is already created' );
 
@@ -64,25 +64,19 @@ export async function createViewer( container, paths ) {
 	// this element's CSS box (emscripten_get_element_css_size) and, when it
 	// changes, reconfigures the WebGPU surface, which writes canvas.width
 	// and canvas.height. Setting those here locks the layout size to the
-	// bitmap, so later container changes never show up in that CSS read.
-	if ( getComputedStyle( container ).position === 'static' ) {
-
-		container.style.position = 'relative';
-
-	}
-
+	// bitmap, so later viewport changes never show up in that CSS read.
 	canvas.style.cssText = 'position:absolute;inset:0;display:block;width:100%;height:100%;outline:none;';
-	container.appendChild( canvas );
+	viewport.appendChild( canvas );
 
 	// Wasm draws the box-select rubber-band by id, in canvas-relative CSS px.
 	// The viewport is the offset parent, and the canvas is inset to it, so
 	// absolute left/top land on the canvas. pointer-events stay off so the
 	// drag keeps reaching the canvas.
-	overlay( container, 'marquee' );
+	overlay( viewport, 'marquee' );
 
 	if ( typeof globalThis.createIfcViewer !== 'function' || ! globalThis.IfcViewer ) {
 
-		for ( const src of viewerScripts( paths ) ) await appendScript( src );
+		for ( const src of assets.viewerScripts ) await appendScript( src );
 
 	}
 
@@ -122,7 +116,7 @@ export async function createViewer( container, paths ) {
 	// Same call the scripting page makes once the GPU app is live.
 	await api.ready;
 	api.setOriginAxes( { size: 1000, visible: true } );
-	const readout = overlay( container, 'origin-readout' );
+	const readout = overlay( viewport, 'origin-readout' );
 	readout.hidden = true;
 	unbindOriginReadout = api.bindOriginReadout( readout );
 	api.canvas ??= canvas;

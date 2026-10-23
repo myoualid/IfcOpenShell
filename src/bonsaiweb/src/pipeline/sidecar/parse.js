@@ -1,7 +1,6 @@
-import { PathsConfig } from '../../../app/configuration/config.paths.js';
-import { dependencyUrls } from '../../../app/configuration/imports.js';
+import { assets } from '../../assets.js';
 
-const { decompress: zstdDecompress } = await import( dependencyUrls( PathsConfig ).fzstdModule );
+const { decompress: zstdDecompress } = await import( assets.fzstdModule );
 import { PACKED_ELEMENT_BYTE_LENGTH, SIDECAR_ENDIAN, SIDECAR_MAGIC, VIEWER_SIDECAR_FORMAT_VERSION } from './types.js';
 export class SidecarReadError extends Error {
 
