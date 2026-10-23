@@ -1,0 +1,29 @@
+<!-- This file was generated with the assistance of an AI coding tool. -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+	<head>
+		<title>Bonsai Web Standalone</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<link rel="shortcut icon" href="./files/favicon_white.ico" media="(prefers-color-scheme: dark)"/>
+		<link rel="shortcut icon" href="./files/favicon.ico" media="(prefers-color-scheme: light)" />
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/gui@0.2.4/gui.css">
+		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.css">
+		<link rel="stylesheet" href="./css/main.css">
+	</head>
+	<body>
+		<!-- No import map: dist/module/ has every package inlined. -->
+		<script type="module">
+			import { Bonsai } from '../dist/module/bonsai.js';
+			import { Shell } from '../dist/module/gui.js';
+			import { BonsaiWebConfiguration } from './configuration/config.js';
+
+			const bonsai = new Bonsai( document.body, BonsaiWebConfiguration );
+			new Shell( bonsai, BonsaiWebConfiguration );
+
+			window.bonsai = bonsai;
+
+			bonsai.start();
+		</script>
+	</body>
+</html>

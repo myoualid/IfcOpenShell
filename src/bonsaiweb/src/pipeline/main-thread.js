@@ -20,7 +20,7 @@ async function loadPipeline() {
 
 	if ( ! assets?.zstdModule || ! assets?.zstdWasm ) {
 
-		throw new Error( 'main-thread conversion needs zstd paths from configuration.paths' );
+		throw new Error( 'main-thread conversion needs the zstd URLs from configureAssets()' );
 
 	}
 

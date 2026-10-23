@@ -2,15 +2,16 @@
 
 Bonsai Web loads an IFC model, draws it in a WebGPU viewer, and lets panels and ribbon buttons query and change that model. The shape follows Bonsai in Blender: tools hold state, operators perform actions, and modules contribute both.
 
-`src/index.js` is `Bonsai`, the session, and its `start()` is the headless host: viewer and operators, no shell. `start()` in `src/gui.js` is the GUI host: it builds the shell and wraps the same `Bonsai`. The page passes `BonsaiWebConfiguration` from `app/configuration/config.js`; that folder is not part of the bundle, so edits apply on refresh. `window.bonsai` is assigned by the page after `start()` returns.
+`src/index.js` is `Bonsai`, the session: viewer and operators, no shell. `Shell` in `src/gui.js` builds the GUI around a `Bonsai`. The page passes `BonsaiWebConfiguration` from `app/configuration/config.js`; that folder is not part of the bundle, so edits apply on refresh.
 
 ```text
-app/index.html          full GUI  → dist/bonsai.js           (src/gui.js)
-app/headless.html       viewer    → dist/bonsai-headless.js  (src/index.js)
+app/index.html          full GUI  → dist/bonsai.js + dist/gui.js  (Bonsai + Shell)
+app/headless.html       viewer    → dist/bonsai.js                (Bonsai)
 
 src/
-  index.js              Bonsai: context, operator registration, viewer boot. Headless start().
-  gui.js                GUI start(): shell, ribbon, panel dialog, progress bar
+  index.js              Bonsai: context, operator registration, viewer boot
+  gui.js                Shell: layout, ribbon, panel dialog, progress bar
+  assets.js             CDN URLs for the viewer scripts, zstd, and es-module-shims
   ops.js                Operator, Ops, the ops singleton, Ctrl+Z / Ctrl+Y
   context/
     signals.js          the signal bus, plus the boot/load logger
@@ -30,21 +31,27 @@ vendor/                 gitignored local copies; the page loads its dependencies
 
 ## Boot
 
-`start(container, configuration)` on the GUI entry (`src/gui.js`) builds chrome first, then starts the viewer in the background:
+The GUI page builds chrome first, then starts the viewer:
 
-1. **Shell.** `mountShell` builds the gui2 `World` from `config.ui` and wraps it in a `Layout`.
-2. **Session.** `new Bonsai(container, configuration, viewport)` applies `config.geometry`, points `context.dom` at the container and viewport, registers operators into the ops singleton, and binds the keyboard. js-signals is bundled, and `ifcopenshell` is only ever imported dynamically, so nothing here waits on a download.
+```js
+const bonsai = new Bonsai( document.body, configuration );
+new Shell( bonsai, configuration );
+bonsai.start();
+```
+
+1. **Session.** `new Bonsai(container, configuration)` applies `config.geometry`, sets `context.dom` to the container, creates its own `.bonsai-viewport` element (`bonsai.viewport`, `context.viewport`) inside it, registers operators into the ops singleton, and binds the keyboard. js-signals is bundled, and `ifcopenshell` is only ever imported dynamically, so nothing here waits on a download.
+2. **Shell.** `new Shell(bonsai, configuration)` builds the gui2 `World` from `config.ui` inside `context.dom`, wraps it in a `Layout`, and moves `context.viewport` into its `#Viewport` region. The element is moved, never replaced, so every reference to it stays valid.
 3. **Chrome.** `bindRibbon` and `mountUi` take `bonsai.context`. Panels are constructed with `{ context }`. Progress listens on `context.signals`.
 
-`void bonsai.boot()` then runs without blocking the return:
+`bonsai.start()` then boots the viewer and IfcOpenShell. The promise resolves at step 6:
 
-4. **Viewer.** `createViewer()` appends `#viewer-canvas` to the viewport and starts IfcViewer, once per session. `tool.Viewer.get()` returns it from then on. Picks, selection changes and model loads go to `modules/viewer/events.js`, which dispatches the signals. Drag-and-drop is wired. `viewerReady` fires. The viewer samples the canvas itself; the host does not write `canvas.width` or `canvas.height`.
+4. **Viewer.** `createViewer()` appends `#viewer-canvas` and its overlays to `context.viewport` and starts IfcViewer, once per session. `tool.Viewer.get()` returns it from then on. Picks, selection changes and model loads go to `modules/viewer/events.js`, which dispatches the signals. Drag-and-drop is wired. `viewerReady` fires. The viewer samples the canvas itself; the host does not write `canvas.width` or `canvas.height`.
 5. **IfcOpenShell.** `ifcopenshell.init()` on the main thread. This instance is for opening live IFC files. Geometry conversion uses a separate instance inside a worker.
 6. **Ready.** `appReady` fires.
 
 Operators that need the viewer return false from `poll()` until step 4, so a ribbon click during boot does nothing rather than throwing.
 
-`start(container)` on the headless entry (`src/index.js`) creates `Bonsai` with the container as viewport and awaits `boot()`, with no chrome. With no config, every built-in operator is registered. Terminal commands stay registered; their `poll()` returns false until a terminal panel exists.
+Without a `Shell`, the viewer draws straight into the container: `await new Bonsai(container).start()`. With no config, every built-in operator is registered. Terminal commands stay registered; their `poll()` returns false until a terminal panel exists.
 
 `destroy()` removes the overlays the viewer added and drops the viewer reference. IfcViewer has no teardown method of its own; its listeners go with it.
 
@@ -105,7 +112,7 @@ Each entry in `store.models` is `{ id, name, file }`.
 | `activeObject` | The last pick, or null. `objectPicked` sets it and `modelCleared` clears it. `liveIfcReady` dispatches it again so a pick made during conversion fills in once the file opens. |
 | `selectedIds` | Selected objectIds, ascending. |
 | `activeModel` | The `store.models` entry of `activeObject`, or null. |
-| `signals`, `dom` | The bus and `{ container, viewport }`. |
+| `signals`, `dom`, `viewport` | The bus, the page element Bonsai was given, and the element it owns for the canvas. |
 
 Operators and panels receive that object, and panels may hang their own state on it (`context.settings`). `bonsai.store`, `bonsai.tool` and `bonsai.ops` sit beside it on `Bonsai`.
 
@@ -194,17 +201,19 @@ The Panels button is not an operator. `bindPanelDialog` builds a checkbox dialog
 
 `npm run build` writes ESM files with esbuild into `dist/`. Bare imports (`ifcopenshell`, `@aeco-dev/gui`, `@aeco-dev/layout`) stay external. A bundler resolves them from `node_modules`. A page without a bundler maps the same names in an import map. See [distribution.md](distribution.md).
 
-Conversion is its own entry, `dist/convert-worker.js` and `dist/convert-main.js`, so the host bundle does not contain the tessellator. The host loads those files with `new URL` relative to itself. The build copies `src/paths.js` to `dist/paths.js` and the sample IFC to `dist/window_wall.ifc`.
+Conversion is its own entry, `dist/convert-worker.js` and `dist/convert-main.js`, so the host bundle does not contain the tessellator. The host loads those files with `new URL` relative to itself. The build copies the sample IFC to `dist/window_wall.ifc`. The viewer scripts, zstd, and es-module-shims are fixed CDN URLs in `src/assets.js`, not configuration.
 
 | Output | Entry | Initial graph |
 |--------|--------|----------------|
-| `dist/bonsai-headless.js` | `src/index.js` | Viewer, tools, operators. No gui2, layout, or CodeMirror. |
-| `dist/bonsai.js` | `src/gui.js` | That runtime, plus the shell and every module UI. |
+| `dist/bonsai.js` | `src/index.js` | `Bonsai`: viewer, tools, operators. No gui2, layout, or CodeMirror. |
+| `dist/gui.js` | `src/gui.js` | `Shell` and every module UI. |
+| `dist/chunk-*.js` | | The runtime both entries share. |
 | `dist/convert-worker.js` | `src/pipeline/worker.js` | `.ifc` → `.ifcview` in a worker. `ifcopenshell` stays external. |
 | `dist/convert-main.js` | `src/pipeline/main-thread.js` | The same conversion on the main thread. |
-| `dist/paths.js` | `src/paths.js` | CDN directories for the viewer, stylesheets, and zstd. Copied, not bundled. |
 
-Each entry is one file. The GUI and headless bundles both contain the runtime they need. What stays independent is the source entry: `modules/operators.js` never imports `ui.js`. A panel `ui.js` imports the ops singleton and calls `ops.Category.Name(...)`. `operators.js` does not import `ui.js`. The headless bundle imports only the operator registry.
+`dist/module/` holds the same five outputs with every package inlined, for a page with no import map (`app/standalone.html`). The build defines `BONSAI_IFCOPENSHELL_WASM` there as the jsDelivr directory of the installed `@ifcopenshell/wasm` version. `src/runtime.js` passes those wasm files to `ifcopenshell.init()`, because the inlined glue can no longer find them next to itself, and `worker-host.js` skips copying the page import map. The optional `@aeco-dev/gui` widgets (chart.js, ag-grid, jsgantt) stay external.
+
+`bonsai.js` and `gui.js` are built together with code splitting, so a page that imports both gets one copy of the context, store, and ops singletons. What stays independent is the source entry: `modules/operators.js` never imports `ui.js`. A panel `ui.js` imports the ops singleton and calls `ops.Category.Name(...)`. `operators.js` does not import `ui.js`. `bonsai.js` imports only the operator registry.
 
 ## Where to change things
 

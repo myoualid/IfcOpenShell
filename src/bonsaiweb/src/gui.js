@@ -1,6 +1,5 @@
 import { FloatingDialog, InputList, LabeledBoxItem, StatusBar, TabView } from '@aeco-dev/gui';
 import { Layout, World } from '@aeco-dev/layout';
-import { Bonsai } from './index.js';
 import { modulePanels } from './modules/ui.js';
 import ops from './ops.js';
 import { createLogger } from './util/log.js';
@@ -612,30 +611,39 @@ function bindModelProgress( signals, progress ) {
 
 }
 
-export function start( container = document.body, configuration ) {
+/**
+ * The GUI around a Bonsai: layout, ribbon, panels, and the progress bar.
+ * It moves bonsai.viewport into the layout's #Viewport region.
+ */
+export class Shell {
 
-	const t0 = performance.now();
+	constructor( bonsai, configuration ) {
 
-	const shell = mountShell( container, configuration.ui );
+		const t0 = performance.now();
+		const { context } = bonsai;
 
-	const progress = createProgress( shell.footer );
-	installFetchProgress( progress );
+		const shell = mountShell( context.dom, configuration.ui );
+		shell.viewport.appendChild( context.viewport );
 
-	const bonsai = new Bonsai( container, configuration, shell.viewport );
+		const progress = createProgress( shell.footer );
+		installFetchProgress( progress );
 
-	bindRibbon( bonsai.context, configuration.ribbon, shell.layout );
+		bindRibbon( context, configuration.ribbon, shell.layout );
 
-	bindModelProgress( bonsai.context.signals, progress );
+		bindModelProgress( context.signals, progress );
 
-	const panels = mountUi( bonsai.context, shell.layout, configuration.app.CoreModules );
-	bindPanelDialog( document.getElementById( 'RB_Panels' ), panels );
-	log.log( `boot: gui ready in ${ ( performance.now() - t0 ).toFixed( 0 ) }ms` );
+		const panels = mountUi( context, shell.layout, configuration.app.CoreModules );
+		bindPanelDialog( document.getElementById( 'RB_Panels' ), panels );
+		log.log( `boot: gui ready in ${ ( performance.now() - t0 ).toFixed( 0 ) }ms` );
 
-	progress.show( 'Loading viewer…', null );
-	bonsai.context.signals.viewerReady.add( () => progress.show( 'Loading IfcOpenShell…', null ) );
-	bonsai.context.signals.appReady.add( () => progress.settle( 'Ready', 400 ) );
-	void bonsai.start();
+		progress.show( 'Loading viewer…', null );
+		context.signals.viewerReady.add( () => progress.show( 'Loading IfcOpenShell…', null ) );
+		context.signals.appReady.add( () => progress.settle( 'Ready', 400 ) );
 
-	return bonsai;
+		this.world = shell.world;
+		this.layout = shell.layout;
+		this.panels = panels;
+
+	}
 
 }

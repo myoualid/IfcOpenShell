@@ -789,7 +789,7 @@ body {
 	opacity: 0.45;
 }
 
-#Viewport.is-file-drop {
+.bonsai-viewport.is-file-drop {
 	outline: 2px dashed var(--dui-color-accent);
 	outline-offset: -3px;
 }

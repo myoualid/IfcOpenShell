@@ -7,6 +7,7 @@
 {
   "imports": {
     "@aeco-dev/bonsaiweb": "../dist/bonsai.js",
+    "@aeco-dev/bonsaiweb/gui": "../dist/gui.js",
     "@aeco-dev/gui": "https://cdn.jsdelivr.net/npm/@aeco-dev/gui@0.2.4/gui.js",
     "@aeco-dev/layout": "https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.js",
     "ifcopenshell": "https://cdn.jsdelivr.net/npm/ifcopenshell@0.9.0/dist/index.js",
@@ -19,13 +20,16 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/gui@0.2.4/gui.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.css">
 <script type="module">
-  import { start } from "@aeco-dev/bonsaiweb";
+  import { Bonsai } from "@aeco-dev/bonsaiweb";
+  import { Shell } from "@aeco-dev/bonsaiweb/gui";
   import { BonsaiWebConfiguration } from "./configuration/config.js";
-  window.bonsai = await start(document.body, BonsaiWebConfiguration);
+  window.bonsai = new Bonsai(document.body, BonsaiWebConfiguration);
+  new Shell(window.bonsai, BonsaiWebConfiguration);
+  window.bonsai.start();
 </script>
 ```
 
-`app/headless.html` imports `@aeco-dev/bonsaiweb/headless` instead. That page is the viewer and the operators, with no ribbon or panels. `window.bonsai.ops.Viewer.ViewAll()` is how a host runs a command.
+`app/headless.html` creates the `Bonsai` without a `Shell`. That page is the viewer and the operators, with no ribbon or panels. `window.bonsai.ops.Viewer.ViewAll()` is how a host runs a command.
 
 A bundler imports the same names and does not need that map. Styles for the shell come from `gui.css`, `layout.css`, and `app/css/main.css`. See [distribution.md](distribution.md).
 
@@ -33,7 +37,7 @@ A bundler imports the same names and does not need that map. Styles for the shel
 
 ## Configuration
 
-`app/index.html` imports `app/configuration/config.js` and passes it to `start()`. That module assembles the four pieces the host reads.
+`app/index.html` imports `app/configuration/config.js` and passes it to `Bonsai` and `Shell`. That module assembles the four pieces the host reads.
 
 | File | Export | Effect |
 |------|--------|--------|
@@ -122,7 +126,7 @@ Panels is special. It has no `operator`. After modules activate, `bindPanelDialo
 
 **Bottom, Terminal.** A JavaScript prompt (`bonsai >`) with sessions, history, and completions. The header holds the session tabs and icons to create, clear, and close a session. A side column holds snippets in two scrollable tabs: `bonsai.tool` queries the model and selection, and `bonsai.ops` runs operators (`bonsai.ops.Viewer.ViewAll()`). Open or close the panel from Panels.
 
-**Viewport.** `#viewer-canvas` fills the Viewport region. Orbit uses the Blender preset until a Navigate button changes it. Dropping a file on the viewport loads it. Drops anywhere else on the window are cancelled so the browser does not navigate away.
+**Viewport.** `bonsai.viewport` fills the Viewport region, and `#viewer-canvas` fills it. Orbit uses the Blender preset until a Navigate button changes it. Dropping a file on the viewport loads it. Drops anywhere else on the window are cancelled so the browser does not navigate away.
 
 **Footer.** A status bar. It shows dependency loading, then conversion progress, then settles to a short "ready" message.
 

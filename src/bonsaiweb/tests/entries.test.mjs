@@ -63,7 +63,7 @@ const guiMarkers = [
 
 describe( 'entry graphs', () => {
 
-	it( 'headless does not reach gui or module ui', () => {
+	it( 'the core entry does not reach gui or module ui', () => {
 
 		const { files, bare } = walk( 'src/index.js' );
 		for ( const marker of guiMarkers ) {

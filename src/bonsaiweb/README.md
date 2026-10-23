@@ -10,14 +10,43 @@ That installs this package and the libraries it imports: `@aeco-dev/gui`, `@aeco
 
 ## Bundler
 
+The viewer alone draws into the container you give it:
+
 ```js
-import { start } from "@aeco-dev/bonsaiweb";
-import { defaultPaths } from "@aeco-dev/bonsaiweb/paths";
-import "@aeco-dev/gui/gui.css";
-import "@aeco-dev/layout/layout.css";
+import { Bonsai } from "@aeco-dev/bonsaiweb";
+
+const bonsai = new Bonsai( document.body );
+await bonsai.start();
+bonsai.ops.Project.LoadIfc( file );
 ```
 
-Headless, without the shell: `import { start } from "@aeco-dev/bonsaiweb/headless"`.
+The GUI shell is an addon. It builds its layout in the container and moves `bonsai.viewport`, the element that holds the canvas, into the layout:
+
+```js
+import { Bonsai } from "@aeco-dev/bonsaiweb";
+import { Shell } from "@aeco-dev/bonsaiweb/gui";
+import "@aeco-dev/gui/gui.css";
+import "@aeco-dev/layout/layout.css";
+
+const bonsai = new Bonsai( document.body, configuration );
+new Shell( bonsai, configuration );
+await bonsai.start();
+```
+
+## No import map
+
+`dist/module/` is the same build with every package inlined, so a page imports it straight from jsDelivr. Only the stylesheets, the viewer, and the ifcopenshell wasm files load separately, and the build points at those itself.
+
+```html
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/gui@0.2.4/gui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.css">
+<script type="module">
+  import { Bonsai } from "https://cdn.jsdelivr.net/npm/@aeco-dev/bonsaiweb@0.1.0/dist/module/bonsai.js";
+  import { Shell } from "https://cdn.jsdelivr.net/npm/@aeco-dev/bonsaiweb@0.1.0/dist/module/gui.js";
+</script>
+```
+
+The example is `app/standalone.html`.
 
 ## Import map
 
@@ -30,8 +59,7 @@ A page without a bundler maps the same names onto jsDelivr. The versions match t
 {
   "imports": {
     "@aeco-dev/bonsaiweb": "https://cdn.jsdelivr.net/npm/@aeco-dev/bonsaiweb@0.1.0/dist/bonsai.js",
-    "@aeco-dev/bonsaiweb/headless": "https://cdn.jsdelivr.net/npm/@aeco-dev/bonsaiweb@0.1.0/dist/bonsai-headless.js",
-    "@aeco-dev/bonsaiweb/paths": "https://cdn.jsdelivr.net/npm/@aeco-dev/bonsaiweb@0.1.0/dist/paths.js",
+    "@aeco-dev/bonsaiweb/gui": "https://cdn.jsdelivr.net/npm/@aeco-dev/bonsaiweb@0.1.0/dist/gui.js",
     "@aeco-dev/gui": "https://cdn.jsdelivr.net/npm/@aeco-dev/gui@0.2.4/gui.js",
     "@aeco-dev/layout": "https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.js",
     "ifcopenshell": "https://cdn.jsdelivr.net/npm/ifcopenshell@0.9.0/dist/index.js",
@@ -43,13 +71,13 @@ A page without a bundler maps the same names onto jsDelivr. The versions match t
 }
 </script>
 <script type="module">
-  import { start } from "@aeco-dev/bonsaiweb";
-  import { defaultPaths } from "@aeco-dev/bonsaiweb/paths";
+  import { Bonsai } from "@aeco-dev/bonsaiweb";
+  import { Shell } from "@aeco-dev/bonsaiweb/gui";
 </script>
 ```
 
 The example in `app/` uses that map, except `@aeco-dev/bonsaiweb` points at `../dist/` so a local rebuild shows up before the next publish.
 
-`defaultPaths` is only the viewer scripts, zstd, and the worker shim. Those are not import specifiers.
+`@aeco-dev/gui` and `@aeco-dev/layout` are only needed with the shell. The viewer scripts, zstd, and the worker shim load from jsDelivr on their own; they are not import specifiers.
 
-The shell also needs `configuration.ui`, `configuration.app`, and `configuration.ribbon`. The example is `app/configuration/config.js`.
+The shell needs `configuration.ui`, `configuration.app`, and `configuration.ribbon`. The example is `app/configuration/config.js`.

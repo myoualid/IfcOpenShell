@@ -8,8 +8,7 @@
   "module": "./dist/bonsai.js",
   "exports": {
     ".": "./dist/bonsai.js",
-    "./headless": "./dist/bonsai-headless.js",
-    "./paths": "./dist/paths.js",
+    "./gui": "./dist/gui.js",
     "./package.json": "./package.json"
   },
   "files": [

@@ -6,8 +6,9 @@ import { createLogger } from '../util/log.js';
 import { DROPBOX_DRAG_TYPE } from '../modules/dropbox/const.js';
 import { listZipEntries, readZipEntriesByExtension, readZipEntry } from '../pipeline/zip.js';
 import { resolveThread, THREADS } from '../pipeline/thread.js';
-import { dependencyUrls } from '../../app/configuration/imports.js';
+import { assets } from '../assets.js';
 import { createIfcOpenShellWorker } from '../pipeline/worker-host.js';
+import { initIfcOpenShell } from '../runtime.js';
 import { Ifc } from './Ifc.js';
 import { Viewer } from './Viewer.js';
 import {
@@ -33,7 +34,6 @@ const convertDefaults = { kernel: 'opencascade', thread: 'worker', delivery: 'st
 // esbuild does not treat them as assets of this source file.
 const CONVERT_WORKER_URL = new URL( './convert-' + 'worker.js', import.meta.url );
 const CONVERT_MAIN_URL = new URL( './convert-' + 'main.js', import.meta.url );
-let paths = null;
 let convertWorker = null;
 let convertWorkerPromise = null;
 let convertWorkerSeq = 0;
@@ -48,19 +48,6 @@ export class Loader {
 	// keys from their options/hooks argument to override them per call.
 	// delivery is 'stream' (parts as they finish) or 'end' (open the
 	// finished sidecar in one step).
-
-	static usePaths( next ) {
-
-		paths = next ?? null;
-
-	}
-
-	static _dependencyUrls() {
-
-		if ( ! paths ) throw new Error( 'Loader.usePaths() is required before conversion' );
-		return dependencyUrls( paths );
-
-	}
 
 	static configure( options = {} ) {
 
@@ -123,8 +110,7 @@ export class Loader {
 
 		try {
 
-			const ifcopenshell = await import( 'ifcopenshell' );
-			ifcRuntime ??= await ifcopenshell.init();
+			ifcRuntime ??= await initIfcOpenShell();
 			for ( const schema of [ 'ifc4', 'ifc2x3' ] ) {
 
 				if ( ifcRuntime.loadedPlugins().includes( `schema:${ schema }` ) ) continue;
@@ -494,7 +480,7 @@ export class Loader {
 		const shield = ( on ) => {
 
 			target.classList.toggle( 'is-file-drop', on );
-			const canvas = typeof document !== 'undefined' ? document.getElementById( 'viewer-canvas' ) : null;
+			const canvas = Viewer.get()?.canvas;
 			if ( canvas ) canvas.style.pointerEvents = on ? 'none' : '';
 
 		};
@@ -901,7 +887,7 @@ export class Loader {
 
 			// Not a top-level import: see tool/Ifc.js.
 			const ifcopenshell = await import( 'ifcopenshell' );
-			ifcRuntime ??= await ifcopenshell.init();
+			ifcRuntime ??= await initIfcOpenShell();
 			const stream = ifcRuntime.raw.parse.streamFromString(
 				new TextDecoder().decode( bytes.slice( 0, 4096 ) ),
 			);
@@ -1040,10 +1026,9 @@ export class Loader {
 		// and the browser reuses the cached modules.
 		try {
 
-			const urls = Loader._dependencyUrls();
 			const worker = await createIfcOpenShellWorker( CONVERT_WORKER_URL.href, {
-				shimUrl: urls.shim,
-				assets: { zstdModule: urls.zstdModule, zstdWasm: urls.zstdWasm },
+				shimUrl: assets.shim,
+				assets: { zstdModule: assets.zstdModule, zstdWasm: assets.zstdWasm },
 			} );
 			convertWorker = worker;
 			worker.onmessage = ( ev ) => {
@@ -1231,8 +1216,7 @@ export class Loader {
 		if ( thread === 'main' ) {
 
 			const mainThread = await import( CONVERT_MAIN_URL.href );
-			const urls = Loader._dependencyUrls();
-			mainThread.configureAssets( { zstdModule: urls.zstdModule, zstdWasm: urls.zstdWasm } );
+			mainThread.configureAssets( { zstdModule: assets.zstdModule, zstdWasm: assets.zstdWasm } );
 			const { convertBytes } = mainThread;
 			const result = await convertBytes( bytes, filename, {
 				kernel,

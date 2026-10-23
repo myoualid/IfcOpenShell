@@ -5,7 +5,7 @@
 // the wasm glue from the same URLs the page already loaded, so spawn stays cheap.
 // The blob worker has no base URL of its own, so every URL here is absolute.
 
-// Bundled callers pass `shimUrl` and `assets` from configuration.paths.
+// Bundled callers pass `shimUrl` and `assets` from src/assets.js.
 // The convert worker is dist/convert-worker.js, a sibling of the bundle.
 
 function absoluteImportMap( map, base ) {
@@ -42,7 +42,8 @@ export async function createIfcOpenShellWorker( moduleUrl, { shimUrl, assets } =
 
 	if ( ! shimUrl ) throw new Error( 'convert worker needs a shim URL' );
 	if ( ! assets?.zstdModule || ! assets?.zstdWasm ) throw new Error( 'convert worker needs zstd paths' );
-	const importMap = await readPageImportMap();
+	// The standalone build's worker has no bare imports, so the page needs no map.
+	const importMap = globalThis.BONSAI_IFCOPENSHELL_WASM ? { imports: {} } : await readPageImportMap();
 	const source = `
 		self.bonsaiAssets = ${ JSON.stringify( assets ) };
 		let installed = false;

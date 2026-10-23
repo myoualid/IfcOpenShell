@@ -45,7 +45,7 @@ class ViewerToolsUI {
 		this.hint = document.createElement( 'div' );
 		this.hint.id = 'viewer-tool-hint';
 		this.hint.hidden = true;
-		const viewport = context.dom?.viewport;
+		const viewport = context.viewport;
 		viewport?.appendChild( this.hint );
 		this.overlay = ns( 'svg' );
 		this.overlay.id = 'measure-overlay';
