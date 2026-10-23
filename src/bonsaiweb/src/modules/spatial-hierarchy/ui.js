@@ -6,6 +6,7 @@ import {
 	TreeView,
 } from '@aeco-dev/gui';
 
+import { store } from '../../context/store.js';
 import ops from '../../ops.js';
 import { ensureElementChildren, getSpatialDecomposition } from '../../tool/elementQuery.js';
 
@@ -301,7 +302,7 @@ class SpatialHierarchyPanelUI {
 
 		await this.refreshGuids();
 		const wanted = payload?.sourceId;
-		const models = this.context.store.models;
+		const { models } = store;
 		this._roots = models.map( ( entry ) => {
 
 			if ( wanted != null && entry.id !== wanted && this._rootBySourceId.has( entry.id ) ) {

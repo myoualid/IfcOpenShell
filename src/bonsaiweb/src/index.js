@@ -1,9 +1,11 @@
-import { Signals, addSignal, logSignals, removeSignal } from './context/signals.js';
-import { Store, listenStore } from './context/store.js';
+import { context } from './context/context.js';
+import { addSignal, logSignals, removeSignal } from './context/signals.js';
+import { store } from './context/store.js';
+import { setBundledDropboxClientId } from './modules/dropbox/const.js';
 import { registerOperators } from './modules/operators.js';
 import ops, { bindKeyboard } from './ops.js';
 import tool from './tool/index.js';
-import { create as createViewer, destroy } from './tool/Viewer.js';
+import { createViewer, destroyViewer } from './tool/Viewer.js';
 import { createLogger } from './util/log.js';
 
 export { tool };
@@ -15,22 +17,20 @@ export class Bonsai {
 
 	constructor( container, configuration = {}, viewport ) {
 
-		this.context = {
-			signals: Signals,
-			store: Store,
-			dom: { container, viewport },
-		};
+		this.context = context;
+		context.dom = { container, viewport };
+
+		this.store = store;
 
 		this.ops = ops;
 
 		this.tool = tool;
 
+		setBundledDropboxClientId( configuration.dropbox?.clientId );
 		this.paths = configuration.paths;
 		this.context.geometry = configuration.geometry ?? null;
 		this.tool.Loader.usePaths( configuration.paths );
 		this.tool.Loader.configure( configuration.geometry );
-
-		listenStore( this.context.signals );
 
 		registerOperators( configuration.app?.CoreModules );
 
@@ -38,38 +38,26 @@ export class Bonsai {
 
 		logSignals( this.context.signals );
 
-		this.viewer = null;
-
 	}
 
 	async start() {
 
 		const t = performance.now();
 		const { context } = this;
-		const viewerInstance = await createViewer( context.dom.viewport, this.paths );
-		this.viewer = viewerInstance;
+		// The viewer has no resize method; it samples #viewer-canvas itself.
+		const viewer = await createViewer( context.dom.viewport, this.paths );
 
-		// Reports the viewport's CSS box. The viewer has no resize method; it
-		// samples #viewer-canvas itself. Do not write canvas.width/height here.
-		this._resizeObserver = new ResizeObserver( ( entries ) => {
-
-			const box = entries[ 0 ]?.contentRect;
-			if ( ! box ) return;
-
-		} );
-		this._resizeObserver.observe( viewerInstance.canvas );
-
-		viewerInstance.onSelect( ( pick ) => {
+		viewer.onSelect( ( pick ) => {
 
 			ops.execute( 'viewer.object_picked', context, pick );
 
 		} );
-		viewerInstance.onSelectionChange( ( ids ) => {
+		viewer.onSelectionChange( ( ids ) => {
 
 			ops.execute( 'viewer.selection_changed', context, ids );
 
 		} );
-		viewerInstance.onModelLoaded( ( detail ) => {
+		viewer.onModelLoaded( ( detail ) => {
 
 			ops.execute( 'project.model_loaded', context, detail );
 
@@ -79,6 +67,13 @@ export class Bonsai {
 		if ( viewport ) {
 
 			tool.Loader.enableDragDrop( viewport, ( payload ) => {
+
+				if ( payload?.dropbox ) {
+
+					ops.execute( 'dropbox.open_file', context, payload.dropbox.path, payload.dropbox.name );
+					return;
+
+				}
 
 				if ( payload?.entries ) {
 
@@ -101,7 +96,7 @@ export class Bonsai {
 
 		}
 
-		context.signals.viewerReady.dispatch( viewerInstance );
+		context.signals.viewerReady.dispatch( viewer );
 		log.log( `boot: viewer ready in ${ ms( t ) }` );
 
 		const ifcopenshell = await import( 'ifcopenshell' );
@@ -126,11 +121,9 @@ export class Bonsai {
 
 	destroy() {
 
-		this._resizeObserver?.disconnect();
 		this.terminal?.terminalPanel?.destroy();
 		this.context.profiling?.profilerPanel?.destroy();
-		destroy();
-		this.viewer = null;
+		destroyViewer();
 
 	}
 

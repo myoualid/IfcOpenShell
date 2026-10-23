@@ -1,14 +1,15 @@
 // Loader — model lifecycle: adding sources, dropping them, and the
 // bookkeeping that goes with it (counts, progress, VRAM, names).
 
-import { getStore } from '../context/store.js';
+import { store } from '../context/store.js';
 import { createLogger } from '../util/log.js';
+import { DROPBOX_DRAG_TYPE } from '../modules/dropbox/const.js';
 import { listZipEntries, readZipEntriesByExtension, readZipEntry } from '../pipeline/zip.js';
 import { resolveThread, THREADS } from '../pipeline/thread.js';
 import { dependencyUrls } from '../../app/configuration/imports.js';
 import { createIfcOpenShellWorker } from '../pipeline/worker-host.js';
 import { Ifc } from './Ifc.js';
-import { viewer } from './Viewer.js';
+import { Viewer } from './Viewer.js';
 import {
 	Federation,
 	bagFromEntries,
@@ -175,7 +176,7 @@ export class Loader {
 		// First user model replaces the viewer's embedded sample. Otherwise
 		// that sample keeps the camera and false origin, and streamed IFC
 		// geometry lands off-screen.
-		if ( opts.replace || ! getStore().models.length ) {
+		if ( opts.replace || ! store.models.length ) {
 
 			Ifc.clear();
 			sidecarCache.clear();
@@ -183,7 +184,7 @@ export class Loader {
 
 		}
 
-		const sourceId = await viewer.addFile( file, opts );
+		const sourceId = await Viewer.get().addFile( file, opts );
 		const name = file?.name;
 		if ( typeof name === 'string' && name.toLowerCase().endsWith( '.ifcview' ) ) {
 
@@ -210,9 +211,9 @@ export class Loader {
 	static _sourceIdBeside( ifcName ) {
 
 		const want = String( ifcName ).replace( /\.ifc(view)?$/i, '' ).toLowerCase();
-		for ( let i = getStore().models.length - 1; i >= 0; i -- ) {
+		for ( let i = store.models.length - 1; i >= 0; i -- ) {
 
-			const entry = getStore().models[ i ];
+			const entry = store.models[ i ];
 			const stem = String( entry.name ).replace( /\.ifc(view)?$/i, '' ).toLowerCase();
 			if ( stem === want ) return entry.id;
 
@@ -260,16 +261,15 @@ export class Loader {
 		// The JS helpers exist, but the current wasm does not export
 		// ifcv_begin/append/end_stream_c. Feeding parts through
 		// load_ifcview_from_source_c leaves the camera on an empty scene.
-		const native = viewer?.module?._ifcv_begin_stream_c
-			&& viewer?.module?._ifcv_append_part_c
-			&& viewer?.module?._ifcv_end_stream_c;
-		return Boolean( native );
+		const module = Viewer.get()?.module;
+		return Boolean( module?._ifcv_begin_stream_c && module._ifcv_append_part_c && module._ifcv_end_stream_c );
 
 	}
 
 	static _startStream( ifcName ) {
 
-		if ( ! getStore().models.length ) viewer.clearScene();
+		const viewer = Viewer.get();
+		if ( ! store.models.length ) viewer.clearScene();
 		const sidecarName = Loader._sidecarName( ifcName );
 		const sourceId = viewer.beginStream( { name: sidecarName } );
 		Ifc.set( sourceId, sidecarName );
@@ -288,6 +288,7 @@ export class Loader {
 		} );
 		// Parts are the session geometry. If none flushed (a tiny model), load
 		// the final sidecar as part 0.
+		const viewer = Viewer.get();
 		const stream = viewer._streams?.get?.( sourceId );
 		if ( ! stream?.parts?.length ) await viewer.appendPart( sourceId, file );
 		viewer.endStream( sourceId );
@@ -362,7 +363,7 @@ export class Loader {
 
 	static clear() {
 
-		viewer?.clearScene();
+		Viewer.get()?.clearScene();
 		Ifc.clear();
 		sidecarCache.clear();
 		if ( ! Federation.isOpening() ) Federation.reset();
@@ -373,16 +374,9 @@ export class Loader {
 	// false origin set beforehand. Re-apply after every model is queued.
 	static _applyProjectPlacement() {
 
-		const project = Federation.get();
-		if ( ! viewer?.setFederationUnit ) return;
-		viewer.setFederationUnit( {
-			name: project.unit.name,
-			prefix: project.unit.prefix,
-		} );
-		viewer.setFalseOrigin( {
-			xyz: project.origin.xyz,
-			rzDeg: project.origin.rzDeg,
-		} );
+		const { unit, origin } = Federation.get();
+		Viewer.get().setFederationUnit( unit );
+		Viewer.get().setFalseOrigin( origin );
 
 	}
 
@@ -390,7 +384,7 @@ export class Loader {
 
 		const model = Federation.modelForSource( sourceId );
 		const xf = viewerTransform( model?.transform );
-		if ( xf ) viewer.setModelTransform( sourceId, xf );
+		if ( xf ) Viewer.get().setModelTransform( sourceId, xf );
 
 	}
 
@@ -497,10 +491,30 @@ export class Loader {
 		// Without a window-level preventDefault, a drop that lands outside
 		// the viewport navigates the page to the file.
 		const win = ( typeof window !== 'undefined' ) ? window : null;
-		if ( win ) {
+		const shield = ( on ) => {
 
-			win.addEventListener( 'dragover', ( e ) => e.preventDefault() );
-			win.addEventListener( 'drop', ( e ) => e.preventDefault() );
+			target.classList.toggle( 'is-file-drop', on );
+			const canvas = typeof document !== 'undefined' ? document.getElementById( 'viewer-canvas' ) : null;
+			if ( canvas ) canvas.style.pointerEvents = on ? 'none' : '';
+
+		};
+
+		if ( win && ! win.__bonsaiDropShield ) {
+
+			win.__bonsaiDropShield = true;
+			win.addEventListener( 'dragover', ( e ) => {
+
+				e.preventDefault();
+				shield( true );
+
+			} );
+			win.addEventListener( 'drop', ( e ) => {
+
+				e.preventDefault();
+				shield( false );
+
+			} );
+			win.addEventListener( 'dragend', () => shield( false ) );
 
 		}
 
@@ -509,6 +523,7 @@ export class Loader {
 		target.addEventListener( 'drop', async ( e ) => {
 
 			stop( e );
+			shield( false );
 			const payload = await Loader.collectDrop( e.dataTransfer );
 			if ( payload ) onFile?.( payload );
 
@@ -519,6 +534,22 @@ export class Loader {
 	static async collectDrop( dataTransfer ) {
 
 		if ( ! dataTransfer ) return null;
+		const marker = dataTransfer.getData?.( DROPBOX_DRAG_TYPE );
+		if ( marker ) {
+
+			try {
+
+				const dropbox = JSON.parse( marker );
+				if ( dropbox?.path && dropbox?.name ) return { dropbox };
+
+			} catch {
+
+				/* A scene drop can still be an operating-system file. */
+
+			}
+
+		}
+
 		const items = [ ...( dataTransfer.items ?? [] ) ];
 		const walked = [];
 		const canWalk = items.some( ( item ) => typeof item.webkitGetAsEntry === 'function' );
@@ -671,14 +702,14 @@ export class Loader {
 
 				} catch ( err ) {
 
-					Federation.modelArrived( viewer );
+					Federation.modelArrived();
 					throw err;
 
 				}
 
 				if ( sourceId == null ) {
 
-					Federation.modelArrived( viewer );
+					Federation.modelArrived();
 					parsed.warnings.push( `${ model.displayName }: missing ${ model.path }.` );
 					continue;
 
@@ -691,7 +722,7 @@ export class Loader {
 
 			}
 
-			if ( ! loaded.length && parsed.doc.homeView ) viewer?.setCamera?.( parsed.doc.homeView );
+			if ( ! loaded.length && parsed.doc.homeView ) Viewer.get().setCamera( parsed.doc.homeView );
 			if ( parsed.warnings.length ) log.warn( parsed.warnings.join( '\n' ) );
 			return { sourceIds: loaded, warnings: parsed.warnings, name: parsed.doc.name };
 
@@ -953,7 +984,7 @@ export class Loader {
 				...hooks,
 				onPart: async ( partBytes ) => {
 
-					await viewer.appendPart( sourceId, partBytes );
+					await Viewer.get().appendPart( sourceId, partBytes );
 
 				},
 			}
@@ -970,7 +1001,7 @@ export class Loader {
 
 				try {
 
-					viewer.endStream( sourceId );
+					Viewer.get().endStream( sourceId );
 
 				} catch { /* source may already be gone */ }
 

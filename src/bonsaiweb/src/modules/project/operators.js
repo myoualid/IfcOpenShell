@@ -2,7 +2,8 @@ import ops, { Operator } from '../../ops.js';
 import { writeStoredZip } from '../../pipeline/zip.js';
 import { Federation } from '../../tool/federation.js';
 import { Ifc, Loader } from '../../tool/index.js';
-import { Viewer, viewer } from '../../tool/Viewer.js';
+import { store } from '../../context/store.js';
+import { Viewer } from '../../tool/Viewer.js';
 
 // Real file is app/files/ifc/window_wall.ifc. scripts/build.mjs copies it to
 // dist/window_wall.ifc. The name is split so esbuild leaves this URL
@@ -69,11 +70,7 @@ function loadOptions( context, options ) {
 		onLiveIfc: ( payload ) => {
 
 			context.signals.liveIfcReady.dispatch( payload );
-			if ( context.store.selection ) {
-
-				context.signals.objectPicked.dispatch( context.store.selection );
-
-			}
+			if ( context.activeObject ) context.signals.objectPicked.dispatch( context.activeObject );
 
 		},
 	};
@@ -180,7 +177,7 @@ class ProjectNew extends Operator {
 
 	async execute() {
 
-		const { stem, filename } = takeProjectName( this.context.store.models );
+		const { stem, filename } = takeProjectName( store.models );
 		try {
 
 			const file = await Ifc.createBlank( stem );
@@ -282,14 +279,14 @@ class ProjectDownload extends Operator {
 	async execute() {
 
 		const encoder = new TextEncoder();
-		for ( const entry of this.context.store.models ) {
+		for ( const entry of store.models ) {
 
 			Federation.ensureLocal( entry.id, entry.name || 'model.ifc' );
 
 		}
 
 		const payload = new Map();
-		for ( const entry of this.context.store.models ) {
+		for ( const entry of store.models ) {
 
 			const model = Federation.modelForSource( entry.id );
 			if ( ! model ) continue;
@@ -324,7 +321,7 @@ class ProjectDownload extends Operator {
 
 		}
 
-		Federation.captureViewer( viewer );
+		Federation.captureViewer();
 		const archive = Federation.archiveFiles( payload );
 		if ( archive.warnings.length ) console.warn( archive.warnings.join( '\n' ) );
 		const data = writeStoredZip( archive.files );
@@ -393,8 +390,8 @@ class ProjectModels extends Operator {
 		let objects = [];
 		try {
 
-			objects = await viewer.getObjects();
-			hidden = new Set( viewer.getHidden() );
+			objects = await Viewer.get().getObjects();
+			hidden = new Set( Viewer.get().getHidden() );
 
 		} catch { /* element table is not ready until the first model is drawn */ }
 
@@ -443,19 +440,19 @@ class ProjectModelLoaded extends Operator {
 		const sourceId = typeof this.detail === 'number' ? this.detail : this.detail?.sourceId;
 		const sessionModelId = typeof this.detail === 'object' ? this.detail?.sessionModelId : undefined;
 		this.context.signals.modelLoaded.dispatch( { sourceId, sessionModelId } );
-		Federation.modelArrived( viewer );
+		Federation.modelArrived();
 		const model = Federation.modelForSource( sourceId );
 		if ( model && ! Federation.isEffectivelyVisible( model ) ) {
 
 			try {
 
-				const objects = await viewer.getObjects();
+				const objects = await Viewer.get().getObjects();
 				const ids = objects
 					.filter( ( object ) => object.sourceId === sourceId && object.objectId > 0 )
 					.map( ( object ) => object.objectId );
 				if ( ids.length ) {
 
-					viewer.hide( ids );
+					Viewer.get().hide( ids );
 					this.context.signals.visibilityChanged.dispatch( { action: 'hide', target: ids } );
 
 				}

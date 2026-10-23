@@ -9,7 +9,8 @@ import {
 } from '@aeco-dev/gui';
 
 import ops from '../../ops.js';
-import { viewer } from '../../tool/Viewer.js';
+import { store } from '../../context/store.js';
+import { Viewer } from '../../tool/Viewer.js';
 
 const RIBBON_BUTTON_ID = 'RB_SurveyPoint';
 
@@ -149,20 +150,6 @@ function readLive( fields ) {
 
 }
 
-function readOrigin() {
-
-	try {
-
-		if ( ! viewer?.getFalseOrigin ) return null;
-		return viewer.getFalseOrigin();
-
-	} catch {
-
-		return null;
-
-	}
-
-}
 
 function originSeed( origin ) {
 
@@ -297,7 +284,7 @@ class GeoreferencingPanelUI {
 
 	_syncSurvey() {
 
-		const origin = readOrigin();
+		const origin = store.scene.falseOrigin;
 		if ( ! origin ) return;
 		if ( ! this._survey.hold ) {
 
@@ -323,13 +310,13 @@ class GeoreferencingPanelUI {
 		if ( ! pose ) return;
 		this._survey.hold = true;
 		ops.execute( 'viewer.set_false_origin', this.context, pose );
-		this._paintSurvey( { ...pose, explicit: true, unit: readOrigin()?.unit } );
+		this._paintSurvey( { ...pose, explicit: true, unit: store.scene.falseOrigin?.unit } );
 
 	}
 
 	_reset() {
 
-		const origin = this._baseline ?? readOrigin();
+		const origin = this._baseline ?? store.scene.falseOrigin;
 		if ( ! origin ) return;
 		this._applying = true;
 		ops.execute( 'viewer.set_false_origin', this.context, {
@@ -346,14 +333,8 @@ class GeoreferencingPanelUI {
 	_paintSurvey( origin ) {
 
 		const unit = origin.unit || 'm';
-		let survey = [ 0, 0, 0 ];
-		let world = [ 0, 0, 0 ];
-		try {
-
-			if ( viewer.surveyPoint ) survey = viewer.surveyPoint();
-			if ( viewer.worldOrigin ) world = viewer.worldOrigin();
-
-		} catch { /* viewer is still booting */ }
+		const survey = Viewer.get()?.surveyPoint() ?? [ 0, 0, 0 ];
+		const world = Viewer.get()?.worldOrigin() ?? [ 0, 0, 0 ];
 
 		const mag = Math.hypot( origin.xyz[ 0 ], origin.xyz[ 1 ], origin.xyz[ 2 ] );
 		const how = origin.explicit ? 'set by you' :
@@ -368,7 +349,7 @@ class GeoreferencingPanelUI {
 
 	_paintGeoref() {
 
-		const models = this.context.store.models;
+		const { models } = store;
 		if ( ! models.length ) {
 
 			this._georef.setValue( 'Load a model to read its map conversion.' );
@@ -379,13 +360,7 @@ class GeoreferencingPanelUI {
 		const lines = [];
 		for ( const entry of models ) {
 
-			let georef = null;
-			try {
-
-				georef = viewer?.getModelGeoref?.( entry.id ) ?? null;
-
-			} catch { /* model has not finished loading */ }
-
+			const georef = Viewer.get()?.getModelGeoref( entry.id );
 			const name = entry.name || `Model ${ entry.id }`;
 			if ( ! georef ) {
 

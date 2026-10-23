@@ -1,7 +1,6 @@
 import ops from '../../ops.js';
 import { measure, projectPoint, resolvePick } from '../../tool/measure.js';
-import { viewer } from '../../tool/Viewer.js';
-import { onViewerTools } from '../../tool/viewerTools.js';
+import { Viewer } from '../../tool/Viewer.js';
 
 const BUTTONS = {
 	RB_Section: 'section',
@@ -53,14 +52,13 @@ class ViewerToolsUI {
 		this.overlay.setAttribute( 'aria-hidden', 'true' );
 		this.overlay.hidden = true;
 		viewport?.appendChild( this.overlay );
-		this._off = onViewerTools( ( state ) => this.syncTools( state ) );
 		context.signals.viewerToolsChanged.add( ( state ) => this.syncTools( state ) );
 		context.signals.measureChanged.add( ( state ) => this.syncMeasure( state ) );
 		this._down = null;
 		this._raf = 0;
 		this.preview = null;
 		this._hoverSerial = 0;
-		const canvas = () => viewer?.canvas ?? viewport?.querySelector( '#viewer-canvas' );
+		const canvas = () => Viewer.get()?.canvas;
 		viewport?.addEventListener( 'pointerdown', ( event ) => {
 
 			if ( event.target !== canvas() ) return;
@@ -100,7 +98,7 @@ class ViewerToolsUI {
 		this._paintButtons();
 		this._paintHint();
 		this._paintOverlay();
-		const canvas = viewer?.canvas;
+		const canvas = Viewer.get()?.canvas;
 		if ( canvas ) {
 
 			const placing = this.measureState.mode === 'length' || this.measureState.mode === 'area';
@@ -176,6 +174,7 @@ class ViewerToolsUI {
 		const show = state?.mode === 'length' || state?.mode === 'area';
 		this.overlay.hidden = ! show;
 		this.overlay.replaceChildren();
+		const viewer = Viewer.get();
 		if ( ! show || ! viewer ) return;
 		const last = state.points?.[ state.points.length - 1 ];
 		for ( const seg of state.segments ?? [] ) {
@@ -242,8 +241,8 @@ class ViewerToolsUI {
 
 	_stroke( a, b, color, dashed ) {
 
-		const from = projectPoint( viewer, a );
-		const to = projectPoint( viewer, b );
+		const from = projectPoint( Viewer.get(), a );
+		const to = projectPoint( Viewer.get(), b );
 		if ( ! from || ! to ) return;
 		const line = ns( 'line' );
 		line.setAttribute( 'x1', from.x );
@@ -281,8 +280,6 @@ class ViewerToolsUI {
 		const mode = measure.mode();
 		if ( mode !== 'length' && mode !== 'area' ) return;
 		if ( this.tools?.section || this.tools?.fly ) return;
-		if ( typeof viewer?.flyActive === 'function' && viewer.flyActive() ) return;
-		if ( typeof viewer?.sectionActive === 'function' && viewer.sectionActive() ) return;
 		const rect = canvas.getBoundingClientRect();
 		void ops.execute( 'viewer.measure_click', this.context, {
 			x: event.clientX - rect.left,
@@ -309,7 +306,7 @@ class ViewerToolsUI {
 			y: event.clientY - rect.top,
 			alt: event.altKey,
 		};
-		void resolvePick( viewer, click, measure.snapshot().points ).then( ( hit ) => {
+		void resolvePick( Viewer.get(), click, measure.snapshot().points ).then( ( hit ) => {
 
 			if ( serial !== this._hoverSerial ) return;
 			this.preview = hit;

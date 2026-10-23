@@ -13,7 +13,8 @@ import {
 
 import ops from '../../ops.js';
 import { Loader } from '../../tool/index.js';
-import { Viewer, viewer } from '../../tool/Viewer.js';
+import { store } from '../../context/store.js';
+import { Viewer } from '../../tool/Viewer.js';
 
 const RIBBON_BUTTON_ID = 'RB_Settings';
 const DEFAULT_BACKGROUND = '#202329';
@@ -116,20 +117,6 @@ function fogModeName( mode ) {
 
 }
 
-function readFog() {
-
-	try {
-
-		if ( ! Viewer.get()?.fog ) return null;
-		return viewer.fog();
-
-	} catch {
-
-		return null;
-
-	}
-
-}
 
 class SettingsPanelUI {
 
@@ -333,7 +320,7 @@ class SettingsPanelUI {
 
 	_syncFog() {
 
-		const fog = readFog();
+		const fog = store.scene.fog;
 		if ( ! fog || this._writing ) {
 
 			this._paintFogFields();

@@ -10,12 +10,11 @@ import {
 	Tooltip,
 } from '@aeco-dev/gui';
 
-import { getStore } from '../../context/store.js';
+import { store } from '../../context/store.js';
 import ops from '../../ops.js';
 import { writeStoredZip } from '../../pipeline/zip.js';
 import { Federation } from '../../tool/federation.js';
 import { Ifc, Loader } from '../../tool/index.js';
-import { viewer } from '../../tool/Viewer.js';
 
 function formatBytes( bytes ) {
 
@@ -51,7 +50,7 @@ function liveIfc( sourceId ) {
 	const file = Ifc.get( sourceId );
 	if ( ! file?.toString ) return null;
 	const data = new TextEncoder().encode( file.toString() );
-	const name = getStore().models.find( ( entry ) => entry.id === sourceId )?.name || 'model.ifc';
+	const name = store.models.find( ( entry ) => entry.id === sourceId )?.name || 'model.ifc';
 	return { name, bytes: data.byteLength, data };
 
 }
@@ -151,20 +150,6 @@ function readLive( fields ) {
 
 }
 
-function readOrigin() {
-
-	try {
-
-		if ( ! viewer?.getFalseOrigin ) return null;
-		return viewer.getFalseOrigin();
-
-	} catch {
-
-		return null;
-
-	}
-
-}
 
 class ProjectPanelUI {
 
@@ -376,7 +361,7 @@ class ProjectPanelUI {
 		if ( token !== this._refreshToken ) return;
 
 		const visibility = new Map( ( result ?? [] ).map( ( row ) => [ row.sourceId, row ] ) );
-		const models = this.context.store.models.map( ( entry ) => {
+		const models = store.models.map( ( entry ) => {
 
 			const sourceId = entry.id;
 			const row = visibility.get( sourceId );
@@ -471,7 +456,7 @@ class ProjectPanelUI {
 		if ( this._applying ) return;
 		const pose = readLive( fields );
 		if ( ! pose ) return;
-		const pivot = readOrigin()?.xyz ?? [ 0, 0, 0 ];
+		const pivot = store.scene.falseOrigin?.xyz ?? [ 0, 0, 0 ];
 		ops.execute( 'viewer.set_model_transform', this.context, sourceId, {
 			aFrame: 'global',
 			a: [ 0, 0, 0 ],

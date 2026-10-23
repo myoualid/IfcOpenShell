@@ -1,5 +1,5 @@
 import { Operator } from '../../ops.js';
-import { Viewer, viewer } from '../../tool/Viewer.js';
+import { Viewer } from '../../tool/Viewer.js';
 
 class SpatialSelect extends Operator {
 
@@ -22,6 +22,7 @@ class SpatialSelect extends Operator {
 
 	execute() {
 
+		const viewer = Viewer.get();
 		if ( this.mode === 'add' ) viewer.addToSelection( this.ids );
 		else if ( this.mode === 'remove' ) viewer.removeFromSelection( this.ids );
 		else viewer.setSelection( this.ids );
@@ -51,8 +52,8 @@ class SpatialIsolate extends Operator {
 
 	execute() {
 
-		viewer.setSelection( this.ids );
-		viewer.isolateSelected();
+		Viewer.get().setSelection( this.ids );
+		Viewer.get().isolateSelected();
 		this.context.signals.visibilityChanged.dispatch( { action: 'isolate', target: this.ids } );
 		return { status: 'FINISHED' };
 
@@ -76,7 +77,7 @@ class SpatialHidden extends Operator {
 		let hidden = [];
 		try {
 
-			hidden = viewer.getHidden();
+			hidden = Viewer.get().getHidden();
 
 		} catch { /* element table is not ready until the first model is drawn */ }
 
@@ -99,7 +100,7 @@ class SpatialObjects extends Operator {
 
 	async execute() {
 
-		const objects = await viewer.getObjects().catch( () => [] );
+		const objects = await Viewer.get().getObjects().catch( () => [] );
 		return { status: 'FINISHED', result: objects };
 
 	}
