@@ -1,17 +1,7 @@
 import { Operator } from '../../ops.js';
-import { Federation } from '../../tool/federation.js';
-import { Viewer, viewer } from '../../tool/Viewer.js';
 import { measure, resolvePick } from '../../tool/measure.js';
-import {
-	clearSection,
-	publishViewerTools,
-	toggleAxes,
-	toggleFly,
-	toggleFog,
-	toggleGrid,
-	toggleProjection,
-	toggleSection,
-} from '../../tool/viewerTools.js';
+import { Scene } from '../../tool/Scene.js';
+import { Viewer } from '../../tool/Viewer.js';
 
 // Undoable visibility commands capture their ids on the first execute, so
 // redo (execute again) reuses them.
@@ -33,18 +23,18 @@ class HideSelectionOperator extends Operator {
 
 		if ( this.ids.length === 0 ) {
 
-			this.ids = [ ...viewer.getSelection() ];
+			this.ids = Viewer.get().getSelection();
 
 		}
 
-		viewer.hide( this.ids );
+		Viewer.get().hide( this.ids );
 		this.context.signals.visibilityChanged.dispatch( { action: 'hide', target: this.ids } );
 
 	}
 
 	undo() {
 
-		viewer.show( this.ids );
+		Viewer.get().show( this.ids );
 		this.context.signals.visibilityChanged.dispatch( { action: 'show', target: this.ids } );
 
 	}
@@ -68,7 +58,7 @@ class ShowSelectionOperator extends Operator {
 
 		if ( this.ids.length === 0 ) {
 
-			this.ids = [ ...viewer.getSelection() ];
+			this.ids = Viewer.get().getSelection();
 
 		}
 
@@ -79,14 +69,14 @@ class ShowSelectionOperator extends Operator {
 
 		}
 
-		viewer.show( this.ids );
+		Viewer.get().show( this.ids );
 		this.context.signals.visibilityChanged.dispatch( { action: 'show', target: this.ids } );
 
 	}
 
 	undo() {
 
-		viewer.hide( this.ids );
+		Viewer.get().hide( this.ids );
 		this.context.signals.visibilityChanged.dispatch( { action: 'hide', target: this.ids } );
 
 	}
@@ -111,18 +101,18 @@ class ShowAllOperator extends Operator {
 		// The hidden set, so undo can restore it exactly.
 		if ( this.ids.length === 0 ) {
 
-			this.ids = [ ...viewer.getHidden() ];
+			this.ids = Viewer.get().getHidden();
 
 		}
 
-		viewer.showAll();
+		Viewer.get().showAll();
 		this.context.signals.visibilityChanged.dispatch( { action: 'showAll' } );
 
 	}
 
 	undo() {
 
-		viewer.hide( this.ids );
+		Viewer.get().hide( this.ids );
 		this.context.signals.visibilityChanged.dispatch( { action: 'hide', target: this.ids } );
 
 	}
@@ -134,6 +124,7 @@ const VIEWS = Object.freeze( {
 } );
 const NAV_PRESETS = Object.freeze( [ 'blender', 'rhino', 'revit', 'web' ] );
 
+// `run( viewer, context, ...args )` only runs once the viewer exists.
 function command( name, label, run, needsArgs = false ) {
 
 	class Command extends Operator {
@@ -158,7 +149,7 @@ function command( name, label, run, needsArgs = false ) {
 
 		execute() {
 
-			return run( this.context, ...this.args );
+			return run( Viewer.get(), this.context, ...this.args );
 
 		}
 
@@ -168,28 +159,19 @@ function command( name, label, run, needsArgs = false ) {
 
 }
 
-const ViewerHideAll = command( 'viewer.hide_all', 'Hide All', ( context ) => {
+const ViewerHideAll = command( 'viewer.hide_all', 'Hide All', ( viewer, context ) => {
 
 	viewer.hideAll();
 	context.signals.visibilityChanged.dispatch( { action: 'hideAll' } );
 
 } );
 
-const ViewerIsolate = command( 'viewer.isolate', 'Isolate Selection', ( context ) => {
+const ViewerIsolate = command( 'viewer.isolate', 'Isolate Selection', ( viewer, context ) => {
 
 	viewer.isolateSelected();
 	context.signals.visibilityChanged.dispatch( { action: 'isolate' } );
 
 } );
-
-function publishTools( context ) {
-
-	const state = publishViewerTools( viewer );
-	context.signals.viewerToolsChanged.dispatch( state );
-	context.signals.xrayToggled.dispatch( { active: state.xray } );
-	return state;
-
-}
 
 const MEASURE_MODES = Object.freeze( [ 'length', 'area', 'volume' ] );
 
@@ -201,7 +183,7 @@ function publishMeasure( context ) {
 
 }
 
-const ViewerMeasure = command( 'viewer.measure', 'Measure', ( context, mode ) => {
+const ViewerMeasure = command( 'viewer.measure', 'Measure', ( viewer, context, mode ) => {
 
 	if ( ! MEASURE_MODES.includes( mode ) ) return { status: 'CANCELLED' };
 	const next = measure.mode() === mode ? null : mode;
@@ -211,7 +193,7 @@ const ViewerMeasure = command( 'viewer.measure', 'Measure', ( context, mode ) =>
 
 }, true );
 
-const ViewerMeasureClick = command( 'viewer.measure_click', 'Measure Click', async ( context, click ) => {
+const ViewerMeasureClick = command( 'viewer.measure_click', 'Measure Click', async ( viewer, context, click ) => {
 
 	const mode = measure.mode();
 	if ( mode !== 'length' && mode !== 'area' ) return { status: 'CANCELLED' };
@@ -222,7 +204,7 @@ const ViewerMeasureClick = command( 'viewer.measure_click', 'Measure Click', asy
 
 }, true );
 
-const ViewerMeasureUndo = command( 'viewer.measure_undo', 'Undo Measure Point', ( context ) => {
+const ViewerMeasureUndo = command( 'viewer.measure_undo', 'Undo Measure Point', ( viewer, context ) => {
 
 	if ( ! measure.mode() ) return { status: 'CANCELLED' };
 	measure.undo();
@@ -230,7 +212,7 @@ const ViewerMeasureUndo = command( 'viewer.measure_undo', 'Undo Measure Point', 
 
 } );
 
-const ViewerMeasureClear = command( 'viewer.measure_clear', 'Clear Measure', ( context ) => {
+const ViewerMeasureClear = command( 'viewer.measure_clear', 'Clear Measure', ( viewer, context ) => {
 
 	if ( ! measure.mode() ) return { status: 'CANCELLED' };
 	measure.clear();
@@ -238,122 +220,58 @@ const ViewerMeasureClear = command( 'viewer.measure_clear', 'Clear Measure', ( c
 
 } );
 
-const ViewerXray = command( 'viewer.xray', 'Toggle X-ray', ( context ) => {
-
-	viewer.toggleXray();
-	return publishTools( context );
-
-} );
-
-const ViewerSection = command( 'viewer.section', 'Toggle Section', ( context ) => {
-
-	toggleSection( viewer );
-	return publishTools( context );
-
-} );
-
-const ViewerClearSection = command( 'viewer.clear_section', 'Clear Section Cuts', ( context ) => {
-
-	clearSection( viewer );
-	return publishTools( context );
-
-} );
-
-const ViewerFly = command( 'viewer.fly', 'Toggle Fly', ( context ) => {
-
-	toggleFly( viewer );
-	return publishTools( context );
-
-} );
-
-const ViewerProjection = command( 'viewer.projection', 'Toggle Orthographic', ( context ) => {
-
-	toggleProjection( viewer );
-	return publishTools( context );
-
-} );
+// The tool flags reach the ribbon through viewerToolsChanged, which the
+// viewer's frame callback publishes when one of them changes.
+const ViewerXray = command( 'viewer.xray', 'Toggle X-ray', ( viewer ) => viewer.toggleXray() );
+const ViewerSection = command( 'viewer.section', 'Toggle Section', ( viewer ) => viewer.toggleSection() );
+const ViewerClearSection = command( 'viewer.clear_section', 'Clear Section Cuts', ( viewer ) => viewer.clearSection() );
+const ViewerFly = command( 'viewer.fly', 'Toggle Fly', ( viewer ) => viewer.toggleFly() );
+const ViewerProjection = command( 'viewer.projection', 'Toggle Orthographic', ( viewer ) => viewer.toggleProjection() );
 
 // A checkbox passes the wanted boolean. A button omits it and flips the flag.
-function applyToggle( read, toggle, want ) {
+const ViewerGrid = command( 'viewer.grid', 'Toggle Grid', ( viewer, context, on ) => {
 
-	if ( typeof want === 'boolean' && !! read() === want ) return want;
-	return toggle();
-
-}
-
-const ViewerGrid = command( 'viewer.grid', 'Toggle Grid', ( context, on ) => {
-
-	applyToggle(
-		() => ( typeof viewer.gridVisible === 'function' ? viewer.gridVisible() : false ),
-		() => toggleGrid( viewer ),
-		on,
-	);
-	return publishTools( context );
+	viewer.setGridVisible( typeof on === 'boolean' ? on : ! viewer.gridVisible() );
 
 } );
 
-const ViewerAxes = command( 'viewer.axes', 'Toggle Axes', ( context, on ) => {
+const ViewerAxes = command( 'viewer.axes', 'Toggle Axes', ( viewer, context, on ) => {
 
-	applyToggle(
-		() => ( typeof viewer.originAxesVisible === 'function' ? viewer.originAxesVisible() : false ),
-		() => toggleAxes( viewer ),
-		on,
-	);
-	return publishTools( context );
+	viewer.setOriginAxesVisible( typeof on === 'boolean' ? on : ! viewer.originAxesVisible() );
 
 } );
 
-const ViewerFogToggle = command( 'viewer.fog_toggle', 'Toggle Fog', ( context, on ) => {
+const ViewerFogToggle = command( 'viewer.fog_toggle', 'Toggle Fog', ( viewer, context, on ) => {
 
-	applyToggle(
-		() => ( typeof viewer.fogVisible === 'function' ? viewer.fogVisible() : false ),
-		() => toggleFog( viewer ),
-		on,
-	);
-	const state = publishTools( context );
-	context.signals.fogChanged.dispatch( viewer.fog?.() ?? { enabled: state.fog } );
-	return state;
+	viewer.setFogVisible( typeof on === 'boolean' ? on : ! viewer.fogVisible() );
+	context.signals.fogChanged.dispatch( viewer.fog() );
 
 } );
 
-const ViewerClearColors = command( 'viewer.clear_colors', 'Clear Colors', ( context ) => {
+const ViewerSelectionOutline = command( 'viewer.selection_outline', 'Toggle Selection Outline', ( viewer, context, on ) => {
+
+	viewer.setSelectionOutline( typeof on === 'boolean' ? on : ! viewer.selectionOutlineEnabled() );
+
+} );
+
+const ViewerClearColors = command( 'viewer.clear_colors', 'Clear Colors', ( viewer, context ) => {
 
 	viewer.clearColors();
 	context.signals.colorsChanged.dispatch( { action: 'clear' } );
 
 } );
 
-const ViewerSelectionOutline = command( 'viewer.selection_outline', 'Toggle Selection Outline', ( context, on ) => {
-
-	applyToggle(
-		() => viewer.selectionOutlineEnabled(),
-		() => viewer.setSelectionOutline( ! viewer.selectionOutlineEnabled() ),
-		on,
-	);
-	return publishTools( context );
-
-} );
-
-const ViewerClearSelection = command( 'viewer.clear_selection', 'Clear Selection', ( context ) => {
+const ViewerClearSelection = command( 'viewer.clear_selection', 'Clear Selection', ( viewer, context ) => {
 
 	viewer.clearSelection();
 	context.signals.selectionCleared.dispatch();
 
 } );
 
-const ViewerViewAll = command( 'viewer.view_all', 'View All', () => {
+const ViewerViewAll = command( 'viewer.view_all', 'View All', ( viewer ) => viewer.viewAll() );
+const ViewerFrameSelection = command( 'viewer.frame_selection', 'Frame Selection', ( viewer ) => viewer.frameSelection() );
 
-	viewer.viewAll();
-
-} );
-
-const ViewerFrameSelection = command( 'viewer.frame_selection', 'Frame Selection', () => {
-
-	viewer.frameSelection();
-
-} );
-
-const ViewerStandardView = command( 'viewer.standard_view', 'Standard View', ( context, view ) => {
+const ViewerStandardView = command( 'viewer.standard_view', 'Standard View', ( viewer, context, view ) => {
 
 	const id = typeof view === 'number' ? view : VIEWS[ view ];
 	if ( id == null ) return { status: 'CANCELLED' };
@@ -362,7 +280,7 @@ const ViewerStandardView = command( 'viewer.standard_view', 'Standard View', ( c
 
 }, true );
 
-const ViewerNavPreset = command( 'viewer.nav_preset', 'Navigation Preset', ( context, preset ) => {
+const ViewerNavPreset = command( 'viewer.nav_preset', 'Navigation Preset', ( viewer, context, preset ) => {
 
 	if ( ! NAV_PRESETS.includes( preset ) ) return { status: 'CANCELLED' };
 	viewer.setNavPreset( preset );
@@ -370,13 +288,11 @@ const ViewerNavPreset = command( 'viewer.nav_preset', 'Navigation Preset', ( con
 
 }, true );
 
-const ViewerSetSelection = command( 'viewer.set_selection', 'Set Selection', ( _context, ids ) => {
+const ViewerSetSelection = command( 'viewer.set_selection', 'Set Selection', ( viewer, context, ids ) => viewer.setSelection( ids ), true );
+const ViewerAddToSelection = command( 'viewer.add_to_selection', 'Add To Selection', ( viewer, context, ids ) => viewer.addToSelection( ids ), true );
+const ViewerRemoveFromSelection = command( 'viewer.remove_from_selection', 'Remove From Selection', ( viewer, context, ids ) => viewer.removeFromSelection( ids ), true );
 
-	viewer.setSelection( ids );
-
-}, true );
-
-const ViewerSelectGlobalId = command( 'viewer.select_global_id', 'Select GlobalId', async ( context, guid ) => {
+const ViewerSelectGlobalId = command( 'viewer.select_global_id', 'Select GlobalId', async ( viewer, context, guid ) => {
 
 	const id = String( guid ?? '' ).trim();
 	if ( ! id ) return { status: 'CANCELLED' };
@@ -399,54 +315,42 @@ const ViewerSelectGlobalId = command( 'viewer.select_global_id', 'Select GlobalI
 
 }, true );
 
-const ViewerAddToSelection = command( 'viewer.add_to_selection', 'Add To Selection', ( _context, ids ) => {
-
-	viewer.addToSelection( ids );
-
-}, true );
-
-const ViewerRemoveFromSelection = command( 'viewer.remove_from_selection', 'Remove From Selection', ( _context, ids ) => {
-
-	viewer.removeFromSelection( ids );
-
-}, true );
-
-const ViewerSetVisible = command( 'viewer.set_visible', 'Set Visible', ( context, ids, on ) => {
+const ViewerSetVisible = command( 'viewer.set_visible', 'Set Visible', ( viewer, context, ids, on ) => {
 
 	viewer.setVisible( ids, on );
 	context.signals.visibilityChanged.dispatch( { action: 'setVisible', target: ids } );
 
 }, true );
 
-const ViewerShow = command( 'viewer.show', 'Show', ( context, ids ) => {
+const ViewerShow = command( 'viewer.show', 'Show', ( viewer, context, ids ) => {
 
 	viewer.show( ids );
 	context.signals.visibilityChanged.dispatch( { action: 'show', target: ids } );
 
 }, true );
 
-const ViewerHide = command( 'viewer.hide', 'Hide', ( context, ids ) => {
+const ViewerHide = command( 'viewer.hide', 'Hide', ( viewer, context, ids ) => {
 
 	viewer.hide( ids );
 	context.signals.visibilityChanged.dispatch( { action: 'hide', target: ids } );
 
 }, true );
 
-const ViewerSetColor = command( 'viewer.set_color', 'Set Color', ( context, ids, color ) => {
+const ViewerSetColor = command( 'viewer.set_color', 'Set Color', ( viewer, context, ids, color ) => {
 
 	viewer.setColor( ids, color );
 	context.signals.colorsChanged.dispatch( { action: 'set', target: ids, color } );
 
 }, true );
 
-const ViewerSetBackground = command( 'viewer.set_background', 'Set Background', ( context, color ) => {
+const ViewerSetBackground = command( 'viewer.set_background', 'Set Background', ( viewer, context, color ) => {
 
-	viewer.setBackground( color );
+	Scene.setBackground( color );
 	context.signals.backgroundChanged.dispatch( { color } );
 
 }, true );
 
-const ViewerSetFog = command( 'viewer.set_fog', 'Set Fog', ( context, options ) => {
+const ViewerSetFog = command( 'viewer.set_fog', 'Set Fog', ( viewer, context, options ) => {
 
 	const fog = viewer.setFog( options );
 	context.signals.fogChanged.dispatch( fog );
@@ -454,40 +358,17 @@ const ViewerSetFog = command( 'viewer.set_fog', 'Set Fog', ( context, options ) 
 
 }, true );
 
-const ViewerSetCamera = command( 'viewer.set_camera', 'Set Camera', ( context, state ) => {
+const ViewerSetCamera = command( 'viewer.set_camera', 'Set Camera', ( viewer, context, state ) => {
 
 	viewer.setCamera( state );
 	context.signals.cameraChanged.dispatch( state );
 
 }, true );
 
-const ViewerSetFederationUnit = command( 'viewer.set_federation_unit', 'Set Federation Unit', ( _context, unit ) => {
-
-	viewer.setFederationUnit( unit );
-	Federation.setUnit( unit );
-
-}, true );
-
-const ViewerSetFalseOrigin = command( 'viewer.set_false_origin', 'Set False Origin', ( _context, origin ) => {
-
-	viewer.setFalseOrigin( origin );
-	Federation.setOrigin( origin );
-
-}, true );
-
-const ViewerSetModelTransform = command( 'viewer.set_model_transform', 'Set Model Transform', ( _context, sourceId, transform ) => {
-
-	viewer.setModelTransform( sourceId, transform );
-	Federation.setTransform( sourceId, transform );
-
-}, true );
-
-const ViewerClearModelTransform = command( 'viewer.clear_model_transform', 'Clear Model Transform', ( _context, sourceId ) => {
-
-	viewer.clearModelTransform( sourceId );
-	Federation.clearTransform( sourceId );
-
-}, true );
+const ViewerSetFederationUnit = command( 'viewer.set_federation_unit', 'Set Federation Unit', ( viewer, context, unit ) => Scene.setUnit( unit ), true );
+const ViewerSetFalseOrigin = command( 'viewer.set_false_origin', 'Set False Origin', ( viewer, context, origin ) => Scene.setFalseOrigin( origin ), true );
+const ViewerSetModelTransform = command( 'viewer.set_model_transform', 'Set Model Transform', ( viewer, context, sourceId, transform ) => Scene.setModelTransform( sourceId, transform ), true );
+const ViewerClearModelTransform = command( 'viewer.clear_model_transform', 'Clear Model Transform', ( viewer, context, sourceId ) => Scene.setModelTransform( sourceId, null ), true );
 
 // Clicks can overlap. A slower getObjects() for an earlier pick must not
 // publish after a later one.
@@ -504,7 +385,7 @@ function elementTableHas( objectId ) {
 
 	try {
 
-		const row = viewer.getSelectedObjects().find( ( item ) => item.objectId === objectId );
+		const row = Viewer.get().getSelectedObjects().find( ( item ) => item.objectId === objectId );
 		return !! row && ( 'guid' in row || 'name' in row || 'type' in row );
 
 	} catch {
@@ -522,12 +403,12 @@ async function publishBoxSelection( context, ids, serial, generation ) {
 	if ( ! ids?.length ) {
 
 		if ( stale() ) return;
-		context.store.selection = null;
 		context.signals.objectPicked.dispatch( null );
 		return;
 
 	}
 
+	const viewer = Viewer.get();
 	try {
 
 		await viewer.getObjects();
@@ -538,7 +419,6 @@ async function publishBoxSelection( context, ids, serial, generation ) {
 	const activeId = viewer.getActiveObject() || ids[ 0 ];
 	const pick = viewer.getSelectedObjects().find( ( row ) => row.objectId === activeId )
 		?? { objectId: activeId };
-	context.store.selection = pick;
 	context.signals.objectPicked.dispatch( pick );
 
 }
@@ -566,7 +446,7 @@ class ViewerObjectPicked extends Operator {
 
 			try {
 
-				await viewer.getObjects();
+				await Viewer.get().getObjects();
 
 			} catch { /* element table is not resident yet */ }
 
@@ -594,11 +474,11 @@ class ViewerSelectionChanged extends Operator {
 
 	execute() {
 
-		const ids = this.ids ?? viewer.getSelection();
+		const ids = this.ids ?? Viewer.get().getSelection();
 		this.context.signals.selectionChanged.dispatch( { ids } );
 		if ( measure.mode() === 'volume' ) {
 
-			measure.syncVolume( viewer, ids );
+			measure.syncVolume( Viewer.get(), ids );
 			publishMeasure( this.context );
 
 		}

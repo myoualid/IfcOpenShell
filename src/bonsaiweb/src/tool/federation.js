@@ -5,6 +5,8 @@
 // A connector later fills the same bag (`{ path, bytes }`) and calls the same
 // opener. It does not get its own loader.
 
+import { Viewer } from './Viewer.js';
+
 const SCHEMA = 'ifcfed/1';
 
 const encoder = new TextEncoder();
@@ -586,15 +588,11 @@ export class Federation {
 
 	}
 
-	static modelArrived( viewer ) {
+	static modelArrived() {
 
 		if ( homePending <= 0 ) return;
 		homePending -= 1;
-		if ( homePending === 0 && doc.homeView && viewer?.setCamera ) {
-
-			viewer.setCamera( doc.homeView );
-
-		}
+		if ( homePending === 0 && doc.homeView ) Viewer.get().setCamera( doc.homeView );
 
 	}
 
@@ -687,13 +685,6 @@ export class Federation {
 
 	}
 
-	static clearTransform( sourceId ) {
-
-		const model = Federation.modelForSource( sourceId );
-		if ( model ) model.transform = null;
-
-	}
-
 	static setVisible( sourceId, visible ) {
 
 		const model = Federation.modelForSource( sourceId );
@@ -708,30 +699,17 @@ export class Federation {
 
 	}
 
-	static captureViewer( viewer ) {
+	static captureViewer() {
 
-		try {
-
-			const origin = viewer?.getFalseOrigin?.();
-			if ( origin?.xyz ) Federation.setOrigin( origin );
-
-		} catch { /* viewer has no origin yet */ }
-
-		try {
-
-			const camera = viewer?.getCamera?.();
-			if ( camera?.target ) {
-
-				doc.homeView = {
-					target: vec3( camera.target ),
-					distance: Number( camera.distance ) || 50,
-					yaw: Number( camera.yaw ) || 0,
-					pitch: Number( camera.pitch ) || 0,
-				};
-
-			}
-
-		} catch { /* camera is not ready */ }
+		const viewer = Viewer.get();
+		Federation.setOrigin( viewer.getFalseOrigin() );
+		const camera = viewer.getCamera();
+		doc.homeView = {
+			target: vec3( camera.target ),
+			distance: Number( camera.distance ) || 50,
+			yaw: Number( camera.yaw ) || 0,
+			pitch: Number( camera.pitch ) || 0,
+		};
 
 	}
 

@@ -1,42 +1,42 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { activateStore, bindStore, createStore, getStore } from '../src/context/store.js';
+import { context } from '../src/context/context.js';
+import { Signals } from '../src/context/signals.js';
+import { store } from '../src/context/store.js';
 
-function fakeSignals() {
+test( 'store.scene is read-only', () => {
 
-	const handlers = { objectPicked: [], modelCleared: [] };
-	return {
-		objectPicked: { add( fn ) { handlers.objectPicked.push( fn ); } },
-		modelCleared: { add( fn ) { handlers.modelCleared.push( fn ); } },
-		fire( name, payload ) {
+	assert.throws( () => {
 
-			for ( const fn of handlers[ name ] ) fn( payload );
+		store.scene.background = '#000000';
 
-		},
-	};
+	}, TypeError );
 
-}
+} );
 
-test( 'two sessions do not share selection', () => {
+test( 'context points at the last pick and drops it when models clear', () => {
 
-	const a = createStore();
-	const b = createStore();
-	const sa = fakeSignals();
-	const sb = fakeSignals();
-	bindStore( a, sa );
-	bindStore( b, sb );
+	store.models.push( { id: 3, name: 'a.ifc', file: null } );
+	Signals.objectPicked.dispatch( { objectId: 7, guid: 'g', sourceId: 3 } );
+	assert.equal( context.activeObject.guid, 'g' );
+	assert.equal( context.activeModel.name, 'a.ifc' );
 
-	sa.fire( 'objectPicked', { objectId: 1, guid: 'a' } );
-	assert.equal( a.selection.guid, 'a' );
-	assert.equal( b.selection, null );
+	Signals.objectPicked.dispatch( { objectId: 0 } );
+	assert.equal( context.activeObject, null );
 
-	sb.fire( 'modelCleared' );
-	assert.equal( a.selection.guid, 'a' );
+	Signals.objectPicked.dispatch( { objectId: 7, guid: 'g', sourceId: 3 } );
+	Signals.modelCleared.dispatch();
+	assert.equal( context.activeObject, null );
+	store.models.length = 0;
 
-	activateStore( a );
-	assert.equal( getStore(), a );
-	activateStore( b );
-	assert.equal( getStore(), b );
+} );
+
+test( 'context reads nothing from the viewer before it exists', () => {
+
+	assert.equal( context.controls, null );
+	assert.equal( context.camera, null );
+	assert.deepEqual( context.selectedIds, [] );
+	assert.equal( store.scene.falseOrigin, null );
 
 } );

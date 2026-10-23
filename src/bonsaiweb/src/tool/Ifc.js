@@ -9,7 +9,8 @@
 
 // 'ifcopenshell' is imported where it is used, never at the top: a static
 // import would hold the session (and the GUI) until its CDN graph loads.
-import { getStore } from '../context/store.js';
+import { context } from '../context/context.js';
+import { store } from '../context/store.js';
 
 function dispose( file ) {
 
@@ -29,7 +30,7 @@ export class Ifc {
 	// `bonsai.tool.Ifc.get()` with nothing loaded is null.
 	static get( key ) {
 
-		const models = getStore().models;
+		const { models } = store;
 		if ( key === undefined ) return models.findLast( ( entry ) => entry.file )?.file ?? null;
 		if ( typeof key === 'number' ) return models.find( ( entry ) => entry.id === key )?.file ?? null;
 		if ( typeof key !== 'string' ) return null;
@@ -47,7 +48,7 @@ export class Ifc {
 	// matched by name.
 	static set( id, name, file ) {
 
-		const models = getStore().models;
+		const { models } = store;
 		const existing = models.find( ( entry ) => entry.id === id );
 		if ( existing ) {
 
@@ -71,20 +72,17 @@ export class Ifc {
 
 	static clear() {
 
-		for ( const entry of getStore().models ) dispose( entry.file );
-		getStore().models.length = 0;
-		getStore().selection = null;
+		for ( const entry of store.models ) dispose( entry.file );
+		store.models.length = 0;
 
 	}
 
 	// GlobalId of the selected element. Pass a pick to read that one
 	// instead of the current selection. Works in edit and in view: the
 	// viewer pick's guid is the IFC GlobalId either way.
-	static globalId( pick ) {
+	static globalId( pick = context.activeObject ) {
 
-		const target = pick === undefined ? getStore().selection : pick;
-		if ( ! target || typeof target !== 'object' ) return null;
-		return target.guid || null;
+		return pick?.guid || null;
 
 	}
 
@@ -172,15 +170,14 @@ export class Ifc {
 
 	// Live entity for a pick, or for the current selection when called
 	// with no argument. View mode has no entity and returns null.
-	static entity( pick ) {
+	static entity( pick = context.activeObject ) {
 
-		const target = pick === undefined ? getStore().selection : pick;
-		if ( ! target?.guid ) return null;
-		const file = target.sourceId == null ? null : Ifc.get( target.sourceId );
+		if ( ! pick?.guid ) return null;
+		const file = pick.sourceId == null ? null : Ifc.get( pick.sourceId );
 		if ( ! file ) return null;
 		try {
 
-			return file.byGuid( target.guid );
+			return file.byGuid( pick.guid );
 
 		} catch {
 

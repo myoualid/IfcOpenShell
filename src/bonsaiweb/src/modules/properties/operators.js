@@ -1,7 +1,7 @@
 import { Operator } from '../../ops.js';
 import { getContainer, getPredefinedType, getRelationships, getType } from '../../tool/elementQuery.js';
 import { Element, Ifc, Pset } from '../../tool/index.js';
-import { viewer } from '../../tool/Viewer.js';
+import { Viewer } from '../../tool/Viewer.js';
 
 function rowsFromSet( sets ) {
 
@@ -29,7 +29,7 @@ function selectedElement( pick ) {
 	if ( ! pick?.objectId ) return null;
 	try {
 
-		return viewer.getSelectedObjects().find( ( row ) => row.objectId === pick.objectId ) ?? null;
+		return Viewer.get().getSelectedObjects().find( ( row ) => row.objectId === pick.objectId ) ?? null;
 
 	} catch {
 

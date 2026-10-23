@@ -1,5 +1,6 @@
 import ops from '../ops.js';
 import terminal from './code.terminal/operators.js';
+import dropbox from './dropbox/operators.js';
 import georeferencing from './georeferencing/operators.js';
 import profiling from './profiling/operators.js';
 import project from './project/operators.js';
@@ -11,6 +12,7 @@ import viewer from './viewer/operators.js';
 /** Module id → operator classes. Order is the headless registration order. */
 export const operatorModules = new Map( [
 	[ 'project', project ],
+	[ 'dropbox', dropbox ],
 	[ 'settings', settings ],
 	[ 'georeferencing', georeferencing ],
 	[ 'spatial-hierarchy', spatial ],
