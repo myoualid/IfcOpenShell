@@ -152,22 +152,12 @@ class LoadSampleIfc extends Operator {
 
 }
 
-function nextEditSourceId( models ) {
-
-	let id = - 1;
-	const used = new Set( models.map( ( entry ) => entry.sourceId ) );
-	while ( used.has( id ) ) id -= 1;
-	return id;
-
-}
-
 function takeProjectName( models ) {
 
 	const used = new Set();
 	for ( const entry of models ) {
 
 		if ( entry.name ) used.add( entry.name.toLowerCase() );
-		if ( entry.viewName ) used.add( entry.viewName.toLowerCase() );
 
 	}
 
@@ -194,10 +184,10 @@ class ProjectNew extends Operator {
 		try {
 
 			const file = await Ifc.createBlank( stem );
-			// No sidecar and no viewer source. A negative id stays out of
-			// the viewer's source list, which counts up from 0.
-			const sourceId = nextEditSourceId( this.context.store.models );
-			Ifc.setEdit( sourceId, file, filename );
+			// Reserve the next viewer source id without streaming it, so a
+			// later addFile does not reuse this model's id.
+			const sourceId = Viewer.get().registerFileSource( new Blob() );
+			Ifc.set( sourceId, filename, file );
 			this.context.signals.liveIfcReady.dispatch( { sourceId, name: filename, file } );
 			return { status: 'FINISHED' };
 
@@ -294,26 +284,26 @@ class ProjectDownload extends Operator {
 		const encoder = new TextEncoder();
 		for ( const entry of this.context.store.models ) {
 
-			Federation.ensureLocal( entry.sourceId, entry.name || entry.viewName || 'model.ifc' );
+			Federation.ensureLocal( entry.id, entry.name || 'model.ifc' );
 
 		}
 
 		const payload = new Map();
 		for ( const entry of this.context.store.models ) {
 
-			const model = Federation.modelForSource( entry.sourceId );
+			const model = Federation.modelForSource( entry.id );
 			if ( ! model ) continue;
-			const bundle = Loader.bundle( entry.sourceId );
+			const bundle = Loader.bundle( entry.id );
 			let ifc = bundle?.ifc?.data
 				? { name: bundle.ifc.name, data: bundle.ifc.data }
 				: null;
 			if ( ! ifc ) {
 
-				const file = Ifc.file( entry.sourceId );
+				const file = Ifc.get( entry.id );
 				if ( file?.toString ) {
 
 					const data = encoder.encode( file.toString() );
-					ifc = { name: Ifc.get( entry.sourceId )?.name || entry.name || 'model.ifc', data };
+					ifc = { name: entry.name || 'model.ifc', data };
 
 				}
 
@@ -377,7 +367,7 @@ class ProjectDownloadView extends Operator {
 	poll() {
 
 		const bundle = Loader.bundle( this.sourceId );
-		return Boolean( bundle?.ifc || bundle?.view || Ifc.file( this.sourceId ) );
+		return Boolean( bundle?.ifc || bundle?.view || Ifc.get( this.sourceId ) );
 
 	}
 

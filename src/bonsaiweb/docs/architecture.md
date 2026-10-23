@@ -53,7 +53,7 @@ A loaded model is geometry plus, when possible, a live IFC file.
 ```text
 .ifc bytes
    ├─ worker: tessellate → .ifcview sidecar → IfcViewer (WebGPU)
-   └─ main thread: ifcopenshell.open → tool.Ifc edit mode
+   └─ main thread: ifcopenshell.open → tool.Ifc.set
 ```
 
 `tool.Loader` owns that lifecycle.
@@ -67,7 +67,7 @@ A loaded model is geometry plus, when possible, a live IFC file.
 
 Conversion settings come from `configuration.geometry` (`app/configuration/config.geometry.js`), applied at boot with `Loader.configure()`. Conversion uses `src/pipeline/ifcopenshell/convert.js`, the same `ifcopenshell` package and geometry settings as `threejs.html`, with `kernel` as the geometry library. `thread: 'auto'` and `thread: 'worker'` run the `.ifc` → `.ifcview` conversion in a worker at every file size. A single `iterator.next()` can block for 100 ms or more, and a kernel crash in the worker cannot poison the main-thread runtime that holds live files. That worker is a classic worker: it installs the page import map with es-module-shims from jsDelivr, then loads the wasm glue from the same URLs the page already fetched. The worker tessellation loop does not yield. `thread: 'main'` is an explicit opt-in and yields every 30 ms so the page can paint. `numThreads` is 1 unless the ifcopenshell runtime reports `threadsSupported` (a pthreads build) and the page is cross-origin isolated; only then does it follow the core count, up to 8. The current wasm build has no pthreads, so explicit `numThreads` values are clamped to 1 as well. Load operators and `Loader.benchmark(file, options)` accept `{ kernel, thread, numThreads, settings }`. Headless: `await bonsai.ops.execute('project.benchmark', bonsai.context, file, { kernel: 'manifold' })`. Both paths zstd-compress the sidecar and report progress that the host re-dispatches on `modelLoadStarted`.
 
-`openIfcFile` reads `FILE_SCHEMA` from the first 4KB, loads that schema plugin if it is missing, then calls `ifcopenshell.open`. On success it promotes the source to edit mode and fires `liveIfcReady`.
+`openIfcFile` reads `FILE_SCHEMA` from the first 4KB, loads that schema plugin if it is missing, then calls `ifcopenshell.open`. On success it attaches the file with `Ifc.set` and fires `liveIfcReady`.
 
 Models are additive. Passing `{ replace: true }` to `addFile`, or calling `Loader.clear()`, drops the scene and disposes live files first.
 
@@ -79,12 +79,13 @@ Models are additive. Passing `{ replace: true }` to `addFile`, or calling `Loade
 { models: [], selection: null }
 ```
 
-Each entry in `store.models` is `{ sourceId, name, viewName, mode, file }`.
+Each entry in `store.models` is `{ id, name, file }`.
 
-- **View.** Only the `.ifcview` is loaded. `file` is null. `name` and `viewName` are the sidecar filename. Picks still carry a GlobalId, a type string, and a name from the sidecar element table.
-- **Edit.** A `.ifc` is open in IfcOpenShell beside that sidecar. `file` is the IfcOpenShell file. `name` is the `.ifc` filename. Attribute, property, quantity, and spatial queries read this file.
+- `id` is the viewer source id, counting up from 0. Blank projects reserve the next id with `registerFileSource` and do not stream it.
+- `name` is the filename (`.ifc` or `.ifcview`). `house`, `house.ifc`, and `house.ifcview` are the same model.
+- `file` is the IfcOpenShell file, or null while only the `.ifcview` is loaded. Attribute, property, quantity, and spatial queries read this file. Picks still carry a GlobalId, a type string, and a name from the sidecar element table.
 
-`tool.Ifc` is the API over that store. `get()` resolves the current selection, the most recently opened model, a filename, a `sourceId`, or a viewer pick. `file()` and `entity()` return null in view mode. `globalId()` works in both modes because the viewer pick's `guid` is the IFC GlobalId.
+`tool.Ifc.get()` returns that file. With no argument it is the most recently stored file. A string is the model name, with or without `.ifc`. A number is the model id. `entity()` returns null until a file is open. `globalId()` works either way because the viewer pick's `guid` is the IFC GlobalId.
 
 `listenStore()` listens to the signal bus and keeps `store.selection` in step: `objectPicked` with an `objectId` stores the pick, `liveIfcReady` dispatches that pick again so a selection made during conversion fills in once the file opens, and `modelCleared` clears it. A click that clears the viewer selection does not reset the properties panel. `modelCleared` does.
 

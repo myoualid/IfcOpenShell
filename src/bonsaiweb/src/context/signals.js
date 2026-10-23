@@ -39,7 +39,7 @@ export const Signals = {
 	modelNameChanged: new Signal(), // { sourceId, name }
 	// Fires once the main-thread ifcopenshell has finished opening the
 	// live IFC that pairs with a loaded sidecar — the data-side analogue
-	// of modelLoaded. tool.Ifc promotes that source from view to edit,
+	// of modelLoaded. tool.Ifc.set attaches the live file to that model id,
 	// so attribute / pset / qto lookups return something richer than the
 	// sidecar's four basic fields. { sourceId, name, file }.
 	liveIfcReady: new Signal(),

@@ -304,24 +304,23 @@ class SpatialHierarchyPanelUI {
 		const models = this.context.store.models;
 		this._roots = models.map( ( entry ) => {
 
-			if ( wanted != null && entry.sourceId !== wanted && this._rootBySourceId.has( entry.sourceId ) ) {
+			if ( wanted != null && entry.id !== wanted && this._rootBySourceId.has( entry.id ) ) {
 
-				return this._rootBySourceId.get( entry.sourceId );
+				return this._rootBySourceId.get( entry.id );
 
 			}
 
-			const file = entry.mode === 'edit' ? entry.file : null;
 			const root = buildModelHierarchyRoot(
-				entry.sourceId,
-				entry.name || entry.viewName || `Model ${ entry.sourceId }`,
-				file ? getSpatialDecomposition( file ) : [],
+				entry.id,
+				entry.name || `Model ${ entry.id }`,
+				entry.file ? getSpatialDecomposition( entry.file ) : [],
 			);
 			assignObjectIds( root, this._guidToObjectId );
-			this._rootBySourceId.set( entry.sourceId, root );
+			this._rootBySourceId.set( entry.id, root );
 			return root;
 
 		} );
-		const live = new Set( models.map( ( entry ) => entry.sourceId ) );
+		const live = new Set( models.map( ( entry ) => entry.id ) );
 		for ( const sourceId of [ ...this._rootBySourceId.keys() ] ) {
 
 			if ( ! live.has( sourceId ) ) this._rootBySourceId.delete( sourceId );
