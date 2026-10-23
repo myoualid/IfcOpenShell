@@ -2,131 +2,173 @@
 
 # API structure
 
-Bonsai web exposes four things, modelled on Blender's Python API:
+`start()` returns a `Bonsai` object with four parts:
 
-| Blender | Role | Bonsai web |
+| Part | What it is | Where |
 |---|---|---|
-| `bpy.data` | All loaded data, owned in one place | `bonsai.store` |
-| `bpy.context` | Pointers to what is current: scene, active object, selection, view | `bonsai.context` |
-| `bpy.ops.cat.name()` | Named, pollable, undoable user actions | `bonsai.ops` |
-| `bpy.types.Operator` + `register_class` | Extension points | `Operator`, `ops.register()` |
-| `bpy.app.handlers` | Event hooks | `context.signals` |
-| Bonsai Python `tool.*` | Stateless static classes, the only code that touches the backend | `bonsai.tool` |
+| `bonsai.store` | The session's data: loaded models and scene settings. | `src/context/store.js` |
+| `bonsai.context` | What is current right now: the active object, the selection, the camera. | `src/context/context.js` |
+| `bonsai.tool` | Classes with static methods that do the work, including `tool.Viewer.get()`. | `src/tool/` |
+| `bonsai.ops` | Named user actions, with undo. What buttons, panels and scripts call. | `src/ops.js`, `src/modules/*/operators.js` |
+
+A typical script:
 
 ```js
 const { store, context, tool, ops } = bonsai;
 
-tool.Viewer.get();                  // the raw IfcViewer
-context.scene.falseOrigin;          // read
-ops.Scene.SetBackground( '#eee' );  // change
-const view = context.camera;        // plain object
-tool.Viewer.get().setCamera( view );
+store.models;                       // every loaded model
+context.activeObject;               // what was last clicked
+ops.Viewer.IsolateSelected();       // do something, undoable
+tool.Viewer.get().getSelection();   // talk to the viewer directly
 ```
 
-## Layering rules
+## Who does what
 
-1. UI and panels read `context` and `store`, and call `ops`.
-2. Operators call `tool`. `tool` never calls `ops`.
-3. Only `tool` touches the wasm `IfcViewer` api or ifcopenshell. Only `tool` writes `store`.
-4. `context` and `store` hold data, not behaviour. They never wrap a tool.
-5. There is one viewer. `Bonsai.start()` creates it once. It is reached only through `tool.Viewer.get()`. There is no setter.
-
-## How Blender splits it
-
-- `bpy.data` owns every datablock. Nothing else owns data.
-- `bpy.context` owns nothing. It points into `bpy.data`: `context.scene` is the Scene datablock, `context.active_object` is an Object. The 3D view state (`context.region_data`) is a plain struct you can read, copy and write back.
-- `bpy.ops` changes data through operators that receive the context.
-
-Bonsai web follows that: `store` owns data, `context` points into it or returns plain snapshots, `tool` does the work, `ops` is what users and UI call.
+- **Reading** goes through `store` and `context`. Both hold data only: no methods, nothing that changes the scene.
+- **Changing** goes through `ops`. An operator checks it can run, does the work, fires the signals panels listen to, and records itself for undo when that makes sense.
+- **Doing the work** is `tool`. Operators call tools. Only tools talk to the viewer or to ifcopenshell, and only tools write to `store`. Tools never call operators.
+- **Listening** goes through `context.signals`. Panels subscribe there instead of polling.
 
 ## `bonsai.tool`
 
-| Tool | File | Role |
-|---|---|---|
-| `Viewer` | `tool/Viewer.js` | `get()` returns the raw IfcViewer, or null until `Bonsai.start()` has created it. Creation and teardown are internal (`createViewer`, `destroyViewer`) and not on the namespace. The file also publishes `viewerToolsChanged` from the frame callback. |
-| `Scene` | `tool/Scene.js` | `setBackground`, `setUnit`, `setFalseOrigin`, `setModelTransform` (null clears). Each applies to the viewer and records the value for `store.scene` and the project file. |
-| `Ifc`, `Loader`, `Federation`, `Element`, `Pset`, `Terminal` | unchanged | Data and loading. They call `tool.Viewer.get()` when they need the viewer. |
+| Tool | Role |
+|---|---|
+| `Viewer` | `Viewer.get()` returns the IfcViewer, or null until `Bonsai.start()` has created it. The viewer is created once per session, and nothing can replace it. |
+| `Scene` | Scene-wide changes: `setBackground`, `setUnit`, `setFalseOrigin`, `setModelTransform` (pass null to clear). Each one updates the viewer and records the value, so `store.scene` and the saved project agree with what is on screen. |
+| `Ifc` | The live ifcopenshell file per model, and the entity behind a pick. |
+| `Loader` | Opening, converting and clearing models. Drag and drop. |
+| `Federation` | The project file (`.ifcfed`): models, groups, transforms, home view. |
+| `Element`, `Pset` | Attributes, property sets and quantities of an entity. |
+| `Terminal` | The in-browser JavaScript sessions. |
 
-There are no `Camera`, `Controls`, `Selection` or `Visibility` tools. They would be one-line wrappers around viewer methods (`hide`, `setCamera`, `toggleFly`). Operators call those methods on `tool.Viewer.get()` directly. A tool exists only where it owns state or logic, as `Scene` does.
+Camera, selection, visibility, colour and navigation have no tool of their own. A tool would only forward one call, so operators call the viewer directly: `tool.Viewer.get().hide( ids )`, `tool.Viewer.get().setCamera( view )`.
 
 ## `bonsai.store`
 
-≈ `bpy.data`. `src/context/store.js`.
-
 ```js
 store.models   // [ { id, name, file } ], one per model, in load order
-store.scene    // read-only: { background, unit, falseOrigin, fog, grids }
+store.scene    // { background, unit, falseOrigin, fog, grids }, read-only
 ```
+
+Each model entry is:
+
+- `id`: the viewer source id, counting up from 0.
+- `name`: the file name, `.ifc` or `.ifcview`.
+- `file`: the open ifcopenshell file, or null while only the geometry (`.ifcview`) is loaded.
+
+### `store.scene` is read-only
+
+The scene state lives inside the viewer, not in JavaScript. Writing `store.scene.background = '#000'` could not change what is drawn, so it is not allowed: the object is frozen and every field is a getter, and the assignment throws a `TypeError`.
+
+Each field asks the right place every time it is read, so it can never be out of date:
+
+| Field | Comes from |
+|---|---|
+| `background` | The last value set with `tool.Scene.setBackground`. The viewer cannot report its background, so the tool remembers it. |
+| `unit` | The project file, which `tool.Scene.setUnit` writes. |
+| `falseOrigin` | The viewer. This includes the origin the viewer picks on its own when the first model loads. |
+| `fog` | The viewer. |
+| `grids` | The viewer. |
+
+To change one, call the operator. It updates the viewer, the value, and the panels:
+
+```js
+ops.Scene.SetBackground( '#eeeeee' );
+ops.Scene.SetFederationUnit( { name: 'METRE', prefix: 'MILLI' } );
+```
+
+Inside an operator, call the tool instead: `tool.Scene.setBackground( color )`.
 
 ## `bonsai.context`
 
-≈ `bpy.context`. `src/context/context.js`. Owns nothing. Each property is a reference into `store` or a fresh plain object, so any value can be kept, compared, sent to a worker or passed to a tool. Operators and panels receive this object.
+`context` answers "what is current?". It is also the object every operator and panel receives.
 
 ```js
-context.scene          // store.scene
-context.camera         // { target, distance, yaw, pitch, eye, ortho }   ≈ region_data
+context.scene          // the same object as store.scene
+context.camera         // { target, distance, yaw, pitch, eye, ortho }
 context.controls       // { preset, section, fly, ortho, grid, axes, fog, xray, outline }
 context.activeObject   // the last pick { objectId, guid, sourceId, ... }, or null
-context.selectedIds    // objectIds, ascending
+context.selectedIds    // selected objectIds, ascending
 context.activeModel    // the store.models entry of activeObject, or null
-context.signals        // ≈ bpy.app.handlers
+context.signals        // the event bus
 context.dom            // { container, viewport }
 ```
 
-`camera`, `controls` and `selectedIds` read the viewer when accessed, never every frame, and are null or empty before it exists. `activeObject` and the nav `preset` follow `objectPicked`, `modelCleared` and `navPresetChanged`.
+Every value is plain data. You can keep it, compare it, log it or hand it to another function. Nothing on `context` changes the scene.
 
-`selectedIds` is ids, not objects. Rows (name, IFC class) come from `tool.Viewer.get().getSelectedObjects()` when a caller needs them.
+`camera`, `controls` and `selectedIds` ask the viewer when you read them, and return a new object each time. Before the viewer exists they are null, null and `[]`.
 
-## Reading and changing scene state
+`activeObject` is the last thing picked in the viewport or in the spatial tree. It is cleared when the models are cleared.
 
-In three.js, `scene.background = new Color( 0xeeeeee )` works because the renderer reads the scene object every frame. Here the state lives in the wasm, so assigning a JS property would change nothing on screen.
+### Saving and restoring the camera
 
-`store.scene` is created once and never replaced, so `context.scene` stays a valid reference for the session. It is frozen and its fields are getters, so assigning one throws a `TypeError` (ES modules are strict mode) instead of silently drifting from the viewer.
-
-Each field reads its source of truth when it is read, so nothing needs syncing:
-
-| Field | Read from |
-|---|---|
-| `background` | The value `tool.Scene.setBackground` recorded. The viewer has no getter. |
-| `unit` | `Federation.get().unit`, which `tool.Scene.setUnit` writes. |
-| `falseOrigin` | `viewer.getFalseOrigin()`, including the origin the viewer guesses for the first model. |
-| `fog` | `viewer.fog()` |
-| `grids` | `viewer.listGrids()` |
-
-Changes go through ops (undo, signals) or, from operator code, through `tool.Scene`:
+`context.camera` is a copy. Changing it changes nothing until you give it back:
 
 ```js
-bonsai.ops.Scene.SetBackground( '#eeeeee' );   // fires backgroundChanged
-tool.Scene.setBackground( '#eeeeee' );         // from an operator
+const view = context.camera;
+// ... later
+tool.Viewer.get().setCamera( view );
+
+// or change one field
+ops.Viewer.SetCamera( { yaw: 90 } );
 ```
 
-`context.camera` and `context.controls` are fresh copies on every read. Editing one changes only that copy until it is passed back:
-
-```js
-const cam = context.camera;
-cam.yaw = 90;
-tool.Viewer.get().setCamera( cam );
-bonsai.ops.Viewer.SetCamera( { yaw: 90 } );   // the same through an operator
-```
-
-Setters that quietly call the viewer (`scene.background = '#eee'`) were rejected: they hide wasm calls behind a property write, skip undo and signals, and turn data into behaviour.
+`eye` is worked out by the viewer from the other fields; setting it has no effect.
 
 ## `bonsai.ops`
 
-Registering `Category.Name` also adds `ops.Category.Name( ...args )`, run with `bonsai.context`:
+Every operator has a two-part PascalCase name, `Category.Name`, and is called as a function:
 
 ```js
-bonsai.ops.Viewer.HideSelected()
-bonsai.ops.Viewer.HideSelected( ids )
-bonsai.ops.Project.LoadIfc( file )            // -> { status: 'FINISHED' | 'CANCELLED' } or a Promise
-bonsai.ops.undo()
-bonsai.ops.redo()
-bonsai.ops.register( MyOperator )             // static operatorName = 'MyAddon.DoThing'
+ops.Viewer.HideSelected();          // hide what is selected
+ops.Viewer.HideSelected( ids );     // hide these ids
+ops.Viewer.SetStandardView( 'TOP' );
+await ops.Project.New();
+ops.undo();
+ops.redo();
 ```
 
-- Names are PascalCase `Category.VerbNoun`. `register` throws on any other shape.
-- `undo`, `redo`, `register`, `execute` stay lowercase. They are methods of `ops`, so they never clash with a category.
-- `ops.execute( name, context, ...args )` is for names held as strings, such as the ribbon config.
+An operator returns `{ status: 'CANCELLED' }` when it cannot run, for example before the viewer exists. Otherwise it returns what its `execute()` returns, which may be a Promise.
+
+`ops.execute( name, context, ...args )` runs an operator from its name as a string. The ribbon config uses it; code should call the function form.
+
+### Writing an operator
+
+Operators live in a module's `operators.js`, for example `src/modules/my-addon/operators.js`:
+
+```js
+import { Operator } from '../../ops.js';
+import tool from '../../tool/index.js';
+
+class CountWalls extends Operator {
+
+	static operatorName = 'MyAddon.CountWalls';
+	static operatorLabel = 'Count Walls';
+
+	poll() {
+
+		return Boolean( tool.Ifc.get() );
+
+	}
+
+	execute() {
+
+		return { status: 'FINISHED', result: tool.Ifc.get().byType( 'IfcWall' ).length };
+
+	}
+
+}
+
+export default [ CountWalls ];
+```
+
+List the module in `src/modules/operators.js` and it is registered at boot. After that, `bonsai.ops.MyAddon.CountWalls()` runs it.
+
+- `poll()` returns false to cancel. The default is true.
+- `static undoable = true` records the operator; `undo()` must then reverse it, and `execute()` runs again for redo.
+- `register` throws if the name is not `Category.Name` in PascalCase.
+
+### Built-in operators
 
 | Category | Operators |
 |---|---|
@@ -136,20 +178,33 @@ bonsai.ops.register( MyOperator )             // static operatorName = 'MyAddon.
 | `Spatial` | `Select`, `Isolate`, `Objects`, `Hidden` |
 | `Properties`, `Settings`, `Georeferencing`, `Profiler`, `Terminal`, `Dropbox` | Panel toggles and module actions |
 
-Viewer picks, selection changes and model loads are reactions, not user actions. `src/modules/viewer/events.js` turns them into `objectPicked`, `selectionChanged` and `modelLoaded`; they are no longer operators.
+## Viewer events
 
-## Scale
+Clicks, box selections and finished model loads come from the viewer, not from the user calling an operator. `src/modules/viewer/events.js` turns them into signals:
 
-Federations can hold millions of objects. The structure adds no per-object cost.
+| Viewer event | Signal |
+|---|---|
+| Click on an object | `objectPicked` |
+| Selection changed | `selectionChanged`, then `objectPicked` for the active object |
+| Model finished loading | `modelLoaded` |
+| A tool flag changed (section, fly, x-ray, ...) | `viewerToolsChanged` |
 
-- Objects live in the wasm. JS addresses them by `objectId` and keeps no JS record per object in `store` or `context`.
-- `store` grows per model, not per object.
-- `context` getters cost O(1), except `selectedIds`, which is O(selection). Nothing in `context` or `store` calls `getObjects()`.
-- A pick or box selection calls `getObjects()` (the element table for every model) only while the picked row is missing from it.
-- Only the tool flags are read every frame, and `viewerToolsChanged` fires only when one changes.
-- Signals carry ids or source ids, never object rows.
+```js
+context.signals.objectPicked.add( ( pick ) => console.log( pick?.guid ) );
+```
+
+## Large models
+
+A federation can hold millions of objects, so nothing here keeps one JavaScript record per object.
+
+- Objects stay in the viewer. JavaScript refers to them by `objectId`.
+- `store` grows by one entry per model.
+- Reading `context` is cheap. Only `selectedIds` grows with the selection.
+- `getObjects()` builds the object table for every loaded model, so it runs only when a pick needs a name or class the table does not have yet, or when a panel such as the spatial tree asks for it.
+- Signals carry ids, never object records.
 
 ## Open questions
 
-- `context.selectedIds` as a plain array (what `getSelection()` returns today) or a `Uint32Array`? A typed array is cheaper for select-all on millions of objects.
-- Should operators accept a context override, like Blender's `context.temp_override()`?
+- Should `context.selectedIds` be a `Uint32Array` instead of an array? It would be cheaper when selecting everything in a large model.
+- Should an operator be callable with a different context than `bonsai.context`?
+- `Operator` is not exported from `@aeco-dev/bonsaiweb`, so code outside this repository cannot write an operator yet. Should it be?
