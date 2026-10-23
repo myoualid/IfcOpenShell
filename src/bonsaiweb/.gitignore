@@ -1,5 +1,4 @@
 node_modules/
 dist/
 vendor/
-bench/.cache/
-bench/.prof/
+bench/
