@@ -21,4 +21,5 @@ export const BonsaiWebConfiguration = {
 		defaultWorkMode,
 		buttons: ribbonButtons,
 	},
+	dropbox: { clientId: 'idh1h4o0gs8nx2z' },
 };

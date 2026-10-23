@@ -257,7 +257,7 @@ class SettingsPanelUI {
 
 	_commitGeometry( patch ) {
 
-		ops.execute( 'settings.set_geometry', this.context, patch );
+		ops.Settings.SetGeometry( patch );
 
 	}
 
@@ -285,7 +285,7 @@ class SettingsPanelUI {
 		this._background = color;
 		if ( ! Viewer.get() ) return;
 		this._writing = true;
-		ops.execute( 'viewer.set_background', this.context, color );
+		ops.Scene.SetBackground( color );
 		this._writing = false;
 
 	}
@@ -305,7 +305,7 @@ class SettingsPanelUI {
 
 		if ( ! Viewer.get() ) return;
 		this._writing = true;
-		ops.execute( 'viewer.set_fog', this.context, patch );
+		ops.Scene.SetFog( patch );
 		this._writing = false;
 		this._paintFogFields();
 

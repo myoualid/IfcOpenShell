@@ -178,7 +178,7 @@ class PropertiesPanelUI {
 	_refresh( pick ) {
 
 		const selected = pick === undefined ? this.context.activeObject : pick;
-		const { result: state } = ops.execute( 'properties.for_pick', this.context, selected );
+		const { result: state } = ops.Properties.ForPick( selected );
 		this._entity
 			.setTitle( state.entity.entity_class || '—' )
 			.setSubtitle( state.entity.predefined_type || '' );

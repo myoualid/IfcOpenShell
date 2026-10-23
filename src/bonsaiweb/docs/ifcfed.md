@@ -29,11 +29,11 @@ These viewer methods are already wrapped as operators in `src/modules/viewer/ope
 
 | Operator | Viewer call | `.ifcfed` field |
 |----------|-------------|-----------------|
-| `viewer.set_federation_unit` | `setFederationUnit({ name, prefix })` | `config.unit` |
-| `viewer.set_false_origin` | `setFalseOrigin({ xyz, rzDeg })` | `federated_false_origin` |
-| `viewer.set_model_transform` | `setModelTransform(sourceId, { a, b, rotationDeg, pivot, aFrame })` | `model_transformation` |
-| `viewer.clear_model_transform` | `clearModelTransform(sourceId)` | omit the object (identity) |
-| `viewer.set_camera` | `setCamera` | `home_view` |
+| `Scene.SetFederationUnit` | `setFederationUnit({ name, prefix })` | `config.unit` |
+| `Scene.SetFalseOrigin` | `setFalseOrigin({ xyz, rzDeg })` | `federated_false_origin` |
+| `Scene.SetModelTransform` | `setModelTransform(sourceId, { a, b, rotationDeg, pivot, aFrame })` | `model_transformation` |
+| `Scene.ClearModelTransform` | `clearModelTransform(sourceId)` | omit the object (identity) |
+| `Viewer.SetCamera` | `setCamera` | `home_view` |
 
 `aFrame` in the file is `"ModelGlobal"` or `"ModelLocal"`. The viewer wants `'global'` or `'local'`. Rotation in the file is `rxyz_deg`; the viewer wants `rotationDeg`. Grid north in the file is `rz_deg`; the viewer wants `rzDeg`.
 
@@ -122,8 +122,8 @@ structure/STR.ifcview
 |----------------------|------|----------------|
 | Zip with an `.ifcfed` | `Loader.loadLocalFile` | Reads every entry and calls `openProjectBag`. |
 | Zip with no `.ifcfed` | `Loader._openModelZip` | Today's one `.ifc` / `.ifcview` pair. Unchanged. |
-| Dropped folder or several files, one of them an `.ifcfed` | `Loader.collectDrop` → `project.open_bag` | Walks the drop and calls the same opener. |
-| One dropped file, or several files and no `.ifcfed` | `load.ifc` | Each file loads on its own and is appended to the document. |
+| Dropped folder or several files, one of them an `.ifcfed` | `Loader.collectDrop` → `Project.OpenBag` | Walks the drop and calls the same opener. |
+| One dropped file, or several files and no `.ifcfed` | `Project.LoadIfc` | Each file loads on its own and is appended to the document. |
 | Connector, later | not built | Fills the same `{ path, bytes }` list, then `openProjectBag`. |
 
 `bagFromEntries` builds the map. One shared first folder is removed, so a zip of the `Site` folder (`Site/Site.ifcfed`, `Site/ARC.ifc`) matches `source.path` of `ARC.ifc`. A flat zip is left as it is. Entries under `__MACOSX/` and `.DS_Store` are ignored. Lookup is case-sensitive, then one case-insensitive match. Two `.ifcfed` files after that strip is an error. None means it is not a project.
@@ -132,7 +132,7 @@ A sibling `<name>.ifcfed.manifest` in the bag is parsed onto the document and no
 
 ## Open
 
-`project.open_file` accepts `.ifc`, `.ifcview`, `.ifcfed`, and `.zip`. A lone `.ifcfed` opens the document and warns for every missing model. A project zip replaces the scene.
+`Project.OpenFile` accepts `.ifc`, `.ifcview`, `.ifcfed`, and `.zip`. A lone `.ifcfed` opens the document and warns for every missing model. A project zip replaces the scene.
 
 `Loader.openProjectBag`:
 
@@ -152,7 +152,7 @@ Loading a single `.ifc` outside a project appends a local model. `source.path` i
 
 ## Download
 
-**Save project** on the Project ribbon, and the download control on the project panel, run `project.download`.
+**Save project** on the Project ribbon, and the download control on the project panel, run `Project.Download`.
 
 It reads the current false origin and camera into the document (`Federation.captureViewer`), then writes one STORE zip with `writeStoredZip`:
 
@@ -172,10 +172,10 @@ Edits go into the document and then the viewer, so the next download matches the
 
 | Edit | Operator | Stored field |
 |------|----------|----------------|
-| Survey unit | `viewer.set_federation_unit` | `config.unit` |
-| Survey point | `viewer.set_false_origin` | `federated_false_origin` |
-| Position dialog, or any `setModelTransform` | `viewer.set_model_transform` | `model_transformation` |
-| Reset placement | `viewer.clear_model_transform` | field omitted (identity) |
+| Survey unit | `Scene.SetFederationUnit` | `config.unit` |
+| Survey point | `Scene.SetFalseOrigin` | `federated_false_origin` |
+| Position dialog, or any `setModelTransform` | `Scene.SetModelTransform` | `model_transformation` |
+| Reset placement | `Scene.ClearModelTransform` | field omitted (identity) |
 | Model checkbox | `Federation.setVisible`, then show or hide the object's ids | `visible` |
 
 The position dialog writes `b` and a Z rotation. Opening a file that has a fuller transform shows that `b` and Z in the dialog and sends the whole transform to the viewer. Group checkboxes are not in the panel. A hidden group still hides its models on open. The checkbox after that sets the model's own flag.

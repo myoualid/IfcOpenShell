@@ -2,7 +2,7 @@ import { Operator } from '../../ops.js';
 
 class ProfilerToggle extends Operator {
 
-	static operatorName = 'profiler.toggle';
+	static operatorName = 'Profiler.Toggle';
 	static operatorLabel = 'Toggle Profiler';
 
 	poll() {

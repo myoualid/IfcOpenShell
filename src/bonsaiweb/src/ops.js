@@ -1,3 +1,4 @@
+import { context } from './context/context.js';
 import { Signals } from './context/signals.js';
 
 const CANCELLED = Object.freeze( { status: 'CANCELLED' } );
@@ -37,9 +38,20 @@ class Ops {
 
 	}
 
+	// `Category.Name` also becomes `ops.Category.Name( ...args )`, run with
+	// bonsai.context, like bpy.ops.
 	register( OperatorClass ) {
 
-		this.registry.set( OperatorClass.operatorName, OperatorClass );
+		const name = OperatorClass.operatorName;
+		const [ category, id ] = name.split( '.' );
+		if ( ! /^[A-Z]\w*$/.test( category ) || ! /^[A-Z]\w*$/.test( id ?? '' ) ) {
+
+			throw new Error( `ops: "${ name }" is not Category.Name` );
+
+		}
+
+		this.registry.set( name, OperatorClass );
+		( this[ category ] ??= {} )[ id ] = ( ...args ) => this.execute( name, context, ...args );
 		return this;
 
 	}

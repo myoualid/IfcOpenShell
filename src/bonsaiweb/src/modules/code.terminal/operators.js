@@ -4,7 +4,7 @@ import { formatRunOutput, runUserCode } from '../code.scripting/core.js';
 
 class CodeShowTerminal extends Operator {
 
-	static operatorName = 'code.show_terminal';
+	static operatorName = 'Terminal.Show';
 	static operatorLabel = 'Show Terminal';
 
 	constructor( context ) {
@@ -30,7 +30,7 @@ class CodeShowTerminal extends Operator {
 
 class TerminalNew extends Operator {
 
-	static operatorName = 'terminal.new';
+	static operatorName = 'Terminal.New';
 	static operatorLabel = 'New Terminal';
 	static undoable = true;
 
@@ -70,7 +70,7 @@ class TerminalNew extends Operator {
 
 class TerminalExecute extends Operator {
 
-	static operatorName = 'code.terminal.execute';
+	static operatorName = 'Terminal.Execute';
 	static operatorLabel = 'Execute Terminal Command';
 
 	constructor( context, command, terminalGuid ) {
@@ -116,7 +116,7 @@ class TerminalExecute extends Operator {
 
 class TerminalClear extends Operator {
 
-	static operatorName = 'code.terminal.clear';
+	static operatorName = 'Terminal.Clear';
 	static operatorLabel = 'Clear Terminal';
 	static undoable = true;
 
@@ -160,7 +160,7 @@ class TerminalClear extends Operator {
 
 class TerminalClose extends Operator {
 
-	static operatorName = 'code.terminal.close';
+	static operatorName = 'Terminal.Close';
 	static operatorLabel = 'Close Terminal';
 	static undoable = true;
 

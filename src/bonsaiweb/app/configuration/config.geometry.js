@@ -1,6 +1,6 @@
 /**
  * Startup defaults for IFC → .ifcview conversion. Load operators
- * (`project.open_file`, `load.ifc`, `load.sample.ifc`) accept the same keys
+ * (`Project.OpenFile`, `Project.LoadIfc`, `Project.LoadSample`) accept the same keys
  * as an options object to override any of them for one call.
  */
 export const GeometryConfig = {

@@ -2,7 +2,7 @@ import { Operator } from '../../ops.js';
 
 class GeoreferencingToggle extends Operator {
 
-	static operatorName = 'georeferencing.toggle';
+	static operatorName = 'Georeferencing.Toggle';
 	static operatorLabel = 'Toggle Survey Point';
 
 	poll() {

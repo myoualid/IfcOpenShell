@@ -3,7 +3,7 @@ import { Viewer } from '../../tool/Viewer.js';
 
 class SpatialSelect extends Operator {
 
-	static operatorName = 'spatial.select';
+	static operatorName = 'Spatial.Select';
 	static operatorLabel = 'Select in Hierarchy';
 
 	constructor( context, ids, mode ) {
@@ -34,7 +34,7 @@ class SpatialSelect extends Operator {
 
 class SpatialIsolate extends Operator {
 
-	static operatorName = 'spatial.isolate';
+	static operatorName = 'Spatial.Isolate';
 	static operatorLabel = 'Isolate in Hierarchy';
 
 	constructor( context, ids ) {
@@ -63,7 +63,7 @@ class SpatialIsolate extends Operator {
 
 class SpatialHidden extends Operator {
 
-	static operatorName = 'spatial.hidden';
+	static operatorName = 'Spatial.Hidden';
 	static operatorLabel = 'Hidden Objects';
 
 	poll() {
@@ -89,7 +89,7 @@ class SpatialHidden extends Operator {
 
 class SpatialObjects extends Operator {
 
-	static operatorName = 'spatial.objects';
+	static operatorName = 'Spatial.Objects';
 	static operatorLabel = 'Spatial Objects';
 
 	poll() {

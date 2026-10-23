@@ -309,7 +309,7 @@ class GeoreferencingPanelUI {
 		const pose = readLive( this._survey );
 		if ( ! pose ) return;
 		this._survey.hold = true;
-		ops.execute( 'viewer.set_false_origin', this.context, pose );
+		ops.Scene.SetFalseOrigin( pose );
 		this._paintSurvey( { ...pose, explicit: true, unit: store.scene.falseOrigin?.unit } );
 
 	}
@@ -319,7 +319,7 @@ class GeoreferencingPanelUI {
 		const origin = this._baseline ?? store.scene.falseOrigin;
 		if ( ! origin ) return;
 		this._applying = true;
-		ops.execute( 'viewer.set_false_origin', this.context, {
+		ops.Scene.SetFalseOrigin( {
 			xyz: origin.xyz,
 			rzDeg: origin.rzDeg,
 		} );
@@ -381,7 +381,7 @@ class GeoreferencingPanelUI {
 	_setUnit() {
 
 		const [ name, prefix = '' ] = this._unit.getValue().split( '|' );
-		ops.execute( 'viewer.set_federation_unit', this.context, { name, prefix } );
+		ops.Scene.SetFederationUnit( { name, prefix } );
 		this._syncSurvey();
 
 	}

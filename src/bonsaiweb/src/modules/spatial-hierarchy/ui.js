@@ -8,6 +8,7 @@ import {
 
 import { store } from '../../context/store.js';
 import ops from '../../ops.js';
+import { publishPick } from '../viewer/events.js';
 import { ensureElementChildren, getSpatialDecomposition } from '../../tool/elementQuery.js';
 
 function decompositionNodeToHierarchy( node, sourceId ) {
@@ -244,7 +245,7 @@ class SpatialHierarchyPanelUI {
 			.setStyle( 'alignItems', [ 'center' ] )
 			.add(
 				this._hiddenCaption,
-				actionsRow( actionButton( 'visibility', 'Show all', () => ops.execute( 'show.all', this.context ) ) ),
+				actionsRow( actionButton( 'visibility', 'Show all', () => ops.Viewer.ShowAll() ) ),
 			);
 		this._summary.dom.hidden = true;
 
@@ -284,7 +285,7 @@ class SpatialHierarchyPanelUI {
 
 	async refreshGuids() {
 
-		const { result: objects } = await ops.execute( 'spatial.objects', this.context );
+		const { result: objects } = await ops.Spatial.Objects();
 		this._guidToObjectId.clear();
 		for ( const obj of objects ?? [] ) {
 
@@ -375,7 +376,7 @@ class SpatialHierarchyPanelUI {
 
 	async _loadHidden() {
 
-		const { result: hidden } = await ops.execute( 'spatial.hidden', this.context );
+		const { result: hidden } = await ops.Spatial.Hidden();
 		this._hidden = hidden ?? new Set();
 		this._updateSummary();
 
@@ -457,14 +458,14 @@ class SpatialHierarchyPanelUI {
 		// The row is one entity. Subtree ids stay with hide, show, and isolate.
 		if ( item.objectId ) {
 
-			ops.execute( 'spatial.select', this.context, [ item.objectId ], mods );
+			ops.Spatial.Select( [ item.objectId ], mods );
 			await this._publishActivePick( item.objectId, item );
 			return;
 
 		}
 
 		if ( ! item.guid ) return;
-		ops.execute( 'viewer.object_picked', this.context, {
+		void publishPick( {
 			guid: item.guid,
 			sourceId: item.sourceId,
 			type: item.ifcType,
@@ -481,14 +482,14 @@ class SpatialHierarchyPanelUI {
 
 		if ( action === 'hide' ) {
 
-			ops.execute( 'hide.selection', this.context, objectIds );
+			ops.Viewer.HideSelected( objectIds );
 			return;
 
 		}
 
 		if ( action === 'show' ) {
 
-			ops.execute( 'show.selection', this.context, objectIds );
+			ops.Viewer.ShowSelected( objectIds );
 			return;
 
 		}
@@ -498,7 +499,7 @@ class SpatialHierarchyPanelUI {
 			this._selectionOrigin = 'panel';
 			this._selectedNodeId = item.nodeId;
 			this._selectNode( item.nodeId );
-			ops.execute( 'spatial.isolate', this.context, objectIds );
+			ops.Spatial.Isolate( objectIds );
 			await this._publishActivePick( objectIds[ 0 ], item );
 
 		}
@@ -508,7 +509,7 @@ class SpatialHierarchyPanelUI {
 	async _publishActivePick( objectId, item ) {
 
 		if ( ! objectId ) return;
-		const { result: objects } = await ops.execute( 'spatial.objects', this.context );
+		const { result: objects } = await ops.Spatial.Objects();
 		let pick = ( objects ?? [] ).find( ( object ) => object.objectId === objectId ) ?? null;
 
 		if ( ! pick ) {
@@ -523,7 +524,7 @@ class SpatialHierarchyPanelUI {
 
 		}
 
-		ops.execute( 'viewer.object_picked', this.context, pick );
+		await publishPick( pick );
 
 	}
 

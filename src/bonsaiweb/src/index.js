@@ -3,6 +3,7 @@ import { addSignal, logSignals, removeSignal } from './context/signals.js';
 import { store } from './context/store.js';
 import { setBundledDropboxClientId } from './modules/dropbox/const.js';
 import { registerOperators } from './modules/operators.js';
+import { publishModelLoaded, publishPick, publishSelection } from './modules/viewer/events.js';
 import ops, { bindKeyboard } from './ops.js';
 import tool from './tool/index.js';
 import { createViewer, destroyViewer } from './tool/Viewer.js';
@@ -47,21 +48,9 @@ export class Bonsai {
 		// The viewer has no resize method; it samples #viewer-canvas itself.
 		const viewer = await createViewer( context.dom.viewport, this.paths );
 
-		viewer.onSelect( ( pick ) => {
-
-			ops.execute( 'viewer.object_picked', context, pick );
-
-		} );
-		viewer.onSelectionChange( ( ids ) => {
-
-			ops.execute( 'viewer.selection_changed', context, ids );
-
-		} );
-		viewer.onModelLoaded( ( detail ) => {
-
-			ops.execute( 'project.model_loaded', context, detail );
-
-		} );
+		viewer.onSelect( publishPick );
+		viewer.onSelectionChange( publishSelection );
+		viewer.onModelLoaded( publishModelLoaded );
 
 		const viewport = context.dom.viewport;
 		if ( viewport ) {
@@ -70,27 +59,27 @@ export class Bonsai {
 
 				if ( payload?.dropbox ) {
 
-					ops.execute( 'dropbox.open_file', context, payload.dropbox.path, payload.dropbox.name );
+					ops.Dropbox.OpenFile( payload.dropbox.path, payload.dropbox.name );
 					return;
 
 				}
 
 				if ( payload?.entries ) {
 
-					ops.execute( 'project.open_bag', context, payload.entries, payload.label );
+					ops.Project.OpenBag( payload.entries, payload.label );
 					return;
 
 				}
 
 				if ( payload?.files ) {
 
-					for ( const file of payload.files ) ops.execute( 'load.ifc', context, file );
+					for ( const file of payload.files ) ops.Project.LoadIfc( file );
 					return;
 
 				}
 
 				const file = payload?.file ?? payload;
-				if ( file ) ops.execute( 'load.ifc', context, file );
+				if ( file ) ops.Project.LoadIfc( file );
 
 			} );
 

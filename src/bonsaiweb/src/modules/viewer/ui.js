@@ -281,7 +281,7 @@ class ViewerToolsUI {
 		if ( mode !== 'length' && mode !== 'area' ) return;
 		if ( this.tools?.section || this.tools?.fly ) return;
 		const rect = canvas.getBoundingClientRect();
-		void ops.execute( 'viewer.measure_click', this.context, {
+		void ops.Viewer.AddMeasurePoint( {
 			x: event.clientX - rect.left,
 			y: event.clientY - rect.top,
 			alt: event.altKey,
@@ -324,12 +324,12 @@ class ViewerToolsUI {
 		if ( event.key === 'Escape' ) {
 
 			event.preventDefault();
-			ops.execute( 'viewer.measure', this.context, measure.mode() );
+			ops.Viewer.Measure( measure.mode() );
 
 		} else if ( event.key === 'Backspace' && ( measure.mode() === 'length' || measure.mode() === 'area' ) ) {
 
 			event.preventDefault();
-			ops.execute( 'viewer.measure_undo', this.context );
+			ops.Viewer.UndoMeasurePoint();
 
 		}
 
