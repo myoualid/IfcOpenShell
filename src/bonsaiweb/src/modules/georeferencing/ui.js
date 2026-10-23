@@ -382,11 +382,11 @@ class GeoreferencingPanelUI {
 			let georef = null;
 			try {
 
-				georef = viewer?.getModelGeoref?.( entry.sourceId ) ?? null;
+				georef = viewer?.getModelGeoref?.( entry.id ) ?? null;
 
 			} catch { /* model has not finished loading */ }
 
-			const name = entry.name || entry.viewName || `Model ${ entry.sourceId }`;
+			const name = entry.name || `Model ${ entry.id }`;
 			if ( ! georef ) {
 
 				lines.push( `${ name }: still loading` );

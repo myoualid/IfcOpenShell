@@ -101,16 +101,16 @@ function applyCompletion( text, cursor, chain, completion ) {
 
 const PROMPT = 'bonsai >';
 
-// tool.Ifc.file() and tool.Ifc.entity() are null in view mode; the
-// snippets below that use them need a model opened for editing.
+// tool.Ifc.get() and tool.Ifc.entity() are null until a live file is
+// open; the snippets below that use them need a model opened for editing.
 const SNIPPETS = [
 	{
 		id: 'tool',
 		label: 'bonsai.tool',
 		items: [
 			{ label: 'Active model', command: 'bonsai.tool.Ifc.get()' },
-			{ label: 'Count walls', command: 'bonsai.tool.Ifc.file()?.byType(\'IfcWall\').length' },
-			{ label: 'Storeys', command: 'bonsai.tool.Ifc.file()?.byType(\'IfcBuildingStorey\').map((s) => bonsai.tool.Element.displayName(s))' },
+			{ label: 'Count walls', command: 'bonsai.tool.Ifc.get()?.byType(\'IfcWall\').length' },
+			{ label: 'Storeys', command: 'bonsai.tool.Ifc.get()?.byType(\'IfcBuildingStorey\').map((s) => bonsai.tool.Element.displayName(s))' },
 			{ label: 'Selected GlobalId', command: 'bonsai.tool.Ifc.globalId()' },
 			{ label: 'Selected attributes', command: 'bonsai.tool.Element.getAttributes(bonsai.tool.Ifc.entity())' },
 			{ label: 'Selected psets', command: 'bonsai.tool.Pset.getPsets(bonsai.tool.Ifc.entity())' },

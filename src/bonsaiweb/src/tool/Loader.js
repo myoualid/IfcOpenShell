@@ -1,6 +1,7 @@
 // Loader — model lifecycle: adding sources, dropping them, and the
 // bookkeeping that goes with it (counts, progress, VRAM, names).
 
+import { getStore } from '../context/store.js';
 import { createLogger } from '../util/log.js';
 import { listZipEntries, readZipEntriesByExtension, readZipEntry } from '../pipeline/zip.js';
 import { resolveThread, THREADS } from '../pipeline/thread.js';
@@ -174,7 +175,7 @@ export class Loader {
 		// First user model replaces the viewer's embedded sample. Otherwise
 		// that sample keeps the camera and false origin, and streamed IFC
 		// geometry lands off-screen.
-		if ( opts.replace || ! Ifc.get() ) {
+		if ( opts.replace || ! getStore().models.length ) {
 
 			Ifc.clear();
 			sidecarCache.clear();
@@ -186,7 +187,7 @@ export class Loader {
 		const name = file?.name;
 		if ( typeof name === 'string' && name.toLowerCase().endsWith( '.ifcview' ) ) {
 
-			Ifc.setView( sourceId, name );
+			Ifc.set( sourceId, name );
 			Loader._remember( sourceId, {
 				view: { name, bytes: file.size, file },
 			} );
@@ -204,11 +205,20 @@ export class Loader {
 
 	}
 
-	// Source already in the scene for this IFC (matching .ifcview or .ifc).
+	// Source already in the scene for this IFC. "house", "house.ifc", and
+	// "house.ifcview" are one model; the latest row wins.
 	static _sourceIdBeside( ifcName ) {
 
-		const sidecar = Loader._sidecarName( ifcName );
-		return Ifc.get( sidecar )?.sourceId ?? Ifc.get( ifcName )?.sourceId ?? null;
+		const want = String( ifcName ).replace( /\.ifc(view)?$/i, '' ).toLowerCase();
+		for ( let i = getStore().models.length - 1; i >= 0; i -- ) {
+
+			const entry = getStore().models[ i ];
+			const stem = String( entry.name ).replace( /\.ifc(view)?$/i, '' ).toLowerCase();
+			if ( stem === want ) return entry.id;
+
+		}
+
+		return null;
 
 	}
 
@@ -259,10 +269,10 @@ export class Loader {
 
 	static _startStream( ifcName ) {
 
-		if ( ! Ifc.get() ) viewer.clearScene();
+		if ( ! getStore().models.length ) viewer.clearScene();
 		const sidecarName = Loader._sidecarName( ifcName );
 		const sourceId = viewer.beginStream( { name: sidecarName } );
-		Ifc.setView( sourceId, sidecarName );
+		Ifc.set( sourceId, sidecarName );
 		Loader._track( sourceId, sidecarName );
 		return sourceId;
 
@@ -398,7 +408,7 @@ export class Loader {
 			const lower = file.name.toLowerCase();
 			if ( lower.endsWith( '.ifcview' ) ) {
 
-				const existing = Ifc.get( file.name )?.sourceId;
+				const existing = Loader._sourceIdBeside( file.name );
 				if ( existing != null ) return existing;
 				return Loader.addFile( file, { replace: false } );
 
@@ -773,7 +783,7 @@ export class Loader {
 		const sidecarName = ifcview.entry.name.split( '/' ).pop();
 		const ifcName = ifcEntry?.entry.name.split( '/' ).pop();
 		const existing = ( ifcName && Loader._sourceIdBeside( ifcName ) )
-			?? Ifc.get( sidecarName )?.sourceId;
+			?? Loader._sourceIdBeside( sidecarName );
 		if ( existing != null ) {
 
 			if ( ifcEntry ) await Loader._openLive( existing, ifcEntry.bytes, ifcName, hooks );
@@ -811,7 +821,7 @@ export class Loader {
 		const name = options.name ?? url.split( '/' ).pop() ?? 'model.ifc';
 		if ( /\.ifcview$/i.test( name ) ) {
 
-			const existing = Ifc.get( name )?.sourceId;
+			const existing = Loader._sourceIdBeside( name );
 			if ( existing != null ) return existing;
 			return Loader.addFile( new File( [ bytes ], name ), { replace: false } );
 
@@ -831,9 +841,9 @@ export class Loader {
 
 	}
 
-	// Open the live IFC on the main thread and promote that source to edit
-	// mode, so tool.Ifc / tool.Element can resolve picks to full entities.
-	// The sidecar for this source is already registered as view mode.
+	// Open the live IFC on the main thread and attach it to that model id,
+	// so tool.Ifc / tool.Element can resolve picks to full entities.
+	// The sidecar for this source is already registered.
 	//
 	// Same sequence as threejs.html: read FILE_SCHEMA from the first 4KB,
 	// lowercase it, load that schema plugin, then open. `open` is synchronous
@@ -843,7 +853,7 @@ export class Loader {
 		const file = await Loader._parseLiveIfc( bytes, name );
 		if ( ! file ) return;
 		log.log( `live IFC opened for source ${ sourceId } (${ name })` );
-		Ifc.setEdit( sourceId, file, name );
+		Ifc.set( sourceId, name, file );
 		const data = bytes instanceof Uint8Array ? bytes : new Uint8Array( bytes );
 		Loader._remember( sourceId, {
 			ifc: { name, bytes: data.byteLength, data },
@@ -904,7 +914,7 @@ export class Loader {
 		if ( ! file ) return null;
 		if ( liveTask ) {
 
-			Ifc.setEdit( sourceId, file, name );
+			Ifc.set( sourceId, name, file );
 			const data = bytes instanceof Uint8Array ? bytes : new Uint8Array( bytes );
 			Loader._remember( sourceId, {
 				ifc: { name, bytes: data.byteLength, data },

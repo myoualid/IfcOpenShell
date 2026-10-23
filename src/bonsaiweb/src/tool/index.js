@@ -1,6 +1,6 @@
 // bonsai.tool — classmethod-style namespace. Each export is a class
 // whose public API is a set of static methods over module-level state.
-// Call sites look like `tool.Ifc.get()`, `tool.Ifc.file()`, and
+// Call sites look like `tool.Ifc.get()`, `tool.Ifc.entity()`, and
 // `tool.Ifc.globalId()`, mirroring `bonsai.tool.Ifc` in Python.
 // The live IfcViewer is `bonsai.viewer`.
 

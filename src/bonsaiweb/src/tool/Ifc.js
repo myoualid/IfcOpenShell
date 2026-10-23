@@ -1,72 +1,15 @@
-// bonsai.tool.Ifc — loaded models, and the one thing both modes share.
+// bonsai.tool.Ifc — the live ifcopenshell files, keyed like the viewer.
 //
-// Edit: a .ifc is open in ifcopenshell next to the .ifcview the viewer
-// streams. View: only the .ifcview is loaded. `get()` returns the model
-// record either way. `file()` and `entity()` are edit-only and return
-// null in view mode. `globalId()` reads the selected element's GlobalId
-// in both modes — the viewer pick carries it, and so does the live entity.
+// Each model is `{ id, name, file }`. `id` is the viewer source id
+// (0, 1, 2, …). `file` is the ifcopenshell file, or null while only the
+// .ifcview is loaded. `get()` returns that file: the last one stored,
+// the one named, or the one with that id. `entity()` is null until a
+// file is open. `globalId()` reads the selected element's GlobalId
+// either way — the viewer pick carries it.
 
 // 'ifcopenshell' is imported where it is used, never at the top: a static
 // import would hold the session (and the GUI) until its CDN graph loads.
 import { getStore } from '../context/store.js';
-
-let ifcopenshellMod = null;
-
-async function ifcopenshellApi() {
-
-	ifcopenshellMod ??= await import( 'ifcopenshell' );
-	return ifcopenshellMod;
-
-}
-
-const STD64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-const IFC64 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
-
-// 22-character IFC GlobalId. Same compress as ifcopenshell.guid.new.
-function newGlobalId() {
-
-	const hex = `0000${ crypto.randomUUID().replace( /-/g, '' ) }`;
-	const bytes = new Uint8Array( hex.length / 2 );
-	for ( let i = 0; i < bytes.length; i ++ ) {
-
-		bytes[ i ] = Number.parseInt( hex.slice( i * 2, i * 2 + 2 ), 16 );
-
-	}
-
-	const std = btoa( String.fromCharCode( ...bytes ) ).slice( 2 );
-	let out = '';
-	for ( const ch of std ) {
-
-		const index = STD64.indexOf( ch );
-		out += index >= 0 ? IFC64[ index ] : ch;
-
-	}
-
-	return out;
-
-}
-
-function named( file, ifcClass, name ) {
-
-	return file.create( ifcClass, {
-		GlobalId: newGlobalId(),
-		Name: name,
-	} );
-
-}
-
-async function ensureSchema( schema ) {
-
-	const ifcopenshell = await ifcopenshellApi();
-	const runtime = await ifcopenshell.init();
-	const id = schema.toLowerCase();
-	if ( ! runtime.loadedPlugins().includes( `schema:${ id }` ) ) {
-
-		await runtime.loadPlugin( 'schema', id );
-
-	}
-
-}
 
 function dispose( file ) {
 
@@ -78,133 +21,50 @@ function dispose( file ) {
 
 }
 
-function findModel( sourceId, name ) {
-
-	if ( sourceId != null ) {
-
-		const bySource = getStore().models.find( ( entry ) => entry.sourceId === sourceId );
-		if ( bySource ) return bySource;
-
-	}
-
-	if ( ! name ) return undefined;
-	// Same filename, but not an entry already bound to a different source —
-	// stealing that row would detach the live IFC from geometry still in
-	// the scene.
-	return getStore().models.find( ( entry ) =>
-		( entry.sourceId == null || entry.sourceId === sourceId ) &&
-		( entry.name === name || entry.viewName === name )
-	);
-
-}
-
 export class Ifc {
 
-	static EDIT = 'edit';
-	static VIEW = 'view';
-
-	// The model record. With no key, the selected element's model, or the
-	// most recently opened model when nothing is selected. A key may be a
-	// filename (.ifc or .ifcview), a sourceId, or a viewer pick.
+	// The live ifcopenshell file. With no key, the most recently stored
+	// file (a view-only model is skipped). A string is a model name, with
+	// or without ".ifc". A number is the viewer model id.
 	// `bonsai.tool.Ifc.get()` with nothing loaded is null.
 	static get( key ) {
 
-		if ( key === undefined ) {
+		const models = getStore().models;
+		if ( key === undefined ) return models.findLast( ( entry ) => entry.file )?.file ?? null;
+		if ( typeof key === 'number' ) return models.find( ( entry ) => entry.id === key )?.file ?? null;
+		if ( typeof key !== 'string' ) return null;
 
-			if ( getStore().selection ) {
+		// "house", "house.ifc", and "house.ifcview" are one model.
+		const stem = ( name ) => String( name ).replace( /\.ifc(view)?$/i, '' ).toLowerCase();
+		const want = stem( key );
+		return models.findLast( ( entry ) => stem( entry.name ) === want )?.file ?? null;
 
-				const selected = Ifc.get( getStore().selection );
-				if ( selected ) return selected;
+	}
+
+	// Register a model under a viewer source id. The same id updates that
+	// row. Passing a file replaces and disposes the previous one; omitting
+	// it leaves a live file in place. A new id is appended and is never
+	// matched by name.
+	static set( id, name, file ) {
+
+		const models = getStore().models;
+		const existing = models.find( ( entry ) => entry.id === id );
+		if ( existing ) {
+
+			if ( name ) existing.name = name;
+			if ( file != null && file !== existing.file ) {
+
+				dispose( existing.file );
+				existing.file = file;
 
 			}
 
-			return getStore().models.at( - 1 ) ?? null;
-
-		}
-
-		if ( key === null ) return null;
-		if ( typeof key === 'object' ) {
-
-			if ( key.sourceId == null ) return null;
-			return getStore().models.find( ( entry ) => entry.sourceId === key.sourceId ) ?? null;
-
-		}
-
-		return getStore().models.find( ( entry ) =>
-			entry.sourceId === key || entry.name === key || entry.viewName === key
-		) ?? null;
-
-	}
-
-	// The live ifcopenshell file. Null in view mode and when nothing matches.
-	static file( key ) {
-
-		const model = Ifc.get( key );
-		if ( model?.mode !== Ifc.EDIT ) return null;
-		return model.file ?? null;
-
-	}
-
-	// Geometry-only model (.ifcview, no live file). Re-opening the same
-	// source refreshes that entry. The same source already in edit mode
-	// keeps its file. A new source with the same view name is a separate
-	// model — it must not steal the row that is already paired with a
-	// live IFC in the scene.
-	static setView( sourceId, viewName ) {
-
-		const existing = findModel( sourceId, viewName );
-		if ( existing ) {
-
-			const sameSource = existing.sourceId === sourceId;
-			existing.sourceId = sourceId;
-			existing.viewName = viewName;
-			// Same source already promoted to edit: keep the live file.
-			// A new source reusing this view name starts over as view.
-			if ( sameSource && existing.mode === Ifc.EDIT ) return existing;
-			if ( existing.file ) dispose( existing.file );
-			existing.name = viewName;
-			existing.mode = Ifc.VIEW;
-			existing.file = null;
 			return existing;
 
 		}
 
-		const entry = {
-			sourceId,
-			name: viewName,
-			viewName,
-			mode: Ifc.VIEW,
-			file: null,
-		};
-		getStore().models.push( entry );
-		return entry;
-
-	}
-
-	// Live .ifc opened beside the .ifcview. Promotes a view entry for the
-	// same source. Re-opening replaces the previous file and disposes it.
-	static setEdit( sourceId, file, name ) {
-
-		const existing = findModel( sourceId, name );
-		if ( existing ) {
-
-			if ( existing.file && existing.file !== file ) dispose( existing.file );
-			existing.sourceId = sourceId;
-			existing.name = name;
-			existing.mode = Ifc.EDIT;
-			existing.file = file;
-			return existing;
-
-		}
-
-		const entry = {
-			sourceId,
-			name,
-			viewName: null,
-			mode: Ifc.EDIT,
-			file,
-		};
-		getStore().models.push( entry );
+		const entry = { id, name, file: file ?? null };
+		models.push( entry );
 		return entry;
 
 	}
@@ -230,12 +90,49 @@ export class Ifc {
 
 	// Blank IFC4 file: project → site → building → storey, with metric
 	// units and a model context so later geometry has somewhere to live.
-	// The caller keeps the file and registers it with setEdit.
+	// The caller keeps the file and registers it with set.
 	static async createBlank( name = 'Project' ) {
 
-		const ifcopenshell = await ifcopenshellApi();
-		await ensureSchema( 'IFC4' );
+		const ifcopenshell = await import( 'ifcopenshell' );
+		const runtime = await ifcopenshell.init();
+		if ( ! runtime.loadedPlugins().includes( 'schema:ifc4' ) ) {
+
+			await runtime.loadPlugin( 'schema', 'ifc4' );
+
+		}
+
 		const file = new ifcopenshell.File( 'IFC4' );
+
+		// 22-character IFC GlobalId. Same compress as ifcopenshell.guid.new.
+		const guid = () => {
+
+			const hex = `0000${ crypto.randomUUID().replace( /-/g, '' ) }`;
+			const bytes = new Uint8Array( hex.length / 2 );
+			for ( let i = 0; i < bytes.length; i ++ ) {
+
+				bytes[ i ] = Number.parseInt( hex.slice( i * 2, i * 2 + 2 ), 16 );
+
+			}
+
+			const std = btoa( String.fromCharCode( ...bytes ) ).slice( 2 );
+			const from = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+			const to = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
+			let out = '';
+			for ( const ch of std ) {
+
+				const index = from.indexOf( ch );
+				out += index >= 0 ? to[ index ] : ch;
+
+			}
+
+			return out;
+
+		};
+
+		const named = ( ifcClass, entityName ) => file.create( ifcClass, {
+			GlobalId: guid(),
+			Name: entityName,
+		} );
 
 		const origin = file.create( 'IfcCartesianPoint', { Coordinates: [ 0, 0, 0 ] } );
 		const placement = file.create( 'IfcAxis2Placement3D', { Location: origin } );
@@ -253,15 +150,15 @@ export class Ifc {
 			],
 		} );
 
-		const project = named( file, 'IfcProject', name );
+		const project = named( 'IfcProject', name );
 		project.set( 'RepresentationContexts', [ context ] );
 		project.set( 'UnitsInContext', units );
 
-		const site = named( file, 'IfcSite', 'Site' );
-		const building = named( file, 'IfcBuilding', 'Building' );
-		const storey = named( file, 'IfcBuildingStorey', 'Ground Floor' );
+		const site = named( 'IfcSite', 'Site' );
+		const building = named( 'IfcBuilding', 'Building' );
+		const storey = named( 'IfcBuildingStorey', 'Ground Floor' );
 		const aggregate = ( parent, child ) => file.create( 'IfcRelAggregates', {
-			GlobalId: newGlobalId(),
+			GlobalId: guid(),
 			RelatingObject: parent,
 			RelatedObjects: [ child ],
 		} );
@@ -279,7 +176,7 @@ export class Ifc {
 
 		const target = pick === undefined ? getStore().selection : pick;
 		if ( ! target?.guid ) return null;
-		const file = Ifc.file( target );
+		const file = target.sourceId == null ? null : Ifc.get( target.sourceId );
 		if ( ! file ) return null;
 		try {
 

@@ -603,3 +603,312 @@ body {
 .bonsai-completions .Button:hover {
 	background: var(--dui-color-surface-selected);
 }
+
+/* Dropbox file manager: details view in the left workspace. */
+#WorkspaceLeft .WorkspacePanel:not(.collapsed) .bonsai-panel-body:has(.FileManager) {
+	overflow: hidden;
+	padding: 0;
+}
+
+#WorkspaceLeft .WorkspacePanel:not(.collapsed):has(.FileManager) {
+	flex: 1 1 18rem;
+	min-height: 18rem;
+}
+
+.FileManager {
+	container-name: file-manager;
+	container-type: inline-size;
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	height: auto;
+	max-height: 100%;
+	min-height: 16rem;
+	background: var(--dui-color-surface);
+	color: var(--dui-color-text);
+	font-size: var(--dui-font-size-sm);
+	outline: none;
+}
+
+.FileManager-prompt {
+	gap: 0.6rem;
+	padding: 0.75rem;
+}
+
+.FileManager-browser {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+}
+
+.FileManager-browser[hidden],
+.FileManager-prompt[hidden] {
+	display: none !important;
+}
+
+.FileManager-toolbar {
+	flex: 0 0 auto;
+	padding: 0.2rem 0.3rem;
+	border-bottom: 1px solid var(--dui-color-border);
+}
+
+.FileManager-tool {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.7rem;
+	height: 1.7rem;
+	border-radius: var(--dui-radius);
+	color: var(--dui-color-text);
+	cursor: pointer;
+}
+
+.FileManager-tool:hover {
+	background: var(--dui-color-surface-hover);
+}
+
+.FileManager-tool.is-disabled {
+	opacity: 0.35;
+	pointer-events: none;
+}
+
+.FileManager-address {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.05rem;
+	min-height: 1.7rem;
+	margin: 0.35rem 0.4rem 0;
+	padding: 0.05rem 0.2rem;
+	border: 1px solid var(--dui-color-border);
+	border-radius: var(--dui-radius);
+	background: var(--dui-color-bg);
+}
+
+.FileManager-crumb {
+	border: 0;
+	background: transparent;
+	color: var(--dui-color-text-muted);
+	cursor: pointer;
+	font: inherit;
+	padding: 0.12rem 0.28rem;
+	border-radius: var(--dui-radius);
+}
+
+.FileManager-crumb:hover {
+	background: var(--dui-color-surface-hover);
+	color: var(--dui-color-text);
+}
+
+.FileManager-crumb[aria-current="page"] {
+	color: var(--dui-color-text);
+	font-weight: 650;
+	cursor: default;
+}
+
+.FileManager-sep {
+	font-size: 16px;
+	color: var(--dui-color-text-subtle);
+}
+
+.FileManager-search {
+	flex: 0 0 auto;
+	padding: 0.3rem 0.4rem 0.2rem;
+}
+
+.FileManager-list {
+	flex: 1 1 auto;
+	min-height: 12rem;
+	overflow: auto;
+}
+
+.FileManager-table {
+	border-collapse: collapse;
+	width: max-content;
+	min-width: 100%;
+	font-variant-numeric: tabular-nums;
+}
+
+.FileManager-table th,
+.FileManager-table td {
+	padding: 0.12rem 0.45rem;
+	text-align: left;
+	vertical-align: middle;
+	white-space: nowrap;
+}
+
+.FileManager-table th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--dui-color-surface-raised);
+	border-bottom: 1px solid var(--dui-color-border);
+	color: var(--dui-color-text-muted);
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.FileManager-sort {
+	border: 0;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	font: inherit;
+	font-weight: inherit;
+	letter-spacing: inherit;
+	text-transform: inherit;
+	padding: 0.2rem 0;
+}
+
+.FileManager-table th:first-child,
+.FileManager-table td:first-child {
+	position: sticky;
+	left: 0;
+	z-index: 1;
+	background: var(--dui-color-surface);
+}
+
+.FileManager-table th:first-child {
+	z-index: 2;
+	background: var(--dui-color-surface-raised);
+}
+
+.FileManager-table tbody td {
+	border-bottom: 1px solid var(--dui-color-separator);
+}
+
+.FileManager-table tbody tr[draggable="true"] {
+	cursor: grab;
+}
+
+.FileManager-table tbody tr.is-dragging {
+	opacity: 0.45;
+}
+
+#Viewport.is-file-drop {
+	outline: 2px dashed var(--dui-color-accent);
+	outline-offset: -3px;
+}
+
+.FileManager-table tbody tr:hover:not(.is-local):not(.is-downloading) td {
+	background: var(--dui-color-surface-hover);
+}
+
+.FileManager-table tbody tr.is-current td:first-child {
+	box-shadow: inset 2px 0 0 var(--dui-color-text-muted);
+}
+
+.FileManager-table tbody tr.is-local td {
+	background-color: var(--dui-color-accent-soft, rgba(57, 181, 74, 0.16));
+}
+
+.FileManager-table tbody tr.is-local td:first-child {
+	box-shadow: inset 2px 0 0 var(--dui-color-accent);
+}
+
+.FileManager-table tbody tr.is-downloading td {
+	background-color: var(--dui-color-surface);
+	background-image: linear-gradient( var(--dui-color-accent), var(--dui-color-accent) );
+	background-repeat: no-repeat;
+	background-position: left bottom;
+	background-size: var(--download, 0%) 3px;
+}
+
+.FileManager-table tbody tr.is-downloading.is-indeterminate td {
+	background-size: 35% 3px;
+	animation: file-manager-download 1s ease-in-out infinite;
+}
+
+@keyframes file-manager-download {
+	from { background-position: -40% bottom; }
+	to { background-position: 140% bottom; }
+}
+
+.FileManager-name {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	min-height: 1.45rem;
+}
+
+.FileManager-name .material-symbols-outlined {
+	font-size: 18px;
+	color: var(--dui-color-text-muted);
+}
+
+.FileManager-table tr[data-kind="folder"] .FileManager-name .material-symbols-outlined {
+	color: #e2b340;
+}
+
+.FileManager-col-modified,
+.FileManager-col-type,
+.FileManager-col-size {
+	color: var(--dui-color-text-muted);
+	font-size: 0.78rem;
+}
+
+.FileManager-col-size {
+	text-align: right;
+}
+
+.FileManager-message td {
+	color: var(--dui-color-text-muted);
+	white-space: normal;
+	padding: 0.6rem 0.5rem;
+}
+
+.FileManager-status {
+	flex: 0 0 auto;
+	padding: 0.22rem 0.5rem;
+	border-top: 1px solid var(--dui-color-border);
+	color: var(--dui-color-text-muted);
+	font-size: 0.72rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.FileManager-status.is-error {
+	color: #f07178;
+}
+
+.FileManager-menu {
+	position: fixed;
+	z-index: 80;
+	min-width: 9rem;
+	padding: 0.2rem;
+	background: var(--dui-color-overlay, var(--dui-color-surface-raised));
+	border: 1px solid var(--dui-color-border);
+	border-radius: var(--dui-radius);
+	box-shadow: var(--dui-shadow-overlay, 0 8px 24px rgba(0, 0, 0, 0.35));
+}
+
+.FileManager-menu-item {
+	display: block;
+	width: 100%;
+	border: 0;
+	background: transparent;
+	color: var(--dui-color-text);
+	font: inherit;
+	text-align: left;
+	padding: 0.35rem 0.55rem;
+	border-radius: var(--dui-radius);
+	cursor: pointer;
+}
+
+.FileManager-menu-item:hover,
+.FileManager-menu-item:focus {
+	background: var(--dui-color-surface-selected);
+	outline: none;
+}
+
+@container file-manager (max-width: 16rem) {
+	.FileManager-col-modified,
+	.FileManager-col-type {
+		display: none;
+	}
+}

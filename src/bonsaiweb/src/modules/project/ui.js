@@ -10,6 +10,7 @@ import {
 	Tooltip,
 } from '@aeco-dev/gui';
 
+import { getStore } from '../../context/store.js';
 import ops from '../../ops.js';
 import { writeStoredZip } from '../../pipeline/zip.js';
 import { Federation } from '../../tool/federation.js';
@@ -47,10 +48,10 @@ function liveIfc( sourceId ) {
 
 	const cached = Loader.bundle( sourceId )?.ifc;
 	if ( cached ) return cached;
-	const file = Ifc.file( sourceId );
+	const file = Ifc.get( sourceId );
 	if ( ! file?.toString ) return null;
 	const data = new TextEncoder().encode( file.toString() );
-	const name = Ifc.get( sourceId )?.name || 'model.ifc';
+	const name = getStore().models.find( ( entry ) => entry.id === sourceId )?.name || 'model.ifc';
 	return { name, bytes: data.byteLength, data };
 
 }
@@ -377,11 +378,11 @@ class ProjectPanelUI {
 		const visibility = new Map( ( result ?? [] ).map( ( row ) => [ row.sourceId, row ] ) );
 		const models = this.context.store.models.map( ( entry ) => {
 
-			const sourceId = entry.sourceId;
+			const sourceId = entry.id;
 			const row = visibility.get( sourceId );
 			return {
 				id: `model-${ sourceId }`,
-				label: entry.name || entry.viewName || `Model ${ sourceId }`,
+				label: entry.name || `Model ${ sourceId }`,
 				checked: row?.checked ?? true,
 				sourceId,
 				objectIds: row?.objectIds ?? [],
