@@ -129,7 +129,7 @@ function bindRibbon( context, ribbon, layout ) {
 				void ops.execute( spec.operator, context, el.value );
 
 			} );
-			if ( spec.operator === 'viewer.nav_preset' ) {
+			if ( spec.operator === 'Viewer.SetNavPreset' ) {
 
 				context.signals.navPresetChanged.add( ( payload ) => {
 

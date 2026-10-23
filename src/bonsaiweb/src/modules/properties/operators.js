@@ -41,7 +41,7 @@ function selectedElement( pick ) {
 
 class PropertiesForPick extends Operator {
 
-	static operatorName = 'properties.for_pick';
+	static operatorName = 'Properties.ForPick';
 	static operatorLabel = 'Properties for Selection';
 
 	constructor( context, pick ) {

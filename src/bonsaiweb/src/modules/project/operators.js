@@ -79,7 +79,7 @@ function loadOptions( context, options ) {
 
 class LoadIfc extends Operator {
 
-	static operatorName = 'load.ifc';
+	static operatorName = 'Project.LoadIfc';
 	static operatorLabel = 'Load IFC';
 
 	constructor( context, urlOrFile, options = {} ) {
@@ -123,7 +123,7 @@ class LoadIfc extends Operator {
 
 class LoadSampleIfc extends Operator {
 
-	static operatorName = 'load.sample.ifc';
+	static operatorName = 'Project.LoadSample';
 	static operatorLabel = 'Load Sample IFC';
 
 	constructor( context, options = {} ) {
@@ -172,7 +172,7 @@ function takeProjectName( models ) {
 
 class ProjectNew extends Operator {
 
-	static operatorName = 'project.new';
+	static operatorName = 'Project.New';
 	static operatorLabel = 'New Project';
 
 	async execute() {
@@ -201,7 +201,7 @@ class ProjectNew extends Operator {
 
 class ProjectOpenFile extends Operator {
 
-	static operatorName = 'project.open_file';
+	static operatorName = 'Project.OpenFile';
 	static operatorLabel = 'Load IFC';
 
 	// `options` overrides configuration.geometry for this load:
@@ -218,7 +218,7 @@ class ProjectOpenFile extends Operator {
 		openModelFilePicker( ( file ) => {
 
 			// The picker itself is not undoable. LoadIfc records the file.
-			ops.execute( 'load.ifc', this.context, file, this.options );
+			ops.Project.LoadIfc( file, this.options );
 
 		} );
 		return { status: 'FINISHED' };
@@ -229,7 +229,7 @@ class ProjectOpenFile extends Operator {
 
 class ProjectOpenBag extends Operator {
 
-	static operatorName = 'project.open_bag';
+	static operatorName = 'Project.OpenBag';
 	static operatorLabel = 'Open Project';
 
 	constructor( context, entries, label, options = {} ) {
@@ -267,7 +267,7 @@ class ProjectOpenBag extends Operator {
 
 class ProjectDownload extends Operator {
 
-	static operatorName = 'project.download';
+	static operatorName = 'Project.Download';
 	static operatorLabel = 'Download Project';
 
 	poll() {
@@ -334,7 +334,7 @@ class ProjectDownload extends Operator {
 
 class ProjectClear extends Operator {
 
-	static operatorName = 'project.clear';
+	static operatorName = 'Project.Clear';
 	static operatorLabel = 'Clear Models';
 	// Not undoable. Every recorded command refers to objects in the scene
 	// being dropped, so the undo stack goes with them.
@@ -351,7 +351,7 @@ class ProjectClear extends Operator {
 
 class ProjectDownloadView extends Operator {
 
-	static operatorName = 'project.download_view';
+	static operatorName = 'Project.DownloadView';
 	static operatorLabel = 'Download View';
 
 	constructor( context, sourceId ) {
@@ -381,7 +381,7 @@ class ProjectDownloadView extends Operator {
 
 class ProjectModels extends Operator {
 
-	static operatorName = 'project.models';
+	static operatorName = 'Project.ListModels';
 	static operatorLabel = 'List Models';
 
 	async execute() {
@@ -423,53 +423,9 @@ class ProjectModels extends Operator {
 
 }
 
-class ProjectModelLoaded extends Operator {
-
-	static operatorName = 'project.model_loaded';
-	static operatorLabel = 'Model Loaded';
-
-	constructor( context, detail ) {
-
-		super( context );
-		this.detail = detail;
-
-	}
-
-	async execute() {
-
-		const sourceId = typeof this.detail === 'number' ? this.detail : this.detail?.sourceId;
-		const sessionModelId = typeof this.detail === 'object' ? this.detail?.sessionModelId : undefined;
-		this.context.signals.modelLoaded.dispatch( { sourceId, sessionModelId } );
-		Federation.modelArrived();
-		const model = Federation.modelForSource( sourceId );
-		if ( model && ! Federation.isEffectivelyVisible( model ) ) {
-
-			try {
-
-				const objects = await Viewer.get().getObjects();
-				const ids = objects
-					.filter( ( object ) => object.sourceId === sourceId && object.objectId > 0 )
-					.map( ( object ) => object.objectId );
-				if ( ids.length ) {
-
-					Viewer.get().hide( ids );
-					this.context.signals.visibilityChanged.dispatch( { action: 'hide', target: ids } );
-
-				}
-
-			} catch { /* element table is not resident yet */ }
-
-		}
-
-		return { status: 'FINISHED' };
-
-	}
-
-}
-
 class ProjectBenchmark extends Operator {
 
-	static operatorName = 'project.benchmark';
+	static operatorName = 'Project.Benchmark';
 	static operatorLabel = 'Benchmark IFC';
 
 	// `input` is a File, a URL, or IFC bytes. `options` is { kernel, thread,
@@ -499,5 +455,5 @@ class ProjectBenchmark extends Operator {
 
 }
 
-export { LoadIfc, LoadSampleIfc, ProjectBenchmark, ProjectClear, ProjectDownload, ProjectDownloadView, ProjectModelLoaded, ProjectModels, ProjectNew, ProjectOpenBag, ProjectOpenFile };
-export default [ ProjectOpenFile, ProjectOpenBag, ProjectDownload, ProjectNew, ProjectClear, ProjectDownloadView, ProjectModels, ProjectModelLoaded, LoadIfc, LoadSampleIfc, ProjectBenchmark ];
+export { LoadIfc, LoadSampleIfc, ProjectBenchmark, ProjectClear, ProjectDownload, ProjectDownloadView, ProjectModels, ProjectNew, ProjectOpenBag, ProjectOpenFile };
+export default [ ProjectOpenFile, ProjectOpenBag, ProjectDownload, ProjectNew, ProjectClear, ProjectDownloadView, ProjectModels, LoadIfc, LoadSampleIfc, ProjectBenchmark ];

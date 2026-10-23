@@ -120,14 +120,14 @@ const SNIPPETS = [
 		id: 'ops',
 		label: 'bonsai.ops',
 		items: [
-			{ label: 'List operators', command: 'bonsai.ops.list()' },
-			{ label: 'New project', command: 'await bonsai.ops.execute(\'project.new\')' },
-			{ label: 'Top view', command: 'bonsai.ops.execute(\'viewer.standard_view\', \'TOP\')' },
-			{ label: 'View all', command: 'bonsai.ops.execute(\'viewer.view_all\')' },
-			{ label: 'Isolate selection', command: 'bonsai.ops.execute(\'viewer.isolate\')' },
-			{ label: 'Section', command: 'bonsai.ops.execute(\'viewer.section\')' },
-			{ label: 'Clear cuts', command: 'bonsai.ops.execute(\'viewer.clear_section\')' },
-			{ label: 'Show all', command: 'bonsai.ops.execute(\'show.all\')' },
+			{ label: 'List operators', command: '[ ...bonsai.ops.registry.keys() ].sort()' },
+			{ label: 'New project', command: 'await bonsai.ops.Project.New()' },
+			{ label: 'Top view', command: 'bonsai.ops.Viewer.SetStandardView(\'TOP\')' },
+			{ label: 'View all', command: 'bonsai.ops.Viewer.ViewAll()' },
+			{ label: 'Isolate selection', command: 'bonsai.ops.Viewer.IsolateSelected()' },
+			{ label: 'Section', command: 'bonsai.ops.Viewer.ToggleSection()' },
+			{ label: 'Clear cuts', command: 'bonsai.ops.Viewer.ClearSection()' },
+			{ label: 'Show all', command: 'bonsai.ops.Viewer.ShowAll()' },
 			{ label: 'Undo', command: 'bonsai.ops.undo()' },
 		],
 	},
@@ -430,7 +430,7 @@ class TerminalPanelUI {
 				.onClick( ( event ) => {
 
 					event.preventDefault();
-					ops.execute( 'terminal.new', this.context );
+					ops.Terminal.New();
 
 				} ),
 			new Operator( 'clear_all' )
@@ -438,7 +438,7 @@ class TerminalPanelUI {
 				.onClick( ( event ) => {
 
 					event.preventDefault();
-					ops.execute( 'code.terminal.clear', this.context );
+					ops.Terminal.Clear();
 
 				} ),
 			new Operator( 'close' )
@@ -446,7 +446,7 @@ class TerminalPanelUI {
 				.onClick( ( event ) => {
 
 					event.preventDefault();
-					ops.execute( 'code.terminal.close', this.context );
+					ops.Terminal.Close();
 
 				} ),
 		).addClass( 'bonsai-terminal-header' ).setStyle( 'flexWrap', [ 'nowrap' ] );
@@ -692,10 +692,7 @@ class TerminalPanelUI {
 		this.historyIndex = - 1;
 		try {
 
-			await ops.execute(
-				'code.terminal.execute',
-				this.context,
-				command,
+			await ops.Terminal.Execute( command,
 				this.activeTerminalGuid,
 			);
 

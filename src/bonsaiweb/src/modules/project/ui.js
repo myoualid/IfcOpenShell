@@ -209,7 +209,7 @@ class ProjectPanelUI {
 
 			event.preventDefault();
 			event.stopPropagation();
-			ops.execute( 'project.download', this.context );
+			ops.Project.Download();
 
 		} );
 
@@ -357,7 +357,7 @@ class ProjectPanelUI {
 		const token = ( this._refreshToken ?? 0 ) + 1;
 		this._refreshToken = token;
 
-		const { result } = await ops.execute( 'project.models', this.context );
+		const { result } = await ops.Project.ListModels();
 		if ( token !== this._refreshToken ) return;
 
 		const visibility = new Map( ( result ?? [] ).map( ( row ) => [ row.sourceId, row ] ) );
@@ -411,7 +411,7 @@ class ProjectPanelUI {
 			actions?.appendChild( this._positionIcon( model.sourceId, model.label ).dom );
 			actions?.appendChild( this._downloadIcon( () => {
 
-				ops.execute( 'project.download_view', this.context, model.sourceId );
+				ops.Project.DownloadView( model.sourceId );
 
 			} ).dom );
 			if ( this._positionDialog.isActive && this._positionSourceId === model.sourceId ) {
@@ -457,7 +457,7 @@ class ProjectPanelUI {
 		const pose = readLive( fields );
 		if ( ! pose ) return;
 		const pivot = store.scene.falseOrigin?.xyz ?? [ 0, 0, 0 ];
-		ops.execute( 'viewer.set_model_transform', this.context, sourceId, {
+		ops.Scene.SetModelTransform( sourceId, {
 			aFrame: 'global',
 			a: [ 0, 0, 0 ],
 			b: pose.xyz,
@@ -471,7 +471,7 @@ class ProjectPanelUI {
 
 		const fields = this._modelFields.get( sourceId );
 		this._applying = true;
-		ops.execute( 'viewer.clear_model_transform', this.context, sourceId );
+		ops.Scene.ClearModelTransform( sourceId );
 		if ( fields ) {
 
 			fields.hold = false;
@@ -491,8 +491,7 @@ class ProjectPanelUI {
 
 		Federation.setVisible( sourceId, visible );
 		if ( ! objectIds?.length ) return;
-		const name = visible ? 'show.selection' : 'hide.selection';
-		ops.execute( name, this.context, objectIds );
+		( visible ? ops.Viewer.ShowSelected : ops.Viewer.HideSelected )( objectIds );
 
 	}
 

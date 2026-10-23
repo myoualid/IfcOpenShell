@@ -1,25 +1,17 @@
+import { store } from '../../context/store.js';
 import ops from '../../ops.js';
 import tool from '../../tool/index.js';
 
 const AsyncFunction = Object.getPrototypeOf( async function () {} ).constructor;
 
 /**
- * The `bonsai` object user scripts see. `ops` is bound to the context, so
- * scripts call `bonsai.ops.execute( 'viewer.view_all' )` without passing it.
+ * The `bonsai` object user scripts see: `bonsai.ops.Viewer.ViewAll()`,
+ * `bonsai.tool.Ifc.get()`, `bonsai.context.activeObject`, `bonsai.store.models`.
  * @param {object} context
  */
 export function scriptScope( context ) {
 
-	return {
-		context,
-		tool,
-		ops: {
-			execute: ( name, ...args ) => ops.execute( name, context, ...args ),
-			undo: () => ops.undo()?.constructor.operatorName ?? null,
-			redo: () => ops.redo()?.constructor.operatorName ?? null,
-			list: () => [ ...ops.registry.keys() ].sort(),
-		},
-	};
+	return { context, store, tool, ops };
 
 }
 

@@ -5,7 +5,7 @@ const GEOMETRY_KEYS = [ 'kernel', 'thread', 'delivery' ];
 
 class SettingsToggle extends Operator {
 
-	static operatorName = 'settings.toggle';
+	static operatorName = 'Settings.Toggle';
 	static operatorLabel = 'Toggle Settings';
 
 	poll() {
@@ -25,7 +25,7 @@ class SettingsToggle extends Operator {
 
 class SettingsSetGeometry extends Operator {
 
-	static operatorName = 'settings.set_geometry';
+	static operatorName = 'Settings.SetGeometry';
 	static operatorLabel = 'Set Geometry';
 
 	constructor( context, options = {} ) {
