@@ -141,3 +141,11 @@ CLAUDE.local.md
 # bonsaiviewer-autodesk connector build artifacts
 /src/bonsaiviewer-autodesk/build/
 /src/bonsaiviewer-autodesk/dist/
+
+# generometry - LOCAL ONLY §§
+src/generometry/
+build-generometry/
+
+build-web/
+
+src/ifcviewer-web/web/
