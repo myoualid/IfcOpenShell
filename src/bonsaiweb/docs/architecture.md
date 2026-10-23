@@ -36,7 +36,7 @@ vendor/                 gitignored local copies; the page loads its dependencies
 
 `void bonsai.boot()` then runs without blocking the return:
 
-4. **Viewer.** `create()` appends `#viewer-canvas` to the viewport and starts IfcViewer. Picks, selection changes and model loads call `ops.execute(name, context, ...)`. Drag-and-drop is wired. `viewerReady` fires. The viewer samples the canvas itself; the host does not write `canvas.width` or `canvas.height`. See [viewer-redraw.md](viewer-redraw.md).
+4. **Viewer.** `create()` appends `#viewer-canvas` to the viewport and starts IfcViewer. Picks, selection changes and model loads call `ops.execute(name, context, ...)`. Drag-and-drop is wired. `viewerReady` fires. The viewer samples the canvas itself; the host does not write `canvas.width` or `canvas.height`.
 5. **IfcOpenShell.** `ifcopenshell.init()` on the main thread. This instance is for opening live IFC files. Geometry conversion uses a separate instance inside a worker.
 6. **Ready.** `appReady` fires.
 
