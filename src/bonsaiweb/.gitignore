@@ -2,3 +2,4 @@ node_modules/
 dist/
 vendor/
 bench/
+src/modules/dropbox/README.md
