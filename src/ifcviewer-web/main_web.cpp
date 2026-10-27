@@ -847,6 +847,33 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_background_c(float r, float g,
     g_app->core.setBackgroundColor(r, g, b, a);
 }
 
+// Offscreen snapshot at width × height device pixels. use_view_background 0
+// clears with (r, g, b, a) instead (sRGB in [0..1]; a = 0 is transparent).
+// Rows and completion come back through Module.__ifcvOnSnapshotRows /
+// __ifcvOnSnapshotDone, keyed by `token`. See ViewportCore::requestSnapshot.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_snapshot_c(int token, int width, int height,
+                                                     int use_view_background,
+                                                     float r, float g, float b, float a,
+                                                     int timeout_ms) {
+    if (!g_app || !g_app->ready) {
+        EM_ASM({
+            if (Module.__ifcvOnSnapshotDone) Module.__ifcvOnSnapshotDone($0, 0, $1, $2);
+        }, token, width, height);
+        return;
+    }
+    ViewportCore::SnapshotRequest req;
+    req.token  = token;
+    req.width  = width;
+    req.height = height;
+    req.use_view_background = use_view_background != 0;
+    req.background[0] = r;
+    req.background[1] = g;
+    req.background[2] = b;
+    req.background[3] = a;
+    if (timeout_ms > 0) req.timeout_ms = timeout_ms;
+    g_app->core.requestSnapshot(req);
+}
+
 // Mouse navigation scheme: "blender" | "rhino" | "revit" | "web". The preset
 // only rewrites the button/modifier table classifyPress reads, so unlike the
 // rest of the scripting API it does not need the GPU app to be live — a host

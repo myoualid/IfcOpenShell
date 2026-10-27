@@ -155,6 +155,7 @@ set(IFCVIEWER_CORE_SOURCES
     StreamingThread.cpp
     SectionGizmoRenderer.cpp
     ViewportCore.cpp
+    ViewportSnapshot.cpp
     WgpuDynamicOffsets.cpp
 )
 # Web needs a zstd DECODER (Emscripten has no zstd port; the desktop links the

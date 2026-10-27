@@ -607,6 +607,33 @@
     return ((clamp(a) << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r)) >>> 0;
   }
 
+  // A background colour as [r, g, b, a] in [0..1], from '#rgb' / '#rrggbb' /
+  // '#rrggbbaa' or {r, g, b, a} with 0-255 channels (alpha defaulting to
+  // opaque). Unlike packColor, alpha 0 is a real value here: transparent.
+  function parseBackground(color, who) {
+    let r, g, b, a = 255;
+    if (typeof color === 'string') {
+      let hex = color.replace(/^#/, '');
+      if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
+      if (hex.length !== 6 && hex.length !== 8) {
+        throw new Error(who + ': expected #rgb, #rrggbb or #rrggbbaa, got ' + color);
+      }
+      r = parseInt(hex.slice(0, 2), 16);
+      g = parseInt(hex.slice(2, 4), 16);
+      b = parseInt(hex.slice(4, 6), 16);
+      if (hex.length === 8) a = parseInt(hex.slice(6, 8), 16);
+    } else if (color && typeof color === 'object') {
+      r = color.r | 0; g = color.g | 0; b = color.b | 0;
+      if (color.a !== undefined) a = color.a | 0;
+    } else {
+      throw new Error(who + ': expected a colour, got ' + color);
+    }
+    return [r / 255, g / 255, b / 255, a / 255];
+  }
+
+  // Largest snapshot side; matches ViewportCore::kMaxSnapshotDim.
+  const SNAPSHOT_MAX = 16384;
+
   // Line grids. plane: 'xy' | 'xz' | 'yz'. Colors are sRGB [0..1].
   // Both directions default to the same light grey. The renderer draws every
   // 10th line at this colour and the lines between them lighter.
@@ -908,6 +935,37 @@
       pending.resolve(pending.rows);
     };
 
+    // snapshot(): token -> {canvas, ctx, type, quality, resolve, reject}. The
+    // wasm side reads the offscreen render back one band of rows at a time;
+    // each band is painted into a 2D canvas at its row, and Done encodes it.
+    const pendingSnapshots = new Map();
+    let snapshotToken = 0;
+    Module.__ifcvOnSnapshotRows = function (token, y0, width, rows, ptr) {
+      const pending = pendingSnapshots.get(token);
+      if (!pending) return;
+      const start = ptr >>> 0;
+      const pixels = Module.HEAPU8.slice(start, start + width * rows * 4);
+      pending.ctx.putImageData(
+        new ImageData(new Uint8ClampedArray(pixels.buffer), width, rows), 0, y0);
+    };
+    Module.__ifcvOnSnapshotDone = function (token, ok, width, height) {
+      const pending = pendingSnapshots.get(token);
+      if (!pending) return;
+      pendingSnapshots.delete(token);
+      if (!ok) {
+        pending.reject(new Error('snapshot: rendering ' + width + 'x' + height + ' failed'));
+        return;
+      }
+      const c = pending.canvas;
+      const encoded = c.convertToBlob
+        ? c.convertToBlob({ type: pending.type, quality: pending.quality })
+        : new Promise(function (resolve) { c.toBlob(resolve, pending.type, pending.quality); });
+      encoded.then(function (blob) {
+        if (blob) pending.resolve(blob);
+        else pending.reject(new Error('snapshot: the browser could not encode ' + pending.type));
+      }, pending.reject);
+    };
+
     // Some test harnesses / the fullscreen page want the raw module on window.
     if (opts.exposeAsModuleGlobal) global.Module = Module;
 
@@ -1010,24 +1068,75 @@
       // model. Requires a platform that composites the canvas with alpha;
       // where it does not, the colour still applies and the alpha is ignored.
       setBackground: function (color) {
-        let r, g, b, a = 255;
-        if (typeof color === 'string') {
-          let hex = color.replace(/^#/, '');
-          if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
-          if (hex.length !== 6 && hex.length !== 8) {
-            throw new Error('setBackground: expected #rgb, #rrggbb or #rrggbbaa, got ' + color);
-          }
-          r = parseInt(hex.slice(0, 2), 16);
-          g = parseInt(hex.slice(2, 4), 16);
-          b = parseInt(hex.slice(4, 6), 16);
-          if (hex.length === 8) a = parseInt(hex.slice(6, 8), 16);
-        } else if (color && typeof color === 'object') {
-          r = color.r | 0; g = color.g | 0; b = color.b | 0;
-          if (color.a !== undefined) a = color.a | 0;
-        } else {
-          throw new Error('setBackground: expected a colour, got ' + color);
+        const c = parseBackground(color, 'setBackground');
+        Module._ifcv_set_background_c(c[0], c[1], c[2], c[3]);
+      },
+
+      // ---- Snapshots -------------------------------------------------------
+
+      // Render the current view offscreen and resolve to an image Blob. The
+      // render is independent of the canvas size: it is drawn in canvas-sized
+      // tiles, so any size up to 16384 px a side works without extra GPU
+      // memory, and geometry the larger image needs is streamed in first.
+      // Options (all optional):
+      //   width, height  output size in pixels. Default: the canvas's pixel
+      //                  size. Give one and the other follows the canvas's
+      //                  aspect; give both for any aspect (the vertical field
+      //                  of view is kept, so a wider image shows more).
+      //   scale          multiplies the default size (2 = twice the canvas).
+      //   transparent    true clears to alpha 0 instead of a background.
+      //   background     clear colour, as setBackground takes. Default: the
+      //                  viewer's own background.
+      //   type, quality  passed to the encoder ('image/png' default; JPEG has
+      //                  no alpha, so a transparent background turns black).
+      //   timeoutMs      how long to wait for streaming before drawing anyway
+      //                  (default 15000).
+      // The section gizmo, pivot and corner axis are left out; the grid and
+      // floor axes follow their visibility. Edge and halo widths stay in
+      // pixels, so they read thinner on a much larger image. The canvas holds
+      // its last frame while a snapshot renders.
+      snapshot: function (o) {
+        o = o || {};
+        const cw = opts.canvas.width || 1;
+        const ch = opts.canvas.height || 1;
+        let w = Math.round(o.width || 0);
+        let h = Math.round(o.height || 0);
+        if (!w && !h) {
+          const scale = o.scale > 0 ? o.scale : 1;
+          w = Math.round(cw * scale);
+          h = Math.round(ch * scale);
+        } else if (!h) {
+          h = Math.round(w * ch / cw);
+        } else if (!w) {
+          w = Math.round(h * cw / ch);
         }
-        Module._ifcv_set_background_c(r / 255, g / 255, b / 255, a / 255);
+        if (!(w >= 1 && h >= 1 && w <= SNAPSHOT_MAX && h <= SNAPSHOT_MAX)) {
+          return Promise.reject(new Error('snapshot: ' + w + 'x' + h +
+            ' is out of range (1..' + SNAPSHOT_MAX + ' px a side)'));
+        }
+        let useView = 1;
+        let bg = [0, 0, 0, 0];
+        if (o.transparent) {
+          useView = 0;
+        } else if (o.background !== undefined && o.background !== null) {
+          useView = 0;
+          bg = parseBackground(o.background, 'snapshot');
+        }
+        const type = o.type || 'image/png';
+        const canvas = typeof OffscreenCanvas !== 'undefined'
+          ? new OffscreenCanvas(w, h)
+          : Object.assign(document.createElement('canvas'), { width: w, height: h });
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return Promise.reject(new Error('snapshot: no 2D canvas for ' + w + 'x' + h));
+        const token = ++snapshotToken;
+        return new Promise(function (resolve, reject) {
+          pendingSnapshots.set(token, {
+            canvas: canvas, ctx: ctx, type: type, quality: o.quality,
+            resolve: resolve, reject: reject,
+          });
+          Module._ifcv_snapshot_c(token, w, h, useView, bg[0], bg[1], bg[2], bg[3],
+                                  o.timeoutMs > 0 ? Math.round(o.timeoutMs) : 0);
+        });
       },
 
       // ---- Navigation ------------------------------------------------------

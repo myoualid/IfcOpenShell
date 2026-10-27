@@ -282,7 +282,8 @@ void ViewportCore::buildViewProj(Eigen::Matrix4f& view_out,
                        : Eigen::Vector3f(0.0f, 0.0f, 1.0f);
     view_out = lookAtRH(eye, target, up);
 
-    const float aspect = (configured_h_ > 0)
+    const float aspect = (aspect_override_ > 0.0f) ? aspect_override_
+                       : (configured_h_ > 0)
                             ? float(configured_w_) / float(configured_h_)
                             : 1.0f;
     Eigen::Matrix4f p;
@@ -299,7 +300,7 @@ void ViewportCore::buildViewProj(Eigen::Matrix4f& view_out,
     Eigen::Matrix4f z_remap = Eigen::Matrix4f::Identity();
     z_remap(2, 2) = 0.5f;
     z_remap(2, 3) = 0.5f;
-    proj_out = z_remap * p;
+    proj_out = ndc_crop_ * z_remap * p;
 }
 
 bool ViewportCore::projectWorldToCss(float x, float y, float z,
@@ -2253,6 +2254,12 @@ void ViewportCore::shutdown() {
     // Stop streaming first so no late results land in the pool after
     // we've torn down model state. Worker drains its queue then joins.
     streaming_thread_.stop();
+
+    if (snapshot_job_) finishSnapshot(false);
+    for (const SnapshotRequest& r : snapshot_queue_) {
+        host_->onSnapshotDone(r.token, false, r.width, r.height);
+    }
+    snapshot_queue_.clear();
 
     for (auto& [session_model_id, m] : models_gpu_) releaseWgpuModelGpuData(m, pool_);
     models_gpu_.clear();
@@ -7877,115 +7884,39 @@ inline float srgbToLinear(float c) {
 
 } // namespace
 
-void ViewportCore::render() {
-    if (!device_ || !queue_ || !surface_) return;
-    // Device lost (e.g. GPU memory reclaimed by another client). Stop here so
-    // we don't busy-loop reconfiguring a dead surface — that retry storm is
-    // what otherwise freezes the tab. The page logs guidance to reload.
-    if (device_lost_) return;
-    // configureSurface could not fit the per-pixel attachments even after
-    // the geometry cache yielded. Drawing would submit invalid views (an
-    // abort on wgpu-native), so try again — memory may have been freed by
-    // another process since — and skip the frame if it still does not fit.
-    if (!render_attachments_ok_
-        && !ensureRenderAttachments(configured_w_, configured_h_)) return;
-
-    Stopwatch frame_timer;
-    frame_timer.start();
-
-    // The driver refusing pool growth is the query-less platform's device
-    // report (web has no memory query; the pool just grew until the GPU
-    // process said no). Answer it once, immediately: lower the budget so
-    // the required-tier margin comes back out of the cache NOW, instead of
-    // the next attachment resize having to fail — and paint broken frames —
-    // before pressure feedback carves the same room.
-    if (pool_.growth_was_refused() && !pool_growth_refusal_handled_) {
-        pool_growth_refusal_handled_ = true;
-        const double mb = 1.0 / (1024.0 * 1024.0);
-        Log::info() << "[wgpu] driver refused geometry-cache growth at "
-                    << double(pool_.total_capacity_bytes()) * mb
-                    << " MB -- reserving the required-tier margin out of the cache";
-        if (budget_.onPressure(pool_.total_capacity_bytes(),
-                               GpuBudget::kFixedMarginBytes, 0)) {
-            applyBudgetToPool();
-        }
-    }
-
-    // Drain any HiZ async readbacks completed since last frame.
-    if (hiz_enabled_) drainHizReadbacks();
-
-    uploadSelectionFlagsIfDirty();
-
-    WGPUSurfaceTexture surf_tex = {};
-    wgpuSurfaceGetCurrentTexture(surface_, &surf_tex);
-
-    switch (surf_tex.status) {
-        case WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal:
-        case WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal:
-            break;
-        case WGPUSurfaceGetCurrentTextureStatus_Timeout:
-        case WGPUSurfaceGetCurrentTextureStatus_Outdated:
-        case WGPUSurfaceGetCurrentTextureStatus_Lost: {
-            int w = 0, h = 0;
-            host_->framebufferSize(w, h);
-            if (w > 0 && h > 0) configureSurface(w, h);
-            host_->requestFrame();
-            return;
-        }
-        default:
-            Log::warn() << "GetCurrentTexture status " << int(surf_tex.status);
-            return;
-    }
-
-    // Render through an sRGB view of the surface texture. On desktop the
-    // surface is already sRGB so the view format matches the texture (a plain
-    // default view); on web the surface is plain Unorm and this view is its
-    // sRGB sibling (advertised via cfg.viewFormats) so the shader's sRGB
-    // encode-cancel lands correctly. The screenshot path still reads the base
-    // texture, so its BGRA byte-order check stays on surface_format_.
-    WGPUTextureViewDescriptor view_desc = {};
-    view_desc.format          = surface_view_format_;
-    view_desc.dimension       = WGPUTextureViewDimension_2D;
-    view_desc.mipLevelCount   = 1;
-    view_desc.arrayLayerCount = 1;
-    view_desc.aspect          = WGPUTextureAspect_All;
-    WGPUTextureView view = wgpuTextureCreateView(surf_tex.texture, &view_desc);
-
-    updateFrameUniforms();
-
-    // ---- Per-frame cull --------------------------------------------------
+void ViewportCore::cullScene(const Eigen::Matrix4f& vp_this_frame, float focal_px,
+                             bool interactive) {
     Stopwatch cull_timer;
     cull_timer.start();
     cull_writes_this_frame_ = 0;
     cull_write_bytes_this_frame_ = 0;
-    Eigen::Matrix4f vp_this_frame;
-    {
-        const Eigen::Vector3f target(camera_target_[0], camera_target_[1], camera_target_[2]);
-        const Eigen::Vector3f eye = orbitEye(camera_target_, camera_distance_,
-                                             camera_yaw_deg_, camera_pitch_deg_);
-        Eigen::Matrix4f v, p;
-        buildViewProj(v, p);
-        const Eigen::Matrix4f vp = p * v;
-        vp_this_frame = vp;
-        float planes[6][4];
-        extractFrustumPlanes(vp.data(), planes);
 
-        // LOD focal: projected_px = world_radius * focal_px / view_z.
-        const Eigen::Vector3f fwd_q = (target - eye).normalized();
-        const Eigen::Vector3f world_up = (std::abs(camera_pitch_deg_) >= 89.0f)
-                                     ? Eigen::Vector3f(0.0f, 1.0f, 0.0f)
-                                     : Eigen::Vector3f(0.0f, 0.0f, 1.0f);
-        const Eigen::Vector3f right_q  = fwd_q.cross(world_up).normalized();
-        const Eigen::Vector3f up_q     = right_q.cross(fwd_q).normalized();
-        const float eye_a[3]   = { eye.x(),     eye.y(),     eye.z()    };
-        const float fwd_a[3]   = { fwd_q.x(),   fwd_q.y(),   fwd_q.z()  };
-        const float right_a[3] = { right_q.x(), right_q.y(), right_q.z() };
-        const float up_a[3]    = { up_q.x(),    up_q.y(),    up_q.z()    };
-        const float focal_px = (configured_h_ > 0)
-            ? (0.5f * float(configured_h_)
-                / std::tan(degreesToRadians(camera_fov_y_deg_) * 0.5f))
-            : 0.0f;
+    const Eigen::Vector3f target(camera_target_[0], camera_target_[1], camera_target_[2]);
+    const Eigen::Vector3f eye = orbitEye(camera_target_, camera_distance_,
+                                         camera_yaw_deg_, camera_pitch_deg_);
+    float planes[6][4];
+    extractFrustumPlanes(vp_this_frame.data(), planes);
 
+    // LOD focal: projected_px = world_radius * focal_px / view_z.
+    const Eigen::Vector3f fwd_q = (target - eye).normalized();
+    const Eigen::Vector3f world_up = (std::abs(camera_pitch_deg_) >= 89.0f)
+                                 ? Eigen::Vector3f(0.0f, 1.0f, 0.0f)
+                                 : Eigen::Vector3f(0.0f, 0.0f, 1.0f);
+    const Eigen::Vector3f right_q  = fwd_q.cross(world_up).normalized();
+    const Eigen::Vector3f up_q     = right_q.cross(fwd_q).normalized();
+    const float eye_a[3]   = { eye.x(),     eye.y(),     eye.z()    };
+    const float fwd_a[3]   = { fwd_q.x(),   fwd_q.y(),   fwd_q.z()  };
+    const float right_a[3] = { right_q.x(), right_q.y(), right_q.z() };
+    const float up_a[3]    = { up_q.x(),    up_q.y(),    up_q.z()    };
+
+    // A non-interactive cull (snapshot) always runs at the fine threshold,
+    // never trusts the HiZ pyramid (it was rendered for another projection)
+    // and bypasses the cull cache, which it then invalidates so the next
+    // interactive frame culls for its own camera again.
+    float effective_min_px  = min_pixel_radius_;
+    bool  hiz_for_this_frame = false;
+    HizOccludedFn hiz_occluded;
+    if (interactive) {
         // Motion detection.
         const bool camera_moved = has_prev_camera_
             && (camera_target_[0] != prev_camera_target_[0]
@@ -8008,7 +7939,7 @@ void ViewportCore::render() {
         if (motion_cull_latched_ && !camera_moved) host_->requestFrame();
         const bool use_motion_threshold =
             motion_cull_latched_ && motion_min_pixel_radius_ > min_pixel_radius_;
-        const float effective_min_px =
+        effective_min_px =
             use_motion_threshold ? motion_min_pixel_radius_ : min_pixel_radius_;
         last_cull_was_motion_ = use_motion_threshold;
 
@@ -8020,7 +7951,7 @@ void ViewportCore::render() {
         }();
         const bool hiz_vp_matches = hiz_valid_
             && (hiz_trust_stale || hiz_vp_ == vp_this_frame);
-        const bool hiz_for_this_frame = hiz_enabled_ && hiz_vp_matches;
+        hiz_for_this_frame = hiz_enabled_ && hiz_vp_matches;
 
         // WGPU_HIZ_TRACE per-frame trace budget arm.
         static const bool hiz_trace_on = []{
@@ -8039,143 +7970,113 @@ void ViewportCore::render() {
             hiz_trace_budget_.store(0, std::memory_order_relaxed);
         }
 
-        HizOccludedFn hiz_occluded;
         if (hiz_for_this_frame) {
             hiz_occluded = [this](const float mn[3], const float mx[3]) {
                 return aabbOccludedByHiz(mn, mx);
             };
         }
+    }
 
-        // Re-cull only when something that can change its outcome did:
-        // the camera, the scene epoch (residency / visibility / colours /
-        // transforms / models / a new HiZ pyramid), or a cull-relevant
-        // setting. Everything the draw needs from a cull persists — the
-        // per-chunk counters and the uploaded visible_draws buffers — so a
-        // frame requested for an overlay, a pick highlight, or a streaming
-        // tick where nothing landed skips the whole walk. Benchmarks are
-        // exempt so bench numbers keep measuring the real cull.
-        const bool cull_inputs_unchanged =
-            bench_total_ == 0
-            && has_last_cull_
-            && last_cull_epoch_  == scene_epoch_
-            && last_cull_vp_     == vp_this_frame
-            && last_cull_min_px_ == effective_min_px
-            && last_cull_lod_px_ == lod1_pixel_threshold_
-            && last_cull_xray_   == xray_alpha_cap_
-            && last_cull_hiz_    == hiz_for_this_frame;
-        if (!cull_inputs_unchanged) {
-            has_last_cull_    = true;
-            last_cull_epoch_  = scene_epoch_;
-            last_cull_vp_     = vp_this_frame;
-            last_cull_min_px_ = effective_min_px;
-            last_cull_lod_px_ = lod1_pixel_threshold_;
-            last_cull_xray_   = xray_alpha_cap_;
-            last_cull_hiz_    = hiz_for_this_frame;
-            last_visible_objects_   = 0;
-            last_visible_triangles_ = 0;
-            last_sub_draws_         = 0;
-            hiz_reject_count_       = 0;
+    // Re-cull only when something that can change its outcome did:
+    // the camera, the scene epoch (residency / visibility / colours /
+    // transforms / models / a new HiZ pyramid), or a cull-relevant
+    // setting. Everything the draw needs from a cull persists — the
+    // per-chunk counters and the uploaded visible_draws buffers — so a
+    // frame requested for an overlay, a pick highlight, or a streaming
+    // tick where nothing landed skips the whole walk. Benchmarks are
+    // exempt so bench numbers keep measuring the real cull.
+    const bool cull_inputs_unchanged =
+        interactive
+        && bench_total_ == 0
+        && has_last_cull_
+        && last_cull_epoch_  == scene_epoch_
+        && last_cull_vp_     == vp_this_frame
+        && last_cull_min_px_ == effective_min_px
+        && last_cull_lod_px_ == lod1_pixel_threshold_
+        && last_cull_xray_   == xray_alpha_cap_
+        && last_cull_hiz_    == hiz_for_this_frame;
+    if (cull_inputs_unchanged) {
+        last_cull_compute_ms_ = 0.0;
+        last_cull_upload_ms_  = 0.0;
+        return;
+    }
+    has_last_cull_    = interactive;
+    last_cull_epoch_  = scene_epoch_;
+    last_cull_vp_     = vp_this_frame;
+    last_cull_min_px_ = effective_min_px;
+    last_cull_lod_px_ = lod1_pixel_threshold_;
+    last_cull_xray_   = xray_alpha_cap_;
+    last_cull_hiz_    = hiz_for_this_frame;
+    last_visible_objects_   = 0;
+    last_visible_triangles_ = 0;
+    last_sub_draws_         = 0;
+    hiz_reject_count_       = 0;
 
-        // Force sequential on Emscripten: std::async(std::launch::async)
-        // without -pthread throws std::system_error from inside libstdc++,
-        // and we link without exceptions so that becomes abort(). Until
-        // COOP/COEP + -pthread wires the worker pool in #88, web stays
-        // on the serial path.
+    // Force sequential on Emscripten: std::async(std::launch::async)
+    // without -pthread throws std::system_error from inside libstdc++,
+    // and we link without exceptions so that becomes abort(). Until
+    // COOP/COEP + -pthread wires the worker pool in #88, web stays
+    // on the serial path.
 #if defined(__EMSCRIPTEN__)
-        if (false) {
+    if (false) {
 #else
-        if (cull_threads_enabled_) {
+    if (cull_threads_enabled_) {
 #endif
-            std::vector<std::pair<std::uint32_t, std::future<std::uint32_t>>> futures;
-            futures.reserve(models_gpu_.size());
-            for (auto& [session_model_id, m] : models_gpu_) {
-                if (!m.drawable()) continue;
-                auto& m_ref = m;
-                futures.emplace_back(session_model_id, std::async(std::launch::async,
-                    [this, &m_ref, &planes, &eye_a, &fwd_a, &right_a, &up_a,
-                     focal_px, effective_min_px, &hiz_occluded]() {
-                        return cullModelCpuCompute(
-                            m_ref, planes, eye_a, fwd_a, right_a, up_a,
-                            focal_px,
-                            effective_min_px, lod1_pixel_threshold_,
-                            hiz_occluded);
-                    }));
-            }
-            for (auto& [session_model_id, fut] : futures) {
-                hiz_reject_count_ += fut.get();
-            }
-        } else {
-            for (auto& [session_model_id, m] : models_gpu_) {
-                if (!m.drawable()) continue;
-                hiz_reject_count_ += cullModelCpuCompute(
-                    m, planes, eye_a, fwd_a, right_a, up_a, focal_px,
-                    effective_min_px, lod1_pixel_threshold_,
-                    hiz_occluded);
-            }
-        }
-
-        const double cull_compute_ms = double(cull_timer.nsecsElapsed()) / 1e6;
-        Stopwatch upload_timer;
-        upload_timer.start();
+        std::vector<std::pair<std::uint32_t, std::future<std::uint32_t>>> futures;
+        futures.reserve(models_gpu_.size());
         for (auto& [session_model_id, m] : models_gpu_) {
             if (!m.drawable()) continue;
-            cullModelCpuUpload(m);
-            for (const auto& c : m.chunks) {
-                last_visible_objects_   += c.total_visible_draws;
-                last_visible_triangles_ += c.total_visible_vertices / 3u;
-                if (c.total_visible_draws > 0) last_sub_draws_ += 1;
-            }
+            auto& m_ref = m;
+            futures.emplace_back(session_model_id, std::async(std::launch::async,
+                [this, &m_ref, &planes, &eye_a, &fwd_a, &right_a, &up_a,
+                 focal_px, effective_min_px, &hiz_occluded]() {
+                    return cullModelCpuCompute(
+                        m_ref, planes, eye_a, fwd_a, right_a, up_a,
+                        focal_px,
+                        effective_min_px, lod1_pixel_threshold_,
+                        hiz_occluded);
+                }));
         }
-        last_cull_compute_ms_ = cull_compute_ms;
-        last_cull_upload_ms_  = double(upload_timer.nsecsElapsed()) / 1e6;
-        } else {
-            last_cull_compute_ms_ = 0.0;
-            last_cull_upload_ms_  = 0.0;
+        for (auto& [session_model_id, fut] : futures) {
+            hiz_reject_count_ += fut.get();
+        }
+    } else {
+        for (auto& [session_model_id, m] : models_gpu_) {
+            if (!m.drawable()) continue;
+            hiz_reject_count_ += cullModelCpuCompute(
+                m, planes, eye_a, fwd_a, right_a, up_a, focal_px,
+                effective_min_px, lod1_pixel_threshold_,
+                hiz_occluded);
         }
     }
 
-    const double cull_only_ms = double(cull_timer.nsecsElapsed()) / 1e6;
-    last_cull_ms_ = cull_only_ms;
-
-    Stopwatch stream_timer;
-    stream_timer.start();
-    driveStreamingLoads();
-    const double stream_ms = double(stream_timer.nsecsElapsed()) / 1e6;
-    last_stream_ms_ = stream_ms;
-
-    // Snapshot camera state for next frame's motion detection.
-    prev_camera_target_[0] = camera_target_[0];
-    prev_camera_target_[1] = camera_target_[1];
-    prev_camera_target_[2] = camera_target_[2];
-    prev_camera_distance_  = camera_distance_;
-    prev_camera_yaw_deg_   = camera_yaw_deg_;
-    prev_camera_pitch_deg_ = camera_pitch_deg_;
-    has_prev_camera_       = true;
-    if (bench_total_ > 0 && bench_count_ >= bench_warmup_) {
-        bench_cull_ms_total_   += cull_only_ms;
-        bench_stream_ms_total_ += stream_ms;
+    const double cull_compute_ms = double(cull_timer.nsecsElapsed()) / 1e6;
+    Stopwatch upload_timer;
+    upload_timer.start();
+    for (auto& [session_model_id, m] : models_gpu_) {
+        if (!m.drawable()) continue;
+        cullModelCpuUpload(m);
+        for (const auto& c : m.chunks) {
+            last_visible_objects_   += c.total_visible_draws;
+            last_visible_triangles_ += c.total_visible_vertices / 3u;
+            if (c.total_visible_draws > 0) last_sub_draws_ += 1;
+        }
     }
+    last_cull_compute_ms_ = cull_compute_ms;
+    last_cull_upload_ms_  = double(upload_timer.nsecsElapsed()) / 1e6;
+}
 
-    WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(device_, nullptr);
-
+int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
+                              const Eigen::Matrix4f& vp_this_frame,
+                              const float clear_rgba[4],
+                              int viewport_w_px, int viewport_h_px,
+                              bool interactive) {
     WGPURenderPassColorAttachment color = {};
     color.view          = msaa_color_view_;
     color.resolveTarget = view;
     color.loadOp        = WGPULoadOp_Clear;
     color.storeOp       = WGPUStoreOp_Store;
-    // A premultiplied surface expects colour already scaled by alpha, so the
-    // clear fades toward transparent instead of tinting what shows through:
-    // leaving it unscaled would have the compositor add the background colour
-    // on top of the layer behind. When the surface could only be configured
-    // opaque the alpha is discarded anyway, and scaling would darken the
-    // colour for nothing — so hold alpha at 1 and write it straight.
-    const float bg_a = surface_premultiplied_ ? background_color_[3] : 1.0f;
-    color.clearValue    = {
-        srgbToLinear(background_color_[0]) * bg_a,
-        srgbToLinear(background_color_[1]) * bg_a,
-        srgbToLinear(background_color_[2]) * bg_a,
-        bg_a,
-    };
+    color.clearValue    = { clear_rgba[0], clear_rgba[1], clear_rgba[2], clear_rgba[3] };
     color.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
 
     WGPURenderPassDepthStencilAttachment depth = {};
@@ -8195,11 +8096,10 @@ void ViewportCore::render() {
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &pass_desc);
 
+    const int dpr_int = std::max(1, int(host_->dpr()));
+
     // Ground grid under scene geometry (depth-tested, no depth write).
     {
-        int viewport_w_px = 0, viewport_h_px = 0;
-        host_->framebufferSize(viewport_w_px, viewport_h_px);
-        const int dpr_int = std::max(1, int(host_->dpr()));
         const Eigen::Vector3f grid_eye = orbitEye(camera_target_, camera_distance_,
                                                     camera_yaw_deg_, camera_pitch_deg_);
         const Eigen::Vector3f grid_target(camera_target_[0], camera_target_[1], camera_target_[2]);
@@ -8258,10 +8158,6 @@ void ViewportCore::render() {
     }
 
     // Build the per-frame OverlayFrame snapshot.
-    int viewport_w_px = 0, viewport_h_px = 0;
-    host_->framebufferSize(viewport_w_px, viewport_h_px);
-    const int dpr_int = std::max(1, int(host_->dpr()));
-
     OverlayFrame overlay_frame;
     overlay_frame.view_proj          = vp_this_frame;
     overlay_frame.camera_target      = Eigen::Vector3f(camera_target_[0],
@@ -8275,17 +8171,21 @@ void ViewportCore::render() {
     overlay_frame.viewport_h_px      = viewport_h_px;
     overlay_frame.device_pixel_ratio = dpr_int;
 
-    // Section-plane gizmo — shared renderer, drawn for desktop + web from here.
-    // (The desktop's OverlayRenderer no longer draws it, to avoid doubling.)
-    section_gizmo_.encode(pass, vp_this_frame, section_planes_,
-                          viewport_w_px, viewport_h_px, dpr_int, section_selected_index_);
+    // Interaction aids (section gizmo, pivot, host overlays, corner axis) are
+    // part of the live viewport only; a snapshot shows the scene without them.
+    if (interactive) {
+        // Section-plane gizmo — shared renderer, drawn for desktop + web from here.
+        // (The desktop's OverlayRenderer no longer draws it, to avoid doubling.)
+        section_gizmo_.encode(pass, vp_this_frame, section_planes_,
+                              viewport_w_px, viewport_h_px, dpr_int, section_selected_index_);
 
-    // Orbit pivot indicator — same shared-renderer story. Drawn while the host
-    // has it gated on (drag) or an afterglow is still running; in the latter
-    // case keep frames coming so the one that clears it actually lands.
-    const bool pivot_visible = pivotIndicatorVisible();
-    axis_indicator_.encodePivot(pass, overlay_frame, pivot_visible);
-    if (pivot_visible && pivot_indicator_timer_.isValid()) host_->requestFrame();
+        // Orbit pivot indicator — same shared-renderer story. Drawn while the host
+        // has it gated on (drag) or an afterglow is still running; in the latter
+        // case keep frames coming so the one that clears it actually lands.
+        const bool pivot_visible = pivotIndicatorVisible();
+        axis_indicator_.encodePivot(pass, overlay_frame, pivot_visible);
+        if (pivot_visible && pivot_indicator_timer_.isValid()) host_->requestFrame();
+    }
 
     // Floor axes (X and Y) through world 0,0,0, along world X and Y. The
     // false-origin matrix takes world into the viewer frame and draws the
@@ -8312,7 +8212,7 @@ void ViewportCore::render() {
 
     // Remaining in-pass overlays (highlight triangles, overlay lines/points).
     // QtViewportHost forwards to overlays_.X(); the web host no-ops.
-    host_->encodeOverlaysInMainPass(pass, overlay_frame);
+    if (interactive) host_->encodeOverlaysInMainPass(pass, overlay_frame);
 
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
@@ -8327,6 +8227,8 @@ void ViewportCore::render() {
 
     encodeSelectionOutlinePass(enc, view, dpr_int);
 
+    if (!interactive) return -1;
+
     int hiz_submitted_slot = -1;
     if (hiz_enabled_) hiz_submitted_slot = encodeHizResolve(enc);
 
@@ -8337,6 +8239,146 @@ void ViewportCore::render() {
     // Remaining post-main overlays (marquee, labels) on the resolved surface.
     // QtViewportHost forwards to overlays_.X(); the web host no-ops.
     host_->encodeOverlaysPostMain(enc, view, overlay_frame);
+    return hiz_submitted_slot;
+}
+
+
+void ViewportCore::render() {
+    if (!device_ || !queue_ || !surface_) return;
+    // Device lost (e.g. GPU memory reclaimed by another client). Stop here so
+    // we don't busy-loop reconfiguring a dead surface — that retry storm is
+    // what otherwise freezes the tab. The page logs guidance to reload.
+    if (device_lost_) return;
+    // configureSurface could not fit the per-pixel attachments even after
+    // the geometry cache yielded. Drawing would submit invalid views (an
+    // abort on wgpu-native), so try again — memory may have been freed by
+    // another process since — and skip the frame if it still does not fit.
+    if (!render_attachments_ok_
+        && !ensureRenderAttachments(configured_w_, configured_h_)) return;
+
+    Stopwatch frame_timer;
+    frame_timer.start();
+
+    // The driver refusing pool growth is the query-less platform's device
+    // report (web has no memory query; the pool just grew until the GPU
+    // process said no). Answer it once, immediately: lower the budget so
+    // the required-tier margin comes back out of the cache NOW, instead of
+    // the next attachment resize having to fail — and paint broken frames —
+    // before pressure feedback carves the same room.
+    if (pool_.growth_was_refused() && !pool_growth_refusal_handled_) {
+        pool_growth_refusal_handled_ = true;
+        const double mb = 1.0 / (1024.0 * 1024.0);
+        Log::info() << "[wgpu] driver refused geometry-cache growth at "
+                    << double(pool_.total_capacity_bytes()) * mb
+                    << " MB -- reserving the required-tier margin out of the cache";
+        if (budget_.onPressure(pool_.total_capacity_bytes(),
+                               GpuBudget::kFixedMarginBytes, 0)) {
+            applyBudgetToPool();
+        }
+    }
+
+    // Drain any HiZ async readbacks completed since last frame.
+    if (hiz_enabled_) drainHizReadbacks();
+
+    uploadSelectionFlagsIfDirty();
+
+    // A snapshot job owns the frame while it streams and draws its tiles.
+    if (stepSnapshot()) return;
+
+    WGPUSurfaceTexture surf_tex = {};
+    wgpuSurfaceGetCurrentTexture(surface_, &surf_tex);
+
+    switch (surf_tex.status) {
+        case WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal:
+        case WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal:
+            break;
+        case WGPUSurfaceGetCurrentTextureStatus_Timeout:
+        case WGPUSurfaceGetCurrentTextureStatus_Outdated:
+        case WGPUSurfaceGetCurrentTextureStatus_Lost: {
+            int w = 0, h = 0;
+            host_->framebufferSize(w, h);
+            if (w > 0 && h > 0) configureSurface(w, h);
+            host_->requestFrame();
+            return;
+        }
+        default:
+            Log::warn() << "GetCurrentTexture status " << int(surf_tex.status);
+            return;
+    }
+
+    // Render through an sRGB view of the surface texture. On desktop the
+    // surface is already sRGB so the view format matches the texture (a plain
+    // default view); on web the surface is plain Unorm and this view is its
+    // sRGB sibling (advertised via cfg.viewFormats) so the shader's sRGB
+    // encode-cancel lands correctly. The screenshot path still reads the base
+    // texture, so its BGRA byte-order check stays on surface_format_.
+    WGPUTextureViewDescriptor view_desc = {};
+    view_desc.format          = surface_view_format_;
+    view_desc.dimension       = WGPUTextureViewDimension_2D;
+    view_desc.mipLevelCount   = 1;
+    view_desc.arrayLayerCount = 1;
+    view_desc.aspect          = WGPUTextureAspect_All;
+    WGPUTextureView view = wgpuTextureCreateView(surf_tex.texture, &view_desc);
+
+    updateFrameUniforms();
+
+    // ---- Per-frame cull --------------------------------------------------
+    Stopwatch cull_timer;
+    cull_timer.start();
+    Eigen::Matrix4f vp_this_frame;
+    {
+        Eigen::Matrix4f v, p;
+        buildViewProj(v, p);
+        vp_this_frame = p * v;
+        const float focal_px = (configured_h_ > 0)
+            ? (0.5f * float(configured_h_)
+                / std::tan(degreesToRadians(camera_fov_y_deg_) * 0.5f))
+            : 0.0f;
+        cullScene(vp_this_frame, focal_px, /*interactive=*/true);
+    }
+
+    const double cull_only_ms = double(cull_timer.nsecsElapsed()) / 1e6;
+    last_cull_ms_ = cull_only_ms;
+
+    Stopwatch stream_timer;
+    stream_timer.start();
+    driveStreamingLoads();
+    const double stream_ms = double(stream_timer.nsecsElapsed()) / 1e6;
+    last_stream_ms_ = stream_ms;
+
+    // Snapshot camera state for next frame's motion detection.
+    prev_camera_target_[0] = camera_target_[0];
+    prev_camera_target_[1] = camera_target_[1];
+    prev_camera_target_[2] = camera_target_[2];
+    prev_camera_distance_  = camera_distance_;
+    prev_camera_yaw_deg_   = camera_yaw_deg_;
+    prev_camera_pitch_deg_ = camera_pitch_deg_;
+    has_prev_camera_       = true;
+    if (bench_total_ > 0 && bench_count_ >= bench_warmup_) {
+        bench_cull_ms_total_   += cull_only_ms;
+        bench_stream_ms_total_ += stream_ms;
+    }
+
+    WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+
+    // A premultiplied surface expects colour already scaled by alpha, so the
+    // clear fades toward transparent instead of tinting what shows through:
+    // leaving it unscaled would have the compositor add the background colour
+    // on top of the layer behind. When the surface could only be configured
+    // opaque the alpha is discarded anyway, and scaling would darken the
+    // colour for nothing — so hold alpha at 1 and write it straight.
+    const float bg_a = surface_premultiplied_ ? background_color_[3] : 1.0f;
+    const float clear_rgba[4] = {
+        srgbToLinear(background_color_[0]) * bg_a,
+        srgbToLinear(background_color_[1]) * bg_a,
+        srgbToLinear(background_color_[2]) * bg_a,
+        bg_a,
+    };
+    int viewport_w_px = 0, viewport_h_px = 0;
+    host_->framebufferSize(viewport_w_px, viewport_h_px);
+    const int hiz_submitted_slot = encodeScene(enc, view, vp_this_frame, clear_rgba,
+                                               viewport_w_px, viewport_h_px,
+                                               /*interactive=*/true);
 
     // Optional capture: encode copy on the same command buffer.
     WGPUBuffer    capture_buffer     = nullptr;
