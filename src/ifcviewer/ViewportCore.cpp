@@ -5447,9 +5447,10 @@ fn fs_main(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let t     = EDGE_THRESHOLD * c;
     let edge  = clamp((lap - t) * EDGE_SCALE, 0.0, 0.6);
 
-    // Multiplicative blend (Dst, Zero): output rgb = (1 - edge), so the
-    // existing surface colour is multiplied by (1 - edge) per channel.
-    return vec4<f32>(vec3<f32>(1.0 - edge), 1.0);
+    // Black drawn over with coverage `edge` (premultiplied over): the
+    // existing colour is scaled by (1 - edge), and alpha rises with the line
+    // so it survives a transparent clear.
+    return vec4<f32>(0.0, 0.0, 0.0, edge);
 }
 )";
 
@@ -5483,16 +5484,18 @@ bool ViewportCore::buildEdgePipeline() {
     sm_desc.label       = svFromCStr("ifcviewer-wgpu.edge_wgsl");
     edge_shader_module_ = wgpuDeviceCreateShaderModule(device_, &sm_desc);
 
-    // Multiplicative blend (Dst, Zero): out.rgb = src.rgb * dst.rgb.
-    // Fragment outputs (1 - edge, 1 - edge, 1 - edge) so the existing
-    // surface colour is scaled per-channel — strictly darkens, never
-    // brightens. Matches GL's renderEdgePass (GL_DST_COLOR, GL_ZERO).
+    // Premultiplied over (One, OneMinusSrcAlpha) of (0, 0, 0, edge):
+    // out.rgb = dst.rgb * (1 - edge), the same darkening as GL's
+    // renderEdgePass (GL_DST_COLOR, GL_ZERO) on an opaque target, and
+    // out.a = edge + dst.a * (1 - edge), so on a transparent background
+    // (setBackgroundColor alpha < 1, snapshots) the line keeps its coverage
+    // instead of fading with the pixel it darkens.
     WGPUBlendState blend = {};
-    blend.color.srcFactor = WGPUBlendFactor_Dst;
-    blend.color.dstFactor = WGPUBlendFactor_Zero;
+    blend.color.srcFactor = WGPUBlendFactor_One;
+    blend.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
     blend.color.operation = WGPUBlendOperation_Add;
-    blend.alpha.srcFactor = WGPUBlendFactor_Zero;
-    blend.alpha.dstFactor = WGPUBlendFactor_One;
+    blend.alpha.srcFactor = WGPUBlendFactor_One;
+    blend.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
     blend.alpha.operation = WGPUBlendOperation_Add;
 
     WGPUColorTargetState target = {};
