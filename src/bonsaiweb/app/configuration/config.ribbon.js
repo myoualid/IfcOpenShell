@@ -124,6 +124,23 @@ export const ribbonButtons = [
 		button( 'RB_MeasureUndo', 'Undo point', 'undo', 'Viewer.UndoMeasurePoint' ),
 		button( 'RB_MeasureClear', 'Clear', 'close', 'Viewer.ClearMeasure' ),
 	] ),
+	group( 'RG_Capture', 'Capture', 'View', [
+		button( 'RB_Snapshot', 'Snapshot', 'photo_camera', 'Viewer.Snapshot' ),
+		{
+			id: 'RB_SnapshotSize',
+			type: 'Dropdown',
+			operator: 'Viewer.SetSnapshotSize',
+			value: 'viewport',
+			options: [
+				{ value: 'viewport', name: 'Viewport' },
+				{ value: 'viewport2x', name: 'Viewport 2×' },
+				{ value: 'hd', name: '1920 × 1080' },
+				{ value: 'uhd', name: '3840 × 2160' },
+				{ value: 'uhd8k', name: '7680 × 4320' },
+			],
+		},
+		checkbox( 'RB_SnapshotTransparent', 'Transparent', 'Viewer.SetSnapshotTransparent' ),
+	] ),
 	group( 'RG_Visibility', 'Objects', 'View', [
 		button( 'RB_HideSelection', 'Hide', 'visibility_off', 'Viewer.HideSelected' ),
 		button( 'RB_ShowSelection', 'Show', 'visibility', 'Viewer.ShowSelected' ),

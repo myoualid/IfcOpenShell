@@ -2,6 +2,9 @@ import { Operator } from '../../ops.js';
 import { measure, resolvePick } from '../../tool/measure.js';
 import { Scene } from '../../tool/Scene.js';
 import { Viewer } from '../../tool/Viewer.js';
+import { createLogger } from '../../util/log.js';
+
+const log = createLogger( 'bonsai' );
 
 // Undoable visibility commands capture their ids on the first execute, so
 // redo (execute again) reuses them.
@@ -370,6 +373,65 @@ const ViewerSetFalseOrigin = command( 'Scene.SetFalseOrigin', 'Set False Origin'
 const ViewerSetModelTransform = command( 'Scene.SetModelTransform', 'Set Model Transform', ( viewer, context, sourceId, transform ) => Scene.setModelTransform( sourceId, transform ), true );
 const ViewerClearModelTransform = command( 'Scene.ClearModelTransform', 'Clear Model Transform', ( viewer, context, sourceId ) => Scene.setModelTransform( sourceId, null ), true );
 
+// Snapshot size presets and the ribbon's current choice. Viewer.Snapshot uses
+// these when it is called without options.
+const SNAPSHOT_SIZES = Object.freeze( {
+	viewport: {},
+	viewport2x: { scale: 2 },
+	hd: { width: 1920, height: 1080 },
+	uhd: { width: 3840, height: 2160 },
+	uhd8k: { width: 7680, height: 4320 },
+} );
+const snapshotPrefs = { size: 'viewport', transparent: false };
+
+const ViewerSnapshotSize = command( 'Viewer.SetSnapshotSize', 'Snapshot Size', ( viewer, context, size ) => {
+
+	if ( ! Object.hasOwn( SNAPSHOT_SIZES, size ) ) return { status: 'CANCELLED' };
+	snapshotPrefs.size = size;
+
+}, true );
+
+const ViewerSnapshotTransparent = command( 'Viewer.SetSnapshotTransparent', 'Transparent Snapshot', ( viewer, context, on ) => {
+
+	snapshotPrefs.transparent = !! on;
+
+}, true );
+
+// Render the view offscreen and download it. `options` go to viewer.snapshot
+// (width, height, scale, transparent, background, type, quality, timeoutMs);
+// without them the ribbon's size and transparency apply. `download: false`
+// skips the download. Resolves to the image Blob.
+const ViewerSnapshot = command( 'Viewer.Snapshot', 'Snapshot', async ( viewer, context, options ) => {
+
+	if ( typeof viewer.snapshot !== 'function' ) {
+
+		log.warn( 'Viewer.Snapshot: this viewer build has no snapshot(); it needs a newer @aeco-dev/viewer' );
+		return { status: 'CANCELLED' };
+
+	}
+
+	const { download = true, ...rest } = options ?? {
+		...SNAPSHOT_SIZES[ snapshotPrefs.size ],
+		transparent: snapshotPrefs.transparent,
+	};
+	const blob = await viewer.snapshot( rest );
+	if ( download ) {
+
+		const stamp = new Date().toISOString().slice( 0, 19 ).replace( /[-:]/g, '' ).replace( 'T', '-' );
+		const ext = ( blob.type.split( '/' )[ 1 ] || 'png' ).replace( 'jpeg', 'jpg' );
+		const anchor = document.createElement( 'a' );
+		const url = URL.createObjectURL( blob );
+		anchor.href = url;
+		anchor.download = `snapshot-${ stamp }.${ ext }`;
+		anchor.click();
+		setTimeout( () => URL.revokeObjectURL( url ), 0 );
+
+	}
+
+	return blob;
+
+} );
+
 export { HideSelectionOperator, ShowAllOperator, ShowSelectionOperator };
 
 export default [
@@ -412,4 +474,7 @@ export default [
 	ViewerMeasureClick,
 	ViewerMeasureUndo,
 	ViewerMeasureClear,
+	ViewerSnapshot,
+	ViewerSnapshotSize,
+	ViewerSnapshotTransparent,
 ];
