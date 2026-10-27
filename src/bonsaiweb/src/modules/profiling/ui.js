@@ -2,24 +2,15 @@ import {
 	Canvas,
 	Card,
 	Caption,
-	Code,
 	FloatingWindow,
-	Grid,
-	PropertyGrid,
 	StackPanel,
 	Text,
 } from '@aeco-dev/gui';
 
 import { Viewer } from '../../tool/Viewer.js';
 import { FpsGauge } from './fps-gauge.js';
-import {
-	ViewerMetrics,
-	formatBytes,
-	formatCount,
-	formatFps,
-	formatMs,
-	formatObjects,
-} from './metrics.js';
+import { ViewerMetrics, formatFps, formatMs } from './metrics.js';
+import { RenderFooter } from './render-footer.js';
 
 const RIBBON_BUTTON_ID = 'RB_Profiler';
 const FOOTER_ID = 'ProfilerFooter';
@@ -39,28 +30,44 @@ function column( ...children ) {
 
 }
 
-function metricValue( initial = '—' ) {
-
-	return new Code( initial );
-
-}
-
-function statTile( label ) {
-
-	const valueEl = new Code( '—' );
-	const tile = new Card()
-		.padding( '0.5rem 0.625rem' )
-		.add( column( new Caption( label ), valueEl ).gap( '0.15rem' ) );
-	return { tile, valueEl };
-
-}
-
 function fpsTone( fps ) {
 
 	if ( ! Number.isFinite( fps ) || fps <= 0 ) return '';
 	if ( fps >= 50 ) return 'is-good';
 	if ( fps >= 30 ) return 'is-ok';
 	return 'is-low';
+
+}
+
+const SCALE_STEPS = [ 60, 120, 240, 500, 1000, 2000 ];
+
+function cssColor( name, fallback ) {
+
+	return getComputedStyle( document.documentElement ).getPropertyValue( name ).trim() || fallback;
+
+}
+
+function scaleMax( series ) {
+
+	const peak = series.reduce( ( max, value ) => Math.max( max, value ), 0 );
+	for ( const step of SCALE_STEPS ) {
+
+		if ( peak <= step ) return step;
+
+	}
+
+	return SCALE_STEPS[ SCALE_STEPS.length - 1 ];
+
+}
+
+function scaleTicks( max ) {
+
+	if ( max <= 60 ) return [ 0, 30, 60 ];
+	if ( max <= 120 ) return [ 0, 60, 120 ];
+	if ( max <= 240 ) return [ 0, 120, 240 ];
+	if ( max <= 500 ) return [ 0, 60, 250, 500 ];
+	if ( max <= 1000 ) return [ 0, 60, 500, 1000 ];
+	return [ 0, 60, 1000, 2000 ];
 
 }
 
@@ -77,21 +84,54 @@ function drawSparkline( canvas, series ) {
 	canvas.height = Math.floor( height * dpr );
 	ctx.setTransform( dpr, 0, 0, dpr, 0, 0 );
 	ctx.clearRect( 0, 0, width, height );
+
+	const max = scaleMax( series );
+	const ticks = scaleTicks( max );
+	const plotLeft = 32;
+	const plotRight = width - 4;
+	const plotTop = 8;
+	const plotBottom = height - 8;
+	const plotWidth = Math.max( 1, plotRight - plotLeft );
+	const plotHeight = Math.max( 1, plotBottom - plotTop );
+	const yFor = ( value ) => plotBottom - ( Math.max( 0, Math.min( value, max ) ) / max ) * plotHeight;
+	const grid = cssColor( '--dui-color-border', '#3a4150' );
+	const label = cssColor( '--dui-color-text-muted', '#9aa4b3' );
+	const baseline = cssColor( '--dui-color-accent', '#39b54a' );
+	const font = cssColor( '--dui-font-mono', 'ui-monospace, Menlo, Consolas, monospace' );
+
+	ctx.font = `500 10px ${ font }`;
+	ctx.textAlign = 'right';
+	ctx.lineWidth = 1;
+
+	for ( const tick of ticks ) {
+
+		const y = yFor( tick );
+		const mark = tick === 60;
+		ctx.strokeStyle = mark ? baseline : grid;
+		ctx.setLineDash( mark ? [ 3, 3 ] : [] );
+		ctx.beginPath();
+		ctx.moveTo( plotLeft, y );
+		ctx.lineTo( plotRight, y );
+		ctx.stroke();
+		ctx.setLineDash( [] );
+		ctx.fillStyle = mark ? baseline : label;
+		ctx.textBaseline = tick === ticks[ 0 ] ? 'bottom' : tick === ticks[ ticks.length - 1 ] ? 'top' : 'middle';
+		ctx.fillText( String( tick ), plotLeft - 6, y );
+
+	}
+
 	if ( ! series.length ) return;
 
-	const peak = Math.max( 60, ...series, 1 );
-	const step = series.length > 1 ? width / ( series.length - 1 ) : width;
-	const color = getComputedStyle( document.documentElement )
-		.getPropertyValue( '--dui-color-accent' )
-		.trim() || '#39b54a';
-
+	const step = series.length > 1 ? plotWidth / ( series.length - 1 ) : plotWidth;
 	ctx.beginPath();
-	ctx.strokeStyle = color;
+	ctx.strokeStyle = baseline;
 	ctx.lineWidth = 1.5;
+	ctx.lineJoin = 'round';
+	ctx.lineCap = 'round';
 	for ( let i = 0; i < series.length; i += 1 ) {
 
-		const x = i * step;
-		const y = height - ( Math.min( series[ i ], peak ) / peak ) * ( height - 4 ) - 2;
+		const x = plotLeft + i * step;
+		const y = yFor( series[ i ] );
 		if ( i === 0 ) ctx.moveTo( x, y );
 		else ctx.lineTo( x, y );
 
@@ -115,8 +155,7 @@ class ProfilerHudUI {
 		this.footer = null;
 		this.footerFps = null;
 		this.footerMs = null;
-		this.fpsStrip = {};
-		this.renderValues = {};
+		this.renderFooter = null;
 		this.graphCanvas = null;
 		this.gauge = null;
 		this.gaugeCanvas = null;
@@ -154,6 +193,7 @@ class ProfilerHudUI {
 
 		} );
 		host.appendChild( this.footer.dom );
+		this.renderFooter = new RenderFooter( host );
 
 	}
 
@@ -194,16 +234,6 @@ class ProfilerHudUI {
 		const gaugeCard = new Card().padding( '0.5rem 0.25rem 0.25rem' ).addClass( 'ProfilerGauge' );
 		gaugeCard.add( column( header, this.gaugeCanvas ).gap( '0.25rem' ) );
 
-		this.fpsStrip.viewer = statTile( 'Viewer FPS' );
-		this.fpsStrip.client = statTile( 'Client FPS' );
-		this.fpsStrip.frame = statTile( 'Frame time' );
-
-		const tiles = new Grid().autoFit( '96px' ).gap( '0.5rem' );
-		tiles.add(
-			this.fpsStrip.viewer.tile,
-			this.fpsStrip.client.tile,
-			this.fpsStrip.frame.tile,
-		);
 
 		const graphCard = new Card().padding( '0.375rem' );
 		this.graphCanvas = new Canvas();
@@ -211,27 +241,7 @@ class ProfilerHudUI {
 		this.graphCanvas.dom.classList.add( 'ProfilerGraph' );
 		graphCard.add( this.graphCanvas );
 
-		this.renderValues = {
-			objects: metricValue(),
-			triangles: metricValue(),
-			drawCalls: metricValue(),
-			vram: metricValue(),
-			missing: metricValue(),
-		};
-
-		const renderGrid = new PropertyGrid( {
-			compact: true,
-			title: 'Render',
-			rows: {
-				objects: { label: 'Objects', value: this.renderValues.objects },
-				triangles: { label: 'Triangles', value: this.renderValues.triangles },
-				drawCalls: { label: 'Draw calls', value: this.renderValues.drawCalls },
-				vram: { label: 'VRAM', value: this.renderValues.vram },
-				missing: { label: 'Chunks missing', value: this.renderValues.missing },
-			},
-		} );
-
-		this.panel.setContent( column( gaugeCard, tiles, graphCard, renderGrid ) );
+		this.panel.setContent( column( gaugeCard, graphCard ) );
 		this.panel.hide();
 
 	}
@@ -312,6 +322,7 @@ class ProfilerHudUI {
 		this.footerMs?.setValue( snapshot.frameMs > 0 ? formatMs( snapshot.frameMs ) : '' );
 		this.footerFps?.removeClass( 'is-good' ).removeClass( 'is-ok' ).removeClass( 'is-low' );
 		if ( tone ) this.footerFps?.addClass( tone );
+		this.renderFooter?.update( snapshot );
 
 		if ( ! this.visible ) return;
 
@@ -319,22 +330,6 @@ class ProfilerHudUI {
 		this.headerValues.client?.setValue( formatFps( snapshot.clientFps ) );
 		this.headerValues.frame?.setValue( formatMs( snapshot.frameMs ) );
 		this.gauge?.update( fps );
-		this.fpsStrip.viewer.valueEl.setTextContent( formatFps( snapshot.wasmFps ) );
-		this.fpsStrip.client.valueEl.setTextContent( formatFps( snapshot.clientFps ) );
-		this.fpsStrip.frame.valueEl.setTextContent( formatMs( snapshot.frameMs ) );
-		this.renderValues.objects.setTextContent(
-			formatObjects( snapshot.objectsVisible, snapshot.objectsTotal ),
-		);
-		this.renderValues.triangles.setTextContent(
-			formatObjects( snapshot.trianglesVisible, snapshot.trianglesTotal ),
-		);
-		this.renderValues.drawCalls.setTextContent( formatCount( snapshot.drawCalls ) );
-		this.renderValues.vram.setTextContent(
-			snapshot.vramCapacity > 0
-				? `${ formatBytes( snapshot.vramUsed ) } / ${ formatBytes( snapshot.vramCapacity ) }`
-				: formatBytes( snapshot.vramUsed ),
-		);
-		this.renderValues.missing.setTextContent( formatCount( snapshot.workingSetMissing ) );
 		if ( this.graphCanvas ) drawSparkline( this.graphCanvas.dom, this.metrics.getFpsHistory() );
 
 	}
@@ -352,9 +347,11 @@ class ProfilerHudUI {
 		this.gauge?.destroy();
 		this.gauge = null;
 		this.panel?.hide();
+		this.renderFooter?.destroy();
 		this.footer?.dom.remove();
 		this.panel = null;
 		this.footer = null;
+		this.renderFooter = null;
 
 	}
 
