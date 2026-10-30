@@ -148,3 +148,5 @@ CLAUDE.local.md
 /src/ts/ifcopenshell-js/src/python/api/
 /src/ts/ifcopenshell-js/src/python/transpile.json
 /src/transpiler/parity/golden/
+/src/transpiler/parity/results.json
+/src/transpiler/TRACKING.md

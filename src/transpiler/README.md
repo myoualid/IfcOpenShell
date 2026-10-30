@@ -9,7 +9,7 @@ what remains. From the repository root (Python dependencies: `requirements.txt`)
 
 ```shell
 python src/transpiler/generate.py            # write src/ts/ifcopenshell-js/src/python/{util,api}
-python src/transpiler/generate.py --report   # also print coverage and the top unsupported constructs
+python src/transpiler/generate.py --report   # also write TRACKING.md: per module, what remains, what is tested, what is done
 python src/transpiler/transpile.py src/ifcopenshell-python/ifcopenshell/util/unit.py   # one module to stdout
 ```
 
@@ -130,6 +130,8 @@ Python source or its tests. Without `IFCOPENSHELL_WASM_DIR`, or without recordin
 replay is skipped.
 
 - **Only these tests:** `npx vitest run tests/python`.
+- **Tracking:** `npm run test:report` also writes `src/transpiler/parity/results.json`, which
+  `generate.py --report` reads for the test columns of `TRACKING.md`. Neither is committed.
 - **One module:** `npx vitest run tests/python -t util.date` replays one recorded module, and
   `python ../../transpiler/parity/record.py util.date` records one. The modules recorded by
   default are `DEFAULT_MODULES` in `parity/record.py`.

@@ -61,8 +61,9 @@ The api calls util heavily (`util.element`, `util.unit`, `util.date`,
 
 How to run the tests is described in "Running the tests" in [README.md](README.md).
 
-- **Coverage:** `generate.py --report` prints translated functions per module and the
-  most frequent unsupported constructs. A module's translated count must not drop.
+- **Coverage:** `generate.py --report` writes `TRACKING.md` (not committed): per module,
+  what remains, what is tested and what is done, with the results of the last
+  `npm run test:report`. A module's translated count must not drop.
 - **Type check:** `npm run build` in `src/ts/ifcopenshell-js` type-checks the generated
   code. Errors are fixed in the bindings, the rules or the Python annotations, never by
   editing output.
@@ -137,7 +138,7 @@ Largest first:
 
 1. **Failing calls.** `ifcopenshell.geom` (55: `util.placement.get_placement` builds the
    matrix with the geometry kernel, tier 5); `type()` as a value (114, `api.project`);
-   IFC4X1/IFC4X2 have no schema plugin in the JS build (17); a call with both `**kwargs`
+   `create_file` finds no schema named IFC4X3 (17); a call with both `**kwargs`
    and keywords in one ShapeBuilder method (14); networkx in `recalculate_schedule` (9, by hand).
 2. **Dates set from the current day.** IFC2X3 cost and sequence usecases write today's
    date as an `IfcCalendarDate`; its components are not masked yet, so 14 recorded calls
@@ -146,8 +147,9 @@ Largest first:
 4. **Smaller gaps:** `fractions.Fraction`, `decimal.Decimal`, `try`/`except`/`else`,
    `ifcopenshell.util.schema.Migrator` (needs generated `class_*_to_*.json` data), `ast`, `csv`.
 5. **Recording coverage.** `util.constraint`, `util.file`, `util.fm`, `util.resource`,
-   `api.attribute` and most api packages have no recorded calls yet; `util.attribute`
-   calls take schema objects, which the recorder cannot encode (10548 skipped calls).
+   `api.attribute` and most api packages have no recorded calls yet; the 10548 skipped
+   `util.attribute` calls come from Python tests that failed in the recording (10538) or
+   take schema objects, which the recorder cannot encode (10).
 6. **Language differences to document, not fix:** JS has one number type, so a
    whole-number float such as `30.0` becomes `IfcInteger`/`IfcQuantityCount` where Python
    picks `IfcReal`/`IfcQuantityLength` (13 failing calls in `api.pset`); an entity from
