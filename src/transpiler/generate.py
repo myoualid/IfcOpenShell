@@ -4,10 +4,10 @@
 
 Writes src/python/util and src/python/api of src/ts/ifcopenshell-js, which are build output
 and not committed, from this checkout's Python source, the rules and precomputed.json.
-src/python/transpile.json lists each module's untranslated functions; `--report` also prints
-coverage per module and the most frequent unsupported constructs. Needs only PyYAML and
-Jinja2 (requirements.txt). `--precompute` refreshes precomputed.json, which needs an
-installed ifcopenshell close to this checkout.
+src/python/transpile.json lists each module's untranslated functions; `--report` also writes
+TRACKING.md (not committed), with the results of the last `npm run test:report`. Needs only
+PyYAML and Jinja2 (requirements.txt). `--precompute` refreshes precomputed.json, which needs
+an installed ifcopenshell close to this checkout.
 """
 
 import argparse
@@ -16,6 +16,7 @@ import collections
 import json
 import re
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -25,6 +26,8 @@ from transpile import PACKAGE, Transpiler, build_index, camel, module_name
 HERE = Path(__file__).parent
 OUTPUT = HERE.parent / "ts" / "ifcopenshell-js" / "src" / "python"
 PRECOMPUTED = HERE / "precomputed.json"
+RESULTS = HERE / "parity" / "results.json"
+TRACKING = HERE / "TRACKING.md"
 # Documentation and developer scripts, not ported; other modules import them, so their functions throw.
 SKIP = {"doc", "ifc4x3dev_scrape_data_for_docs", "generate_pset_templates", "profiler"}
 HEADER = "// This file was generated with the assistance of an AI coding tool.\n// SPDX-License-Identifier: LGPL-3.0-or-later\n"
@@ -64,31 +67,116 @@ def precompute(rules):
     return results
 
 
-def report(manifest):
-    """Coverage per util module and api package, and the most frequent unsupported constructs."""
-    totals = collections.defaultdict(lambda: [0, 0])
+def parity_results():
+    """Replayed calls per module, from the last `npm run test:report`."""
+    modules = collections.defaultdict(
+        lambda: {"passed": 0, "skipped": collections.Counter(), "failed": collections.defaultdict(collections.Counter)}
+    )
+    if not RESULTS.exists():
+        return modules
+    for test in (t for f in json.loads(RESULTS.read_text(encoding="utf-8"))["testResults"] for t in f["assertionResults"]):
+        if test["ancestorTitles"][:1] != ["parity with Python"] or len(test["ancestorTitles"]) < 2:
+            continue
+        module = modules[test["ancestorTitles"][1].replace(".", "/")]
+        if test["status"] == "passed":
+            module["passed"] += 1
+        elif test["status"] == "failed":
+            message = re.sub(r"(?<![A-Za-z])\d+", "N", test["failureMessages"][0].splitlines()[0])
+            module["failed"][message][test["title"].rsplit(" ", 1)[-1]] += 1
+        else:
+            reason = re.search(r"\] \w+ \((.*)\)$", test["title"])
+            module["skipped"][re.sub(r"(?<![A-Za-z])\d+", "N", reason[1]) if reason else test["title"]] += 1
+    return modules
+
+
+def tracking(manifest):
+    """Write TRACKING.md: per module what remains to do first, what is done last."""
+    groups = collections.defaultdict(lambda: {"done": 0, "total": 0, "missing": [], "ported": True})
     blockers = collections.Counter()
     for key, entry in manifest.items():
-        group = key if key.startswith("util/") else "/".join(key.split("/")[:2])
-        functions = entry["functions"]
-        stubs = functions if "error" in entry else len(entry.get("stubs", {}))
-        totals[group][0] += functions - stubs
-        totals[group][1] += functions
-        for reason in [entry["error"]] if "error" in entry else entry.get("stubs", {}).values():
-            blockers[re.sub(r"^No \w+ rule at line \d+: ", "", reason)[:80]] += 1
-    for group, (done, total) in sorted(totals.items()):
-        if done < total:
-            print(f"  {group}: {done}/{total}")
-    print("Most frequent unsupported constructs:")
-    for reason, count in blockers.most_common(15):
-        print(f"  {count:4} {reason}")
+        group = groups[key if key.startswith("util/") else "/".join(key.split("/")[:2])]
+        missing = {"(whole module)": entry["error"]} if "error" in entry else entry.get("stubs", {})
+        group["total"] += entry["functions"]
+        group["done"] += 0 if "error" in entry else entry["functions"] - len(missing)
+        group["ported"] &= entry.get("error") != "not ported"
+        if group["ported"]:
+            group["missing"] += [(f"{Path(key).name}: {name}", reason) for name, reason in missing.items()]
+            blockers.update(re.sub(r"^No \w+ rule at line \d+: ", "", reason)[:80] for reason in missing.values())
+
+    results = parity_results()
+    todo, untested, done, unported = [], [], [], []
+    for name, group in sorted(groups.items()):
+        result = results[name]
+        group |= {
+            "name": name,
+            "translated": f"{group['done']}/{group['total']}",
+            "passed": result["passed"],
+            "skipped": result["skipped"],
+            "failed": result["failed"],
+            "failures": sum(c for calls in result["failed"].values() for c in calls.values()),
+        }
+        if not group["ported"]:
+            unported.append(group)
+        elif group["missing"] or group["failures"]:
+            todo.append(group)
+        elif not group["passed"]:
+            untested.append(group)
+        else:
+            done.append(group)
+    todo.sort(key=lambda g: len(g["missing"]) + g["failures"], reverse=True)
+
+    total = sum(g["total"] for g in groups.values())
+    translated = sum(g["done"] for g in groups.values())
+    passed, failures = sum(g["passed"] for g in todo + done), sum(g["failures"] for g in todo)
+    skipped = sum(sum(g["skipped"].values()) for g in todo + untested + done)
+    tested = "none yet; run `npm run test:report`"
+    if RESULTS.exists():
+        tested = f"from {datetime.fromtimestamp(RESULTS.stat().st_mtime):%Y-%m-%d}"
+    lines = [
+        "<!-- Generated by `python src/transpiler/generate.py --report`. Do not edit or commit. -->",
+        "",
+        "# Transpilation tracking",
+        "",
+        f"Test results: {tested}.",
+        "",
+        "| Modules to do | Modules to test | Modules done | Functions translated | Calls passed | Calls failed | Calls skipped |",
+        "|---|---|---|---|---|---|---|",
+        f"| {len(todo)} | {len(untested)} | {len(done)} | {translated}/{total} | {passed} | {failures} | {skipped} |",
+        "",
+        "## To do",
+        "",
+        "Largest first. Unsupported constructs that block the most functions:",
+        "",
+        *(f"- {count} × `{reason}`" for reason, count in blockers.most_common(10)),
+    ]
+    for group in todo:
+        lines += ["", f"### {group['name']}", ""]
+        lines += [f"Translated {group['translated']}; {group['passed']} calls passed, {group['failures']} failed, {sum(group['skipped'].values())} skipped."]
+        if group["failed"]:
+            lines += ["", "Failing:", ""]
+        for message, functions in sorted(group["failed"].items(), key=lambda m: -sum(m[1].values())):
+            lines.append(f"- {sum(functions.values())} × `{message[:160]}` ({', '.join(sorted(functions))})")
+        if group["missing"]:
+            lines += ["", "Not translated:", ""]
+            lines += [f"- `{name}`: {reason[:160]}" for name, reason in group["missing"]]
+    lines += ["", "## To test", "", "Translated, but no recorded call replays.", ""]
+    lines += ["| Module | Translated | Reason |", "|---|---|---|"]
+    for group in untested:
+        reason = group["skipped"].most_common(1)[0][0] if group["skipped"] else "no recorded calls"
+        lines.append(f"| {group['name']} | {group['translated']} | {reason[:120]} |")
+    lines += ["", "## Not ported", "", ", ".join(g["name"] for g in unported)]
+    lines += ["", "## Done", "", "Translated, with no failing call.", ""]
+    lines += ["| Module | Translated | Calls passed | Calls skipped |", "|---|---|---|---|"]
+    lines += [f"| {g['name']} | {g['translated']} | {g['passed']} | {sum(g['skipped'].values())} |" for g in done]
+    TRACKING.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"Wrote {TRACKING}")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rules", type=Path, default=HERE / "ts.yaml")
     parser.add_argument("--precompute", action="store_true", help=f"only refresh {PRECOMPUTED.name}")
-    parser.add_argument("--report", action="store_true", help="also print coverage per module and top blockers")
+    parser.add_argument("--report", action="store_true", help=f"also write {TRACKING.name}")
     args = parser.parse_args()
 
     rules = yaml.safe_load(args.rules.read_text(encoding="utf-8"))
@@ -151,7 +239,7 @@ def main():
         failed = sum("error" in e for e in entries)
         print(f"ifcopenshell.{scope}: {len(entries) - failed}/{len(entries)} files, {functions - stubs}/{functions} functions translated")
     if args.report:
-        report(manifest)
+        tracking(manifest)
 
 
 if __name__ == "__main__":

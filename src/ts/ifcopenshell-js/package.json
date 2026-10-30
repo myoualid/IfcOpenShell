@@ -52,6 +52,7 @@
     "lint": "eslint src",
     "prepack": "npm run build",
     "test": "vitest run",
+    "test:report": "vitest run tests/python --reporter=default --reporter=json --outputFile.json=../../transpiler/parity/results.json",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:watch": "vitest"
   },
