@@ -19,6 +19,8 @@
 
 #include "ViewportCore.h"
 
+#include <chrono>
+
 // wgpu-native extensions (log callback, MULTI_DRAW_INDIRECT). The web
 // build (emdawnwebgpu / Dawn) doesn't ship this header — validation
 // errors there go to the browser console, so the log-callback path
@@ -1551,6 +1553,9 @@ bool ViewportCore::buildPipelines() {
     // Ground grid (shared desktop + web). Optional — a failure just means no
     // grid, not a dead viewport. init installs the default base grid.
     grid_helper_.init(device_, queue_, surface_view_format_, kViewportSampleCount);
+
+    // 2D tile world (idle until enabled). Optional, like the helpers above.
+    tile_renderer_.init(device_, queue_, surface_view_format_);
     return true;
 }
 
@@ -2366,6 +2371,7 @@ void ViewportCore::shutdown() {
     section_gizmo_.destroy();
     axis_indicator_.destroy();
     grid_helper_.destroy();
+    tile_renderer_.destroy();
     if (main_shader_module_)   { wgpuShaderModuleRelease(main_shader_module_);    main_shader_module_ = nullptr; }
     if (pipeline_layout_)      { wgpuPipelineLayoutRelease(pipeline_layout_);     pipeline_layout_ = nullptr; }
     if (model_bgl_)            { wgpuBindGroupLayoutRelease(model_bgl_);          model_bgl_ = nullptr; }
@@ -8347,6 +8353,36 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
 }
 
 
+// The tile world owns the whole frame: advance the 60 Hz simulation by the
+// real time since the last frame, draw it, present, and keep the loop ticking.
+bool ViewportCore::renderTileWorld(WGPUTextureView view, WGPUTexture texture) {
+    if (!tile_renderer_.ready()) return false;
+    const double now_ms = double(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
+    if (tile_last_ms_ >= 0.0) tile_world_.advance(now_ms - tile_last_ms_);
+    tile_last_ms_ = now_ms;
+
+    // Fixed zoom: the native screen grows to cover the canvas at that scale.
+    if (const int z = tile_renderer_.fixedScale(); z > 0 && configured_w_ > 0 && configured_h_ > 0) {
+        const int sw = (configured_w_ + z - 1) / z, sh = (configured_h_ + z - 1) / z;
+        if (sw != tile_world_.screenW() || sh != tile_world_.screenH()) tile_world_.setScreen(sw, sh);
+    }
+
+    WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+    tile_renderer_.encode(enc, view, configured_w_, configured_h_, tile_world_);
+    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, nullptr);
+    wgpuQueueSubmit(queue_, 1, &cmd);
+    wgpuCommandBufferRelease(cmd);
+    wgpuCommandEncoderRelease(enc);
+    wgpuTextureViewRelease(view);
+#if !defined(__EMSCRIPTEN__)
+    wgpuSurfacePresent(surface_);
+#endif
+    wgpuTextureRelease(texture);
+    host_->requestFrame();
+    return true;
+}
+
 void ViewportCore::render() {
     if (!device_ || !queue_ || !surface_) return;
     // Device lost (e.g. GPU memory reclaimed by another client). Stop here so
@@ -8423,6 +8459,8 @@ void ViewportCore::render() {
     view_desc.arrayLayerCount = 1;
     view_desc.aspect          = WGPUTextureAspect_All;
     WGPUTextureView view = wgpuTextureCreateView(surf_tex.texture, &view_desc);
+
+    if (tile_world_.enabled() && renderTileWorld(view, surf_tex.texture)) return;
 
     updateFrameUniforms();
 
