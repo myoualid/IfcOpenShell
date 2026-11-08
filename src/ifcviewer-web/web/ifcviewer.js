@@ -1701,32 +1701,28 @@
       // server, another tab already filling this entry).
       addUrl: async function (url, o) {
         if (o && o.replace) this.clearScene();
-        // The header says which sidecar format the file actually is. A
-        // network failure is not a format error: with cache enabled, a
-        // complete local copy of this same format can still open offline.
-        let offline = null;
-        try {
+        // With cache enabled, a complete local copy that HEAD still validates
+        // (or, offline, any complete copy) opens without a byte of the file
+        // crossing the network: cachedUrlSource has already checked its
+        // header. Anything else reads the header from the URL first, so a
+        // file of the wrong sidecar format fails before it is streamed.
+        const cached = (o && o.cache)
+          ? await cachedUrlSource(url, sidecarFormatVersion).catch(() => null)
+          : null;
+        if (!(cached && cached.file)) {
           assertSidecarHead(await readSidecarHead(url), sidecarFormatVersion);
-        } catch (err) {
-          if (err && err.sidecarFormat) throw err;
-          if (!(o && o.cache)) throw err;
-          offline = err;
         }
-        let sid = null;
-        if (o && o.cache) {
-          const cached = await cachedUrlSource(url, sidecarFormatVersion).catch(() => null);
-          if (cached) {
-            const src = cached.file || cached.source;
-            sid = Module.__ifcvSources.length;
-            Module.__ifcvSources.push({ file: src, url: null, size: src.size });
-          }
-        }
-        if (sid === null) {
-          if (offline) throw offline;
+        let sid;
+        if (cached) {
+          const src = cached.file || cached.source;
+          sid = Module.__ifcvSources.length;
+          Module.__ifcvSources.push({ file: src, url: null, size: src.size });
+        } else {
           sid = await registerUrl(url);
         }
         if (o && o.name) this.setModelName(sid, o.name);
         Module._load_ifcview_from_source_c(sid);
+        objectsPromise = null;
         return sid;
       },
       // Append the small sample baked into the wasm (a slab, a wall and a
