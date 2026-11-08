@@ -43,6 +43,18 @@ workflows:
         - 'aws-actions/configure-aws-credentials@v6.3.0'
         - 'hendrikmuhs/ccache-action@v1.2.24'
     '.github/workflows/build-ifcopenshell.yml': []
+    '.github/workflows/build-ifcviewer-web.yml':
+        - 'actions/cache@v6.1.0'
+        - 'actions/checkout@v7.0.1'
+        - 'actions/upload-artifact@v7.0.2'
+        - 'hendrikmuhs/ccache-action@v1.2.24'
+    '.github/workflows/publish-aeco-dev-bonsaiweb.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'actions/setup-node@v7.1.0'
+    '.github/workflows/publish-aeco-dev-viewer.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'actions/download-artifact@v8.0.2'
+        - 'actions/setup-node@v7.1.0'
     '.github/workflows/publish-aichat-app.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-python@v7.1.0'
