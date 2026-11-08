@@ -631,6 +631,29 @@
     return [r / 255, g / 255, b / 255, a / 255];
   }
 
+  // Render-mode vocabularies, in the order of the wasm enums.
+  const RENDER_MODES = ['shaded', 'shadedEdges', 'technical', 'clay', 'xray'];
+  const SURFACES = ['color', 'technical', 'clay'];
+  const TONE_MAPS = ['none', 'aces', 'agx'];
+  const EDGE_MODES = ['depth', 'feature'];
+
+  function enumIndex(list, name, what) {
+    const i = list.indexOf(name);
+    if (i < 0) throw new Error(what + ': expected one of ' + list.join(', ') + ', got ' + name);
+    return i;
+  }
+
+  // [r, g, b] in [0..1] as '#rrggbb', and back into v[at..at+2].
+  function rgbHex(c) {
+    return '#' + c.map(function (x) {
+      return Math.round(Math.max(0, Math.min(1, x)) * 255).toString(16).padStart(2, '0');
+    }).join('');
+  }
+  function setRgb(v, at, color, what) {
+    const c = parseBackground(color, what);
+    v[at] = c[0]; v[at + 1] = c[1]; v[at + 2] = c[2];
+  }
+
   // Largest snapshot side; matches ViewportCore::kMaxSnapshotDim.
   const SNAPSHOT_MAX = 16384;
 
@@ -935,6 +958,26 @@
       pending.resolve(pending.rows);
     };
 
+    // Float-array round trips for the render settings (see main_web.cpp).
+    function readFloats(fn, n) {
+      const ptr = Module._malloc(n * 4);
+      try {
+        fn(ptr);
+        return Array.from(Module.HEAPF32.subarray(ptr >>> 2, (ptr >>> 2) + n));
+      } finally {
+        Module._free(ptr);
+      }
+    }
+    function writeFloats(fn, v) {
+      const ptr = Module._malloc(v.length * 4);
+      try {
+        Module.HEAPF32.set(v, ptr >>> 2);
+        fn(ptr);
+      } finally {
+        Module._free(ptr);
+      }
+    }
+
     // snapshot(): token -> {canvas, ctx, type, quality, resolve, reject}. The
     // wasm side reads the offscreen render back one band of rows at a time;
     // each band is painted into a 2D canvas at its row, and Done encodes it.
@@ -1070,6 +1113,117 @@
       setBackground: function (color) {
         const c = parseBackground(color, 'setBackground');
         Module._ifcv_set_background_c(c[0], c[1], c[2], c[3]);
+      },
+
+      // ---- Render modes ----------------------------------------------------
+
+      // One of RENDER_MODES — a preset of shading, edges and ambient occlusion
+      // (and X-ray), each of which can be tuned afterwards:
+      //   shaded       model colours, soft depth edges (the default)
+      //   shadedEdges  model colours, crisp feature lines
+      //   technical    flat white surfaces, black feature lines (CAD look)
+      //   clay         neutral grey, linear lighting with tone mapping, AO
+      //   xray         shaded, everything translucent
+      // Feature lines follow element boundaries, silhouettes and creases.
+      setRenderMode: function (name) {
+        const i = RENDER_MODES.indexOf(name);
+        if (i < 0) {
+          throw new Error('unknown render mode: ' + name +
+                          ' (expected one of ' + RENDER_MODES.join(', ') + ')');
+        }
+        Module._ifcv_set_render_mode_c(i);
+      },
+      getRenderMode: function () {
+        return RENDER_MODES[Module._ifcv_get_render_mode_c()] || 'shaded';
+      },
+
+      // How surfaces are lit. Any subset; omitted fields keep their value.
+      //   surface       'color' (model colours) | 'technical' | 'clay'.
+      //                 A setColor override always shows through.
+      //   baseColor     technical / clay surface colour, as setBackground takes
+      //   linear        true: light in linear space, then exposure + tone map
+      //   exposure      linear only (default 1)
+      //   toneMap       'none' | 'aces' | 'agx' (linear only)
+      //   keyDir, fillDir  [x, y, z] toward each light, world space (+Z up)
+      //   key, fill, ambient  intensities
+      //   sky, ground   hemisphere ambient colours
+      getShading: function () {
+        const v = readFloats(Module._ifcv_get_shading_c, 22);
+        return {
+          surface: SURFACES[v[0]] || 'color',
+          baseColor: rgbHex(v.slice(1, 4)),
+          linear: v[4] !== 0,
+          exposure: v[5],
+          toneMap: TONE_MAPS[v[6]] || 'none',
+          keyDir: v.slice(7, 10),
+          fillDir: v.slice(10, 13),
+          key: v[13], fill: v[14], ambient: v[15],
+          sky: rgbHex(v.slice(16, 19)),
+          ground: rgbHex(v.slice(19, 22)),
+        };
+      },
+      setShading: function (o) {
+        o = o || {};
+        const v = readFloats(Module._ifcv_get_shading_c, 22);
+        if (o.surface !== undefined) v[0] = enumIndex(SURFACES, o.surface, 'surface');
+        if (o.baseColor !== undefined) setRgb(v, 1, o.baseColor, 'baseColor');
+        if (o.linear !== undefined) v[4] = o.linear ? 1 : 0;
+        if (o.exposure !== undefined) v[5] = +o.exposure;
+        if (o.toneMap !== undefined) v[6] = enumIndex(TONE_MAPS, o.toneMap, 'toneMap');
+        if (o.keyDir) { v[7] = +o.keyDir[0]; v[8] = +o.keyDir[1]; v[9] = +o.keyDir[2]; }
+        if (o.fillDir) { v[10] = +o.fillDir[0]; v[11] = +o.fillDir[1]; v[12] = +o.fillDir[2]; }
+        if (o.key !== undefined) v[13] = +o.key;
+        if (o.fill !== undefined) v[14] = +o.fill;
+        if (o.ambient !== undefined) v[15] = +o.ambient;
+        if (o.sky !== undefined) setRgb(v, 16, o.sky, 'sky');
+        if (o.ground !== undefined) setRgb(v, 19, o.ground, 'ground');
+        writeFloats(Module._ifcv_set_shading_c, v);
+      },
+
+      // Edges. Any subset:
+      //   enabled   false hides them
+      //   mode      'depth' (soft depth darkening) | 'feature' (crisp lines)
+      //   color, opacity, width (CSS px), creaseAngle (degrees)  — feature only
+      //   antialias  smooth the lines (default true) — feature only
+      getEdges: function () {
+        const v = readFloats(Module._ifcv_get_edges_c, 9);
+        return {
+          enabled: v[0] !== 0,
+          mode: EDGE_MODES[v[1]] || 'depth',
+          color: rgbHex(v.slice(2, 5)),
+          opacity: v[5], width: v[6], creaseAngle: v[7],
+          antialias: v[8] !== 0,
+        };
+      },
+      setEdges: function (o) {
+        o = o || {};
+        const v = readFloats(Module._ifcv_get_edges_c, 9);
+        if (o.enabled !== undefined) v[0] = o.enabled ? 1 : 0;
+        if (o.mode !== undefined) v[1] = enumIndex(EDGE_MODES, o.mode, 'mode');
+        if (o.color !== undefined) setRgb(v, 2, o.color, 'color');
+        if (o.opacity !== undefined) v[5] = +o.opacity;
+        if (o.width !== undefined) v[6] = +o.width;
+        if (o.creaseAngle !== undefined) v[7] = +o.creaseAngle;
+        if (o.antialias !== undefined) v[8] = o.antialias ? 1 : 0;
+        writeFloats(Module._ifcv_set_edges_c, v);
+      },
+
+      // Screen-space ambient occlusion. `true` / `false`, or any subset of
+      //   enabled, radius (metres; 0 follows the view distance),
+      //   intensity, bias (fraction of the radius).
+      getAmbientOcclusion: function () {
+        const v = readFloats(Module._ifcv_get_ao_c, 4);
+        return { enabled: v[0] !== 0, radius: v[1], intensity: v[2], bias: v[3] };
+      },
+      setAmbientOcclusion: function (o) {
+        if (typeof o === 'boolean') o = { enabled: o };
+        o = o || {};
+        const v = readFloats(Module._ifcv_get_ao_c, 4);
+        if (o.enabled !== undefined) v[0] = o.enabled ? 1 : 0;
+        if (o.radius !== undefined) v[1] = +o.radius;
+        if (o.intensity !== undefined) v[2] = +o.intensity;
+        if (o.bias !== undefined) v[3] = +o.bias;
+        writeFloats(Module._ifcv_set_ao_c, v);
       },
 
       // ---- Snapshots -------------------------------------------------------

@@ -1001,6 +1001,13 @@ struct FrameUniforms {
     _pad_xray_0:  f32,
     _pad_xray_1:  f32,
     _pad_xray_2:  f32,
+    // x = surface style (0 model colours, 1 technical, 2 clay), y = linear
+    // lighting (0/1), z = exposure, w = tone map (0 none, 1 ACES, 2 AgX).
+    shading:      vec4<f32>,
+    // Technical / clay surface colour, sRGB.
+    base_color:   vec4<f32>,
+    // x = key, y = fill, z = ambient intensity.
+    light_params: vec4<f32>,
 };
 
 // Returns true if `world` lies on the positive (clipped-away) side of any
@@ -1058,6 +1065,9 @@ struct VsOut {
     @location(1) color:     vec4<f32>,
     @location(2) world_pos: vec3<f32>,
     @location(3) @interpolate(flat) object_id: u32,
+    // 1 when the instance carries a setColor override, which technical and
+    // clay surfaces keep instead of their flat colour.
+    @location(4) @interpolate(flat) has_override: u32,
 };
 
 // Normal of the fragment's triangle, facing the viewer.
@@ -1138,15 +1148,17 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
     let world4 = inst.transform * vec4<f32>(pos_local, 1.0);
 
     var color = vec4<f32>(r, g, b, a);
+    var has_override = 0u;
     if (inst.color_override != 0u) {
         let cr = f32(inst.color_override         & 0xFFu) / 255.0;
         let cg = f32((inst.color_override >>  8u) & 0xFFu) / 255.0;
         let cb = f32((inst.color_override >> 16u) & 0xFFu) / 255.0;
         let ca = f32((inst.color_override >> 24u) & 0xFFu) / 255.0;
-        if (ca > 0.0) { color = vec4<f32>(cr, cg, cb, ca); }
+        if (ca > 0.0) { color = vec4<f32>(cr, cg, cb, ca); has_override = 1u; }
     }
 
     var out: VsOut;
+    out.has_override = has_override;
     out.clip_pos  = u_frame.view_proj * world4;
     out.color     = color;
     out.world_pos = world4.xyz;
@@ -1166,6 +1178,39 @@ fn srgbToLinear(s: vec3<f32>) -> vec3<f32> {
     return select(hi, lo, s <= vec3<f32>(0.04045));
 }
 
+// Tone mapping for the linear lighting path. 1 = ACES (Narkowicz fit),
+// 2 = AgX (polynomial fit of the default look), anything else clamps.
+fn toneMap(x: vec3<f32>, op: u32) -> vec3<f32> {
+    if (op == 1u) {
+        let a = x * (2.51 * x + 0.03);
+        let b = x * (2.43 * x + 0.59) + 0.14;
+        return clamp(a / b, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    if (op == 2u) {
+        let agx_in = mat3x3<f32>(
+            vec3<f32>(0.842479062253094, 0.0423282422610123, 0.0423756549057051),
+            vec3<f32>(0.0784335999999992, 0.878468636469772, 0.0784336),
+            vec3<f32>(0.0792237451477643, 0.0791661274605434, 0.879142973793104));
+        let agx_out = mat3x3<f32>(
+            vec3<f32>(1.19687900512017, -0.0528968517574562, -0.0529716355144438),
+            vec3<f32>(-0.0980208811401368, 1.15190312990417, -0.0980434501171241),
+            vec3<f32>(-0.0990297440797205, -0.0989611768448433, 1.15107367264116));
+        let min_ev = -12.47393;
+        let max_ev = 4.026069;
+        var v = agx_in * max(x, vec3<f32>(1e-10));
+        v = clamp(log2(v), vec3<f32>(min_ev), vec3<f32>(max_ev));
+        v = (v - min_ev) / (max_ev - min_ev);
+        let v2 = v * v;
+        let v4 = v2 * v2;
+        v = 15.5 * v4 * v2 - 40.14 * v4 * v + 31.96 * v4 - 6.868 * v2 * v
+          + 0.4298 * v2 + 0.1191 * v - 0.00232;
+        // The curve's output is display-encoded; bring it back to linear.
+        v = agx_out * v;
+        return pow(clamp(v, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(2.2));
+    }
+    return clamp(x, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 @fragment
 fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
     if (is_section_clipped(in.world_pos)) { discard; }
@@ -1178,25 +1223,52 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
     let ambient = mix(u_frame.ground_color.xyz, u_frame.sky_color.xyz, hemi_t);
 
     let key  = max(dot(n, u_frame.light_dir.xyz), 0.0);
-    let fill = max(dot(n, u_frame.fill_dir.xyz),  0.0) * 0.35;
+    let fill = max(dot(n, u_frame.fill_dir.xyz),  0.0);
+    let lp   = u_frame.light_params;
 
-    var color = in.color.xyz * (ambient + (key + fill) * 0.7);
+    // Technical and clay surfaces replace the model's colour with a flat
+    // one; an explicit colour override still shows through.
+    let style = u32(u_frame.shading.x + 0.5);
+    var albedo = in.color.xyz;
+    if (style != 0u && in.has_override == 0u) { albedo = u_frame.base_color.xyz; }
+
+    var color: vec3<f32>;
+    if (style == 1u) {
+        // Technical: near-flat, just enough key light to tell faces apart.
+        color = albedo * (0.84 + 0.16 * key);
+    } else if (u_frame.shading.y > 0.5) {
+        // Linear light: decode the sRGB inputs, light, expose, tone map.
+        // The result is display-referred linear; the sRGB target encodes it.
+        let a_lin   = srgbToLinear(albedo);
+        let amb_lin = srgbToLinear(ambient);
+        let hdr = a_lin * (amb_lin * lp.z + vec3<f32>(key * lp.x + fill * lp.y))
+                * u_frame.shading.z;
+        color = toneMap(hdr, u32(u_frame.shading.w + 0.5));
+    } else {
+        // Legacy: the GL viewer's gamma-space formula (defaults reproduce it).
+        color = albedo * (ambient * lp.z + key * lp.x + fill * lp.y);
+    }
+    let encoded_out = u_frame.shading.y > 0.5 && style != 1u;
 
     // Selection tint. bit 0 = in selection (cool blue mix), bit 1 = active
-    // (slightly stronger blue mix). Matches the GL main shader.
+    // (slightly stronger blue mix). Matches the GL main shader. Mixed in the
+    // space `color` is in, so the tint looks the same in both paths.
     if (in.object_id < arrayLength(&sel_flags)) {
         let flags = sel_flags[in.object_id];
-        if ((flags & 1u) != 0u) { color = mix(color, vec3<f32>(0.2, 0.6, 1.0), 0.45); }
-        if ((flags & 2u) != 0u) { color = mix(color, vec3<f32>(0.4, 0.8, 1.0), 0.40); }
+        let t0 = vec3<f32>(0.2, 0.6, 1.0);
+        let t1 = vec3<f32>(0.4, 0.8, 1.0);
+        if ((flags & 1u) != 0u) { color = mix(color, select(t0, srgbToLinear(t0), encoded_out), 0.45); }
+        if ((flags & 2u) != 0u) { color = mix(color, select(t1, srgbToLinear(t1), encoded_out), 0.40); }
     }
 
     // Cancel the swap chain's implicit linear→sRGB encoding so the final
-    // bytes match the GL backend (see srgbToLinear above). Alpha is
-    // clamped to `xray_alpha_cap` (default 1.0 = no effect; X-ray sets
-    // it to ~0.3) so a global translucency override lands without
-    // touching any per-instance state.
+    // bytes match the GL backend (see srgbToLinear above) — except on the
+    // linear path, whose output already is linear. Alpha is clamped to
+    // `xray_alpha_cap` (default 1.0 = no effect; X-ray sets it to ~0.3) so a
+    // global translucency override lands without touching any per-instance
+    // state.
     let alpha_out = min(in.color.a, u_frame.xray_alpha_cap);
-    return vec4<f32>(srgbToLinear(color), alpha_out);
+    return vec4<f32>(select(srgbToLinear(color), color, encoded_out), alpha_out);
 }
 
 // Selection silhouette mask. Same vertex pulling as vs_main, but the only
@@ -1586,12 +1658,26 @@ void ViewportCore::updateFrameUniforms() {
     // diff of the two backends only shows what the wgpu pipeline has yet to
     // implement (edge silhouette pass, MSAA polish, etc.) — not lighting
     // model differences. Key + fill are ~unit-length, ~120° apart.
-    Eigen::Vector3f L( 0.3f,  0.5f, 0.8f); L.normalize();
-    Eigen::Vector3f F(-0.3f, -0.5f, 0.8f); F.normalize();
+    // The ShadingSettings defaults are those values; setShading changes them.
+    const ShadingSettings& sh = shading_;
+    Eigen::Vector3f L(sh.key_dir[0],  sh.key_dir[1],  sh.key_dir[2]);
+    Eigen::Vector3f F(sh.fill_dir[0], sh.fill_dir[1], sh.fill_dir[2]);
+    if (L.squaredNorm() > 0.0f) L.normalize();
+    if (F.squaredNorm() > 0.0f) F.normalize();
     u.light_dir[0] = L.x(); u.light_dir[1] = L.y(); u.light_dir[2] = L.z(); u.light_dir[3] = 0;
     u.fill_dir [0] = F.x(); u.fill_dir [1] = F.y(); u.fill_dir [2] = F.z(); u.fill_dir [3] = 0;
-    u.sky_color   [0] = 0.55f; u.sky_color   [1] = 0.60f; u.sky_color   [2] = 0.70f;
-    u.ground_color[0] = 0.35f; u.ground_color[1] = 0.32f; u.ground_color[2] = 0.28f;
+    for (int i = 0; i < 3; ++i) {
+        u.sky_color[i]    = sh.sky_color[i];
+        u.ground_color[i] = sh.ground_color[i];
+        u.base_color[i]   = sh.base_color[i];
+    }
+    u.shading[0] = float(int(sh.surface));
+    u.shading[1] = sh.linear ? 1.0f : 0.0f;
+    u.shading[2] = sh.exposure;
+    u.shading[3] = float(int(sh.tone_map));
+    u.light_params[0] = sh.key_intensity;
+    u.light_params[1] = sh.fill_intensity;
+    u.light_params[2] = sh.ambient_intensity;
 
     // Pack active section planes. `is_section_clipped` (WGSL) reads
     // u.clip_count and u.clip_planes[0..clip_count) and discards
@@ -1608,6 +1694,7 @@ void ViewportCore::updateFrameUniforms() {
     u.xray_alpha_cap = xray_alpha_cap_;
     u._pad_xray[0] = u._pad_xray[1] = u._pad_xray[2] = 0.0f;
 
+    last_frame_uniforms_ = u;
     wgpuQueueWriteBuffer(queue_, frame_uniform_buffer_, 0, &u, sizeof(u));
 }
 
@@ -1854,7 +1941,10 @@ std::uint64_t ViewportCore::attachmentBytesPerPixel() {
          + 1 * msaa          // selection mask msaa (R8)
          + 1                 // selection mask resolve (R8)
          + 4                 // selection scratch (RGBA8)
-         + 4 + 8 + 16 + 4;   // pick: R32Uint id, RGBA16F normal, RGBA32F position, depth32
+         + 4 + 8 + 16 + 4    // pick: R32Uint id, RGBA16F normal, RGBA32F position, depth32
+         + 1                 // AO: two half-size R8 targets (2 x 1 B / 4 px, rounded up)
+         + 1                 // feature-edge coverage mask (R8)
+         + 2;                // supersampled line accumulator (R16F)
 }
 
 bool ViewportCore::onRequiredAllocationFailed(const char* what, std::uint64_t bytes) {
@@ -5314,6 +5404,7 @@ bool ViewportCore::ensureRenderAttachments(int width_px, int height_px) {
             ensureHizTextures(width_px, height_px);
             ensureSelectionOutlineTextures(width_px, height_px);
             createPickAttachments(width_px, height_px);
+            ensureAoTextures(width_px, height_px);
         },
         [&]() { releaseRenderAttachments(); },
         // Web learns of the failure after the views are already in use:
@@ -5339,6 +5430,7 @@ void ViewportCore::releaseRenderAttachments() {
     releaseHizTextures();
     releaseSelectionOutlineTextures();
     releasePickResources();
+    releaseAoTextures();
 }
 
 void ViewportCore::ensureDepthTexture(int w, int h) {
@@ -5534,6 +5626,11 @@ bool ViewportCore::buildEdgePipeline() {
         Log::warn() << "wgpu edge pipeline creation failed";
         return false;
     }
+    // Feature edges and AO share this entry point so every host builds them.
+    if (!buildPostPipelines()) {
+        Log::warn() << "wgpu post-processing pipelines unavailable; "
+                       "feature edges and ambient occlusion stay off";
+    }
     return true;
 }
 
@@ -5576,6 +5673,7 @@ void ViewportCore::encodeEdgePass(WGPUCommandEncoder enc,
 }
 
 void ViewportCore::releaseEdgeResources() {
+    releasePostResources();
     if (edge_bind_group_)      { wgpuBindGroupRelease(edge_bind_group_);      edge_bind_group_ = nullptr; }
     if (edge_pipeline_)        { wgpuRenderPipelineRelease(edge_pipeline_);   edge_pipeline_ = nullptr; }
     if (edge_shader_module_)   { wgpuShaderModuleRelease(edge_shader_module_);edge_shader_module_ = nullptr; }
@@ -6265,7 +6363,10 @@ void ViewportCore::createPickAttachments(int w, int h) {
     if (pick_depth_texture_)  { wgpuTextureRelease(pick_depth_texture_);  pick_depth_texture_ = nullptr; }
 
     WGPUTextureDescriptor cdesc = {};
-    cdesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
+    // TextureBinding: the same targets are the G-buffer the post passes
+    // (feature edges, AO) read, drawn by encodeGBufferPass.
+    cdesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc
+                        | WGPUTextureUsage_TextureBinding;
     cdesc.dimension     = WGPUTextureDimension_2D;
     cdesc.size.width    = std::uint32_t(w);
     cdesc.size.height   = std::uint32_t(h);
@@ -8223,7 +8324,10 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
     encodeSelectionMaskPass(enc);
 
     // Edge silhouette + HiZ resolve, before the surface-targeted overlays.
-    if (edges_enabled_) encodeEdgePass(enc, view);
+    if (edges_enabled_ && edge_settings_.mode == EdgeMode::Depth) encodeEdgePass(enc, view);
+
+    // G-buffer, ambient occlusion and feature edges, when any are on.
+    encodePostPasses(enc, view, vp_this_frame, interactive);
 
     encodeSelectionOutlinePass(enc, view, dpr_int);
 

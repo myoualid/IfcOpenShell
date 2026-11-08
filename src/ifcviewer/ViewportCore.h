@@ -88,13 +88,17 @@ struct FrameUniforms {
     float clip_planes[kMaxSectionPlanes][4]; // xyz = world-space unit normal, w = plane offset
     float xray_alpha_cap;   // X-ray mode: fragment alpha clamped to min(in.color.a, cap)
     float _pad_xray[3];     // pad to 16-byte alignment so the struct stays vec4-aligned
+    float shading[4];       // x = SurfaceStyle, y = linear (0/1), z = exposure, w = ToneMap
+    float base_color[4];    // xyz = Technical / Clay surface colour (sRGB)
+    float light_params[4];  // x = key, y = fill, z = ambient intensity
 };
 static_assert(sizeof(FrameUniforms)
                   == 16 * sizeof(float)
                    + 4 * 4 * sizeof(float)
                    + 4 * sizeof(int)
                    + kMaxSectionPlanes * 4 * sizeof(float)
-                   + 4 * sizeof(float),
+                   + 4 * sizeof(float)
+                   + 3 * 4 * sizeof(float),
               "FrameUniforms must match WGSL layout");
 
 class ViewportCore {
@@ -326,6 +330,81 @@ public:
         int   timeout_ms = 15000;
     };
     void requestSnapshot(const SnapshotRequest& request);
+
+    // ---- Render modes, shading and post-processing (ViewportPost.cpp) ------
+    //
+    // Three independent groups of settings, all plain uniforms or pass
+    // toggles, so changing any of them costs nothing beyond the next frame:
+    //
+    //   ShadingSettings  how the main pass lights a surface: its colour
+    //                    source (the model's colours, flat technical white,
+    //                    or clay grey; a setColor override always wins), the
+    //                    lights, and whether lighting runs in linear light
+    //                    with exposure and tone mapping (ACES / AgX) or in
+    //                    the legacy gamma-space formula the GL viewer used.
+    //   EdgeSettings     Depth: the soft depth-crease darkening (default).
+    //                    Feature: crisp lines wherever the element changes,
+    //                    the surface folds past `crease_deg`, or an element
+    //                    steps off its own plane (its silhouette over itself).
+    //   AoSettings       screen-space ambient occlusion at half resolution,
+    //                    blurred depth-aware, multiplied over the surface.
+    //
+    // Feature edges and AO read a G-buffer (element id, normal, position)
+    // drawn by the pick pipeline into the pick attachments, which exist at
+    // viewport size already; only the two half-size AO targets are added.
+    // The G-buffer pass costs one extra geometry pass, and only runs while
+    // feature edges or AO are on.
+    //
+    // setRenderMode applies a preset of all three (and X-ray); each group can
+    // still be tuned afterwards.
+    enum class RenderMode { Shaded = 0, ShadedEdges = 1, Technical = 2, Clay = 3, Xray = 4 };
+    enum class SurfaceStyle { Color = 0, Technical = 1, Clay = 2 };
+    enum class ToneMap { None = 0, Aces = 1, AgX = 2 };
+    enum class EdgeMode { Depth = 0, Feature = 1 };
+    struct ShadingSettings {
+        SurfaceStyle surface = SurfaceStyle::Color;
+        float base_color[3] = { 0.96f, 0.96f, 0.96f };  // sRGB, Technical / Clay
+        bool  linear = false;          // linear light + exposure + tone map
+        float exposure = 1.0f;         // linear only
+        ToneMap tone_map = ToneMap::Aces;  // linear only
+        float key_dir[3]  = {  0.3f,  0.5f, 0.8f };  // toward the light, world
+        float fill_dir[3] = { -0.3f, -0.5f, 0.8f };
+        float key_intensity  = 0.7f;
+        float fill_intensity = 0.245f;
+        float ambient_intensity = 1.0f;
+        float sky_color[3]    = { 0.55f, 0.60f, 0.70f };  // sRGB hemisphere ambient
+        float ground_color[3] = { 0.35f, 0.32f, 0.28f };
+    };
+    struct EdgeSettings {
+        bool     enabled = true;
+        EdgeMode mode    = EdgeMode::Depth;
+        float    color[3] = { 0.0f, 0.0f, 0.0f };  // sRGB, Feature only
+        float    opacity  = 1.0f;                   // Feature only
+        float    width_px = 1.0f;                   // CSS px, Feature only
+        float    crease_deg = 30.0f;                // Feature only
+        // Feature only: smooth the lines. While the view moves, FXAA over a
+        // line-coverage mask; once it holds still, the masks of kLineSamples
+        // sub-pixel-jittered G-buffer samples accumulate into true coverage.
+        // Off draws them aliased, straight onto the image.
+        bool     antialias = true;
+    };
+    struct AoSettings {
+        bool  enabled   = false;
+        float radius    = 0.0f;   // world units (metres); <= 0 follows the view distance
+        float intensity = 1.0f;
+        float bias      = 0.03f;  // fraction of the radius
+    };
+    // Feature lines are supersampled from this many jittered G-buffer samples
+    // once the view holds still (EdgeSettings::antialias).
+    static constexpr int kLineSamples = 16;
+    void setRenderMode(RenderMode mode);
+    RenderMode renderMode() const { return render_mode_; }
+    void setShading(const ShadingSettings& s);
+    const ShadingSettings& shading() const { return shading_; }
+    void setEdges(const EdgeSettings& e);
+    const EdgeSettings& edges() const { return edge_settings_; }
+    void setAmbientOcclusion(const AoSettings& a);
+    const AoSettings& ambientOcclusion() const { return ao_settings_; }
 
     // Frame the current selection: union the selected objects' world AABBs and
     // fit the camera to them (same 1.30 padding as the desktop "F" hotkey).
@@ -1411,6 +1490,56 @@ private:
     WGPURenderPipeline  edge_pipeline_        = nullptr;
     WGPUBindGroup       edge_bind_group_      = nullptr;
     bool                edges_enabled_        = true;
+
+    // Render-mode state and the post-processing pipelines (ViewportPost.cpp).
+    // One shader module and bind-group layout serve all four passes; bind
+    // groups are made per frame, since they name the per-pixel attachments.
+    RenderMode          render_mode_   = RenderMode::Shaded;
+    ShadingSettings     shading_;
+    EdgeSettings        edge_settings_;
+    AoSettings          ao_settings_;
+    WGPUShaderModule    post_shader_module_     = nullptr;
+    WGPUBindGroupLayout post_bgl_               = nullptr;
+    WGPUPipelineLayout  post_pipeline_layout_   = nullptr;
+    WGPURenderPipeline  feature_edge_pipeline_  = nullptr;
+    WGPURenderPipeline  edge_mask_pipeline_     = nullptr;
+    WGPURenderPipeline  edge_aa_pipeline_       = nullptr;
+    WGPUTexture         edge_mask_texture_      = nullptr;
+    WGPUTextureView     edge_mask_view_         = nullptr;
+    WGPURenderPipeline  edge_accum_pipeline_    = nullptr;
+    WGPURenderPipeline  edge_resolve_pipeline_  = nullptr;
+    WGPUTexture         line_accum_texture_     = nullptr;
+    WGPUTextureView     line_accum_view_        = nullptr;
+    WGPUBuffer          line_sample_uniforms_[kLineSamples] = {};
+    // Accumulated samples, and what they were taken for: a change to either
+    // restarts the accumulation.
+    int                 line_accum_count_ = 0;
+    std::uint64_t       line_accum_epoch_ = 0;
+    FrameUniforms       line_accum_frame_ = {};
+    // The frame uniforms updateFrameUniforms last wrote; line samples copy
+    // them with a jittered view_proj.
+    FrameUniforms       last_frame_uniforms_ = {};
+    WGPURenderPipeline  ao_pipeline_            = nullptr;
+    WGPURenderPipeline  ao_blur_pipeline_       = nullptr;
+    WGPURenderPipeline  ao_composite_pipeline_  = nullptr;
+    WGPUBuffer          post_uniform_buffer_    = nullptr;
+    WGPUSampler         post_sampler_           = nullptr;
+    WGPUTexture         ao_texture_[2]          = { nullptr, nullptr };
+    WGPUTextureView     ao_view_[2]             = { nullptr, nullptr };
+    int                 ao_w_ = 0;
+    int                 ao_h_ = 0;
+    bool buildPostPipelines();
+    void releasePostResources();
+    void ensureAoTextures(int w, int h);
+    void releaseAoTextures();
+    // The G-buffer is drawn when feature edges or AO need it.
+    bool gbufferWanted() const;
+    void encodeGBufferPass(WGPUCommandEncoder enc, WGPUBindGroup frame_group);
+    // G-buffer, AO and feature edges into `view`, after the main pass.
+    // `interactive` accumulates line samples across frames; otherwise (a
+    // snapshot tile) they are all taken now.
+    void encodePostPasses(WGPUCommandEncoder enc, WGPUTextureView view,
+                          const Eigen::Matrix4f& vp, bool interactive);
 
     // Selection silhouette outline. The mask is rendered multisampled so it
     // can share the main depth attachment, then resolved; the scratch holds

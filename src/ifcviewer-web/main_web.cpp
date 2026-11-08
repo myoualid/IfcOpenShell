@@ -847,6 +847,93 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_background_c(float r, float g,
     g_app->core.setBackgroundColor(r, g, b, a);
 }
 
+// ---- Render modes, shading, edges, ambient occlusion ----------------------
+// See ViewportCore::setRenderMode. Settings cross as flat float arrays so a
+// partial update can be merged on the JS side (get, patch, set):
+//   shading: [surface, base r, g, b, linear, exposure, tone_map,
+//             key dir x, y, z, fill dir x, y, z,
+//             key, fill, ambient intensity, sky r, g, b, ground r, g, b]  (22)
+//   edges:   [enabled, mode, r, g, b, opacity, width_px, crease_deg,
+//             antialias]                                                     (9)
+//   ao:      [enabled, radius, intensity, bias]                            (4)
+// Mode: 0 shaded, 1 shaded + edges, 2 technical, 3 clay, 4 x-ray.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_render_mode_c(int mode) {
+    if (!g_app || !g_app->ready || mode < 0 || mode > 4) return;
+    g_app->core.setRenderMode(ViewportCore::RenderMode(mode));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_render_mode_c() {
+    return (g_app && g_app->ready) ? int(g_app->core.renderMode()) : 0;
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shading_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::ShadingSettings& s = g_app->core.shading();
+    const float v[22] = {
+        float(int(s.surface)), s.base_color[0], s.base_color[1], s.base_color[2],
+        s.linear ? 1.0f : 0.0f, s.exposure, float(int(s.tone_map)),
+        s.key_dir[0], s.key_dir[1], s.key_dir[2],
+        s.fill_dir[0], s.fill_dir[1], s.fill_dir[2],
+        s.key_intensity, s.fill_intensity, s.ambient_intensity,
+        s.sky_color[0], s.sky_color[1], s.sky_color[2],
+        s.ground_color[0], s.ground_color[1], s.ground_color[2],
+    };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_shading_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::ShadingSettings s;
+    s.surface = ViewportCore::SurfaceStyle(std::clamp(int(v[0]), 0, 2));
+    for (int i = 0; i < 3; ++i) {
+        s.base_color[i]   = v[1 + i];
+        s.key_dir[i]      = v[7 + i];
+        s.fill_dir[i]     = v[10 + i];
+        s.sky_color[i]    = v[16 + i];
+        s.ground_color[i] = v[19 + i];
+    }
+    s.linear   = v[4] != 0.0f;
+    s.exposure = v[5];
+    s.tone_map = ViewportCore::ToneMap(std::clamp(int(v[6]), 0, 2));
+    s.key_intensity     = v[13];
+    s.fill_intensity    = v[14];
+    s.ambient_intensity = v[15];
+    g_app->core.setShading(s);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_edges_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::EdgeSettings& e = g_app->core.edges();
+    const float v[9] = { e.enabled ? 1.0f : 0.0f, float(int(e.mode)),
+                         e.color[0], e.color[1], e.color[2],
+                         e.opacity, e.width_px, e.crease_deg,
+                         e.antialias ? 1.0f : 0.0f };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_edges_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::EdgeSettings e;
+    e.enabled = v[0] != 0.0f;
+    e.mode    = ViewportCore::EdgeMode(std::clamp(int(v[1]), 0, 1));
+    for (int i = 0; i < 3; ++i) e.color[i] = v[2 + i];
+    e.opacity    = v[5];
+    e.width_px   = v[6];
+    e.crease_deg = v[7];
+    e.antialias  = v[8] != 0.0f;
+    g_app->core.setEdges(e);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_ao_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::AoSettings& a = g_app->core.ambientOcclusion();
+    const float v[4] = { a.enabled ? 1.0f : 0.0f, a.radius, a.intensity, a.bias };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_ao_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::AoSettings a;
+    a.enabled   = v[0] != 0.0f;
+    a.radius    = v[1];
+    a.intensity = v[2];
+    a.bias      = v[3];
+    g_app->core.setAmbientOcclusion(a);
+}
+
 // Offscreen snapshot at width × height device pixels. use_view_background 0
 // clears with (r, g, b, a) instead (sRGB in [0..1]; a = 0 is transparent).
 // Rows and completion come back through Module.__ifcvOnSnapshotRows /
