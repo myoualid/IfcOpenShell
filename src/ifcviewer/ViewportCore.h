@@ -61,6 +61,8 @@
 #include "Stopwatch.h"
 #include "IfcViewReader.h"
 #include "StreamingThread.h"
+#include "TileWorld.h"
+#include "TileWorldRenderer.h"
 #include "ViewportHost.h"
 #include "VisibilityState.h"
 
@@ -1119,6 +1121,11 @@ public:
     // Sparse RGB axis-aligned line grids (XY / XZ / YZ). A default "base" grid
     // is created at init. setGridVisible is the master switch; upsert replaces
     // a grid with the same id or adds a new one.
+    // 2D tile-world mode. While the world is enabled, render() skips the 3D
+    // scene entirely and draws the tile world instead (see TileWorld.h).
+    tw::TileWorld&          tileWorld()         { return tile_world_; }
+    TileWorldRenderer&      tileWorldRenderer() { return tile_renderer_; }
+
     void setGridVisible(bool visible);
     bool gridVisible() const;
     void toggleGrid();
@@ -1402,6 +1409,10 @@ private:
     // web. Same lift out of the Qt-coupled OverlayRenderer.
     AxisIndicatorRenderer axis_indicator_;
     GridHelperRenderer    grid_helper_;
+    tw::TileWorld         tile_world_;
+    TileWorldRenderer     tile_renderer_;
+    double                tile_last_ms_ = -1.0;
+    bool renderTileWorld(WGPUTextureView view, WGPUTexture texture);
     ViewportFog           fog_;
     bool                  fog_enabled_      = true;
     int                   fog_mode_         = 1;      // 1 linear, 2 exp2

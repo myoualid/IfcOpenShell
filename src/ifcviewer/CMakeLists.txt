@@ -142,6 +142,8 @@ set(IFCVIEWER_CORE_SOURCES
     AxisIndicatorRenderer.cpp
     BufferPool.cpp
     GridHelperRenderer.cpp
+    TileWorld.cpp
+    TileWorldRenderer.cpp
     ViewportFog.cpp
     ChunkPlanner.cpp
     InstanceCompose.cpp
@@ -198,6 +200,8 @@ set(IFCVIEWER_CORE_HEADERS
     AxisIndicatorRenderer.h
     BufferPool.h
     GridHelperRenderer.h
+    TileWorld.h
+    TileWorldRenderer.h
     ViewportFog.h
     ViewportFogWgsl.h
     ViewportGridSpec.h

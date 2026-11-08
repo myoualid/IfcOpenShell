@@ -235,6 +235,7 @@ NavKind classifyPress(const ViewportCore::NavBindings& b, int em_button,
 }
 
 EM_BOOL onMouseDown(int, const EmscriptenMouseEvent* e, void* user) {
+    if (static_cast<AppState*>(user)->core.tileWorld().enabled()) return EM_FALSE;
     auto* app = static_cast<AppState*>(user);
     // In fly mode a click exits (matches the desktop app).
     if (app->fly_mode) { setFlyMode(app, false); return EM_TRUE; }
@@ -373,6 +374,7 @@ EM_BOOL onMouseUp(int, const EmscriptenMouseEvent* e, void* user) {
 }
 
 EM_BOOL onWheel(int, const EmscriptenWheelEvent* e, void* user) {
+    if (static_cast<AppState*>(user)->core.tileWorld().enabled()) return EM_FALSE;
     auto* app = static_cast<AppState*>(user);
     if (!app->ready) return EM_FALSE;
 
@@ -426,6 +428,28 @@ void setFlyMode(AppState* app, bool on) {
     app->host.requestFrame();
 }
 
+// Tile-world joypad: arrows / WASD move, Z / Space / Enter = A, X / Shift = B
+// (hold to run). Returns true when the key belongs to the game.
+// Off when a host page owns the keyboard (several apps share one window):
+// it then feeds buttons through tw_set_buttons_c from its own focused element.
+bool g_tw_native_keys = true;
+
+bool tileWorldKey(AppState* app, const char* code, bool down) {
+    using namespace tw;
+    if (!g_tw_native_keys) return false;
+    uint32_t bit = 0;
+    if      (!std::strcmp(code, "ArrowUp")    || !std::strcmp(code, "KeyW")) bit = BtnUp;
+    else if (!std::strcmp(code, "ArrowDown")  || !std::strcmp(code, "KeyS")) bit = BtnDown;
+    else if (!std::strcmp(code, "ArrowLeft")  || !std::strcmp(code, "KeyA")) bit = BtnLeft;
+    else if (!std::strcmp(code, "ArrowRight") || !std::strcmp(code, "KeyD")) bit = BtnRight;
+    else if (!std::strcmp(code, "KeyZ") || !std::strcmp(code, "Space") || !std::strcmp(code, "Enter")) bit = BtnA;
+    else if (!std::strcmp(code, "KeyX") || !std::strcmp(code, "ShiftLeft") || !std::strcmp(code, "ShiftRight")) bit = BtnB;
+    if (!bit) return false;
+    TileWorld& world = app->core.tileWorld();
+    world.setButtons(down ? (world.buttons() | bit) : (world.buttons() & ~bit));
+    return true;
+}
+
 // Viewport hotkeys, matching the desktop bindings (ViewportWindow):
 //   Home view all · F zoom to selected · P ortho/persp · X/Y/Z (+Shift) views
 //   Shift+F enter fly · Esc exit fly · while flying: W/A/S/D/Q/E held + Shift.
@@ -433,6 +457,7 @@ EM_BOOL onKeyDown(int, const EmscriptenKeyboardEvent* e, void* user) {
     auto* app = static_cast<AppState*>(user);
     if (!app->ready) return EM_FALSE;
     const char* code = e->code;
+    if (app->core.tileWorld().enabled()) return tileWorldKey(app, code, true) ? EM_TRUE : EM_FALSE;
     const bool  shift = e->shiftKey;
     // Shift+F toggles fly; Esc leaves it.
     if (!std::strcmp(code, "KeyF") && shift && !e->repeat) { setFlyMode(app, !app->fly_mode); return EM_TRUE; }
@@ -483,6 +508,7 @@ EM_BOOL onKeyDown(int, const EmscriptenKeyboardEvent* e, void* user) {
 
 EM_BOOL onKeyUp(int, const EmscriptenKeyboardEvent* e, void* user) {
     auto* app = static_cast<AppState*>(user);
+    if (app->core.tileWorld().enabled()) return tileWorldKey(app, e->code, false) ? EM_TRUE : EM_FALSE;
     return setFlyKey(app, e->code, false) ? EM_TRUE : EM_FALSE;
 }
 
@@ -1296,6 +1322,133 @@ extern "C" EMSCRIPTEN_KEEPALIVE double ifcv_model_vram_bytes_c(int source_id) {
         bytes += double(g_app->core.modelVramBytes(session_model_id));
     }
     return bytes;
+}
+
+// ---- Tile world -------------------------------------------------------------
+// A 2D grid-locked adventure layer drawn instead of the 3D scene while enabled.
+// See src/ifcviewer/TileWorld.h for the model; web/tileworld.js wraps these.
+
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_enable_c(int on) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setEnabled(on != 0);
+    g_app->core.tileWorld().setButtons(0);
+    g_app->host.requestFrame();
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_screen_c(int w, int h, int tile_px) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setTileSize(tile_px);
+    g_app->core.tileWorld().setScreen(w, h);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_atlas_c(const std::uint8_t* rgba, int w, int h) {
+    if (!g_app || !g_app->ready) return;
+    g_app->core.tileWorldRenderer().setAtlas(rgba, w, h);
+    g_app->core.tileWorld().setAtlasSize(w, h);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_map_c(int w, int h, const std::uint16_t* ground,
+                                                  const std::uint16_t* fg, const std::uint8_t* flags,
+                                                  int border_tile) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setMap(w, h, ground, fg, flags, std::uint16_t(border_tile));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_cell_c(int x, int y, int ground, int fg, int flags) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setCell(x, y, std::uint16_t(ground), std::uint16_t(fg), std::uint8_t(flags));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_region_c(int x, int y, int w, int h, int border_tile) {
+    if (g_app) g_app->core.tileWorld().setRegion(x, y, w, h, std::uint16_t(border_tile));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_tile_anim_c(int base, int frames, int period) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setTileAnimation(std::uint16_t(base), frames, period);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int tw_spawn_actor_c(int x, int y, int sprite_base, int facing, int behavior) {
+    if (!g_app) return -1;
+    return g_app->core.tileWorld().spawnActor(x, y, sprite_base, tw::Dir(facing & 3),
+                                              tw::Behavior(std::clamp(behavior, 0, 2)));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_clear_actors_c() {
+    if (g_app) g_app->core.tileWorld().clearActors();
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_add_warp_c(int sx, int sy, int dx, int dy, int facing) {
+    if (g_app) g_app->core.tileWorld().addWarp(tw::Warp{sx, sy, dx, dy, tw::Dir(facing & 3)});
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_clear_warps_c() {
+    if (g_app) g_app->core.tileWorld().clearWarps();
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_teleport_c(int x, int y, int facing) {
+    if (g_app) g_app->core.tileWorld().teleportPlayer(x, y, tw::Dir(facing & 3));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_buttons_c(int buttons) {
+    if (g_app) g_app->core.tileWorld().setButtons(std::uint32_t(buttons));
+}
+// opts: 0 camera mode (0 follow, 1 snap), 1 clamp, 2 palette (0 original,
+// 1 green, 2 grey), 3 LCD grid, 4 collision debug, 5 sprite lift px, 6 shadow
+// tile, 7 paused, 8 native keyboard (window-wide keys), 9 fixed zoom scale
+// (0 = fit 160x144, and the screen goes back to 160x144)
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_option_c(int key, int value) {
+    if (!g_app) return;
+    tw::TileWorld& w = g_app->core.tileWorld();
+    TileWorldRenderer& r = g_app->core.tileWorldRenderer();
+    switch (key) {
+        case 0: w.setCameraMode(value ? tw::CameraMode::Snap : tw::CameraMode::Follow); break;
+        case 1: w.setCameraClamp(value != 0); break;
+        case 2: r.setPalette(value); break;
+        case 3: r.setLcdGrid(value != 0); break;
+        case 4: w.setDebugCollision(value != 0); break;
+        case 5: w.setSpriteLift(value); break;
+        case 6: w.setShadowTile(value); break;
+        case 7: w.setPaused(value != 0); break;
+        case 8: g_tw_native_keys = (value != 0); if (!value) w.setButtons(0); break;
+        case 9: r.setFixedScale(value); if (value <= 0) w.setScreen(160, 144); break;
+        default: break;
+    }
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_place_actor_c(int index, int x, int y, int facing,
+                                                      int behavior, int radius) {
+    if (!g_app) return;
+    g_app->core.tileWorld().placeActor(index, x, y, tw::Dir(facing & 3),
+                                       tw::Behavior(std::clamp(behavior, 0, 2)), radius);
+}
+// out[5*max]: per actor cx, cy, pixel x, pixel y, facing. Returns the count.
+extern "C" EMSCRIPTEN_KEEPALIVE int tw_get_actors_c(int* out, int max) {
+    if (!g_app || !out) return 0;
+    const tw::TileWorld& w = g_app->core.tileWorld();
+    const auto& actors = w.actors();
+    const int n = std::min(int(actors.size()), max);
+    for (int i = 0; i < n; ++i) {
+        int px, py;
+        w.actorPixelPos(i, px, py);
+        out[i * 5 + 0] = actors[size_t(i)].cx;
+        out[i * 5 + 1] = actors[size_t(i)].cy;
+        out[i * 5 + 2] = px;
+        out[i * 5 + 3] = py;
+        out[i * 5 + 4] = int(actors[size_t(i)].facing);
+    }
+    return n;
+}
+// out[8]: scale, offset x, offset y (device px), native screen w, h, tile px,
+// map w, map h. With the camera from tw_get_state_c, world pixel (x, y) lands
+// at offset + (x - cam) * scale in canvas backing-store pixels.
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_get_view_c(int* out) {
+    if (!g_app || !out) return;
+    const tw::TileWorld& w = g_app->core.tileWorld();
+    const TileWorldRenderer::View v = g_app->core.tileWorldRenderer().lastView();
+    out[0] = v.scale; out[1] = v.offset_x; out[2] = v.offset_y;
+    out[3] = w.screenW(); out[4] = w.screenH(); out[5] = w.tileSize();
+    out[6] = w.mapW(); out[7] = w.mapH();
+}
+
+// out[10]: cx, cy, facing, moving, cam_x, cam_y, cell flags, steps taken,
+// event mask (1 << tw::Event) since the previous call, last actor talked to.
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_get_state_c(int* out) {
+    if (!g_app || !out) return;
+    tw::TileWorld& w = g_app->core.tileWorld();
+    const tw::PlayerState s = w.playerState();
+    int talked = -1;
+    const std::uint32_t events = w.takeEvents(talked);
+    out[0] = s.cx; out[1] = s.cy; out[2] = s.facing; out[3] = s.moving ? 1 : 0;
+    out[4] = s.cam_x; out[5] = s.cam_y; out[6] = s.cell_flags; out[7] = s.steps_taken;
+    out[8] = int(events); out[9] = talked;
 }
 
 int main(int /*argc*/, char** /*argv*/) {
