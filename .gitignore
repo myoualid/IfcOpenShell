@@ -142,4 +142,13 @@ CLAUDE.local.md
 /src/bonsaiviewer-autodesk/build/
 /src/bonsaiviewer-autodesk/dist/
 
+# Python-to-TypeScript transpilation (src/transpiler): written by generate.py and
+# parity/record.py; not committed.
+/src/ts/ifcopenshell-js/src/python/util/
+/src/ts/ifcopenshell-js/src/python/api/
+/src/ts/ifcopenshell-js/src/python/transpile.json
+/src/transpiler/parity/golden/
+/src/transpiler/parity/results.json
+/src/transpiler/TRACKING.md
+
 build-web/
