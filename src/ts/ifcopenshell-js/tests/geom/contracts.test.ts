@@ -27,7 +27,7 @@ describeOrSkip('native geometry iterator contract', () => {
       createIteratorWithIncludeExclude: vi.fn(runtime.raw.geom.createIteratorWithIncludeExclude),
     };
     const testRuntime = { ...runtime, loadPlugin: vi.fn(), raw: { ...runtime.raw, geom } };
-    vi.spyOn(runtimeModule, 'ifcopenshell', 'get').mockReturnValue(testRuntime.raw);
+    vi.spyOn(runtimeModule, 'nativeModule').mockReturnValue(testRuntime.raw);
     const file = new makeFile('IFC4');
     return { geom, runtime: testRuntime, file };
   }
