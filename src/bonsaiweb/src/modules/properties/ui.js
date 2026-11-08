@@ -145,7 +145,7 @@ class PropertiesPanelUI {
 		this.context = context;
 		this._entity = new SummaryCard( { icon: 'deployed_code' } );
 		this._attributes = new GridSection( 'Attributes', 'No attributes' );
-		this._relationships = new GridSection( 'Relationships', 'No relationships' );
+		this._relationships = new GridSection( 'Relationships', 'No type or storey' );
 		this._psets = new SetSection( 'Properties', {
 			emptyText: 'No properties',
 			noMatchText: 'No matching properties',

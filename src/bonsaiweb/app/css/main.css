@@ -5,6 +5,10 @@
 	display: none !important;
 }
 
+.Operator:hover	 {
+	cursor: pointer;
+}
+
 #RibbonBar .RibbonSearch {
 	align-self: center;
 	box-sizing: border-box;
@@ -89,6 +93,22 @@ body {
 .FloatingDialog.SettingsDialog > .PanelContent > .TabView .TabView-content {
 	flex: 0 1 auto;
 	min-height: 0;
+}
+
+/* Controls tab: action on the left, its keys on the right. */
+.SettingsShortcut {
+	justify-content: space-between;
+	min-height: 1.6rem;
+}
+
+.SettingsShortcut-keys {
+	align-items: center;
+	color: var(--dui-color-text-muted);
+	display: inline-flex;
+	flex-wrap: wrap;
+	font-size: 0.7rem;
+	gap: 0.25rem;
+	justify-content: flex-end;
 }
 
 /* Left dock: scroll lists inside an open panel. Collapse hides .PanelContent;
@@ -317,6 +337,277 @@ body {
 
 #measure-overlay[hidden] {
 	display: none;
+}
+
+/* Viewport shading cluster: a floating glass pill with a layers-style panel. */
+.ViewportShading {
+	--vs-glass: color-mix(in srgb, var(--dui-color-bg) 72%, transparent);
+	--vs-soft: color-mix(in srgb, var(--dui-color-text) 7%, transparent);
+	--vs-softer: color-mix(in srgb, var(--dui-color-text) 12%, transparent);
+	--vs-accent-soft: color-mix(in srgb, var(--dui-color-accent) 18%, transparent);
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	z-index: 7;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 4px;
+	border: 1px solid color-mix(in srgb, var(--dui-color-text) 10%, transparent);
+	border-radius: 999px;
+	background: var(--vs-glass);
+	backdrop-filter: blur(14px) saturate(140%);
+	-webkit-backdrop-filter: blur(14px) saturate(140%);
+	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+	color: var(--dui-color-text-muted);
+}
+
+.ViewportShading .Operator,
+.ViewportShading-options {
+	appearance: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 999px;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	transition: background-color 0.15s, color 0.15s;
+}
+
+.ViewportShading-options {
+	margin-left: 3px;
+	position: relative;
+}
+
+.ViewportShading-options::before {
+	content: "";
+	position: absolute;
+	left: -3px;
+	top: 8px;
+	bottom: 8px;
+	width: 1px;
+	background: var(--vs-softer);
+}
+
+.ViewportShading-options .material-symbols-outlined {
+	font-size: 19px;
+}
+
+.ViewportShading-glyph,
+.ViewportShading-glyph svg {
+	display: block;
+	width: 18px;
+	height: 18px;
+}
+
+.ViewportShading-glyph .disc {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+}
+
+.ViewportShading .Operator.is-active .disc,
+.ViewportShading-item.is-active .disc {
+	fill: currentColor;
+	stroke: none;
+}
+
+.ViewportShading .Operator:hover,
+.ViewportShading-options:hover,
+.ViewportShading-options[aria-expanded="true"] {
+	background: var(--vs-soft);
+	color: var(--dui-color-text);
+}
+
+.ViewportShading .Operator.is-active,
+.ViewportShading-options.is-active {
+	background: var(--dui-color-accent);
+	color: var(--dui-color-bg);
+}
+
+.ViewportShading :focus-visible {
+	outline: 2px solid var(--dui-color-accent);
+	outline-offset: 1px;
+}
+
+.ViewportShading-menu {
+	position: absolute;
+	top: calc(100% + 8px);
+	right: 0;
+	display: flex;
+	flex-direction: column;
+	width: 264px;
+	padding: 12px;
+	border: 1px solid color-mix(in srgb, var(--dui-color-text) 10%, transparent);
+	border-radius: 16px;
+	background: color-mix(in srgb, var(--dui-color-bg) 94%, transparent);
+	backdrop-filter: blur(18px) saturate(140%);
+	-webkit-backdrop-filter: blur(18px) saturate(140%);
+	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+	color: var(--dui-color-text);
+	transform-origin: top right;
+	animation: vs-pop 0.14s ease-out;
+}
+
+@keyframes vs-pop {
+	from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+}
+
+.ViewportShading-menu[hidden] {
+	display: none;
+}
+
+.ViewportShading-heading {
+	margin: 0 2px 8px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--dui-color-text-muted);
+}
+
+.ViewportShading-heading:not(:first-child) {
+	margin-top: 14px;
+}
+
+.ViewportShading-tiles {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 10px;
+}
+
+.ViewportShading-item,
+.ViewportShading-action {
+	appearance: none;
+	margin: 0;
+	border: 0;
+	font: inherit;
+	cursor: pointer;
+}
+
+/* Map-type style tiles: a preview square with the label underneath. */
+.ViewportShading-item {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 6px;
+	min-width: 0;
+	padding: 0;
+	background: transparent;
+	color: var(--dui-color-text-muted);
+	font-size: 12px;
+	line-height: 1.2;
+	text-align: center;
+	white-space: nowrap;
+}
+
+.ViewportShading-preview {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	aspect-ratio: 16 / 10;
+	border: 2px solid transparent;
+	border-radius: 12px;
+	background: var(--vs-soft);
+	color: var(--dui-color-text);
+	transition: border-color 0.15s, background-color 0.15s;
+}
+
+.ViewportShading-preview .ViewportShading-glyph,
+.ViewportShading-preview .ViewportShading-glyph svg {
+	width: 28px;
+	height: 28px;
+}
+
+.ViewportShading-item:hover .ViewportShading-preview {
+	background: var(--vs-softer);
+}
+
+.ViewportShading-item.is-active {
+	color: var(--dui-color-accent);
+	font-weight: 600;
+}
+
+.ViewportShading-item.is-active .ViewportShading-preview {
+	border-color: var(--dui-color-accent);
+	background: var(--vs-accent-soft);
+	color: var(--dui-color-accent);
+}
+
+/* Settings-style rows with a switch on the right. */
+.ViewportShading-check {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	min-height: 36px;
+	padding: 0 4px;
+	border-radius: 8px;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.ViewportShading-check input {
+	appearance: none;
+	position: relative;
+	flex: none;
+	width: 34px;
+	height: 20px;
+	margin: 0;
+	border-radius: 999px;
+	background: var(--vs-softer);
+	cursor: pointer;
+	transition: background-color 0.18s;
+}
+
+.ViewportShading-check input::after {
+	content: "";
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: #fff;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+	transition: transform 0.18s;
+}
+
+.ViewportShading-check input:checked {
+	background: var(--dui-color-accent);
+}
+
+.ViewportShading-check input:checked::after {
+	transform: translateX(14px);
+}
+
+.ViewportShading-action {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	margin-top: 12px;
+	height: 34px;
+	border-radius: 10px;
+	background: var(--vs-soft);
+	color: var(--dui-color-text);
+	font-size: 13px;
+	transition: background-color 0.15s;
+}
+
+.ViewportShading-action .material-symbols-outlined {
+	font-size: 18px;
+}
+
+.ViewportShading-action:hover {
+	background: var(--vs-softer);
 }
 
 #Footer .StatusBar {
@@ -626,6 +917,113 @@ body {
 .bonsai-completions .Button.is-active,
 .bonsai-completions .Button:hover {
 	background: var(--dui-color-surface-selected);
+}
+
+/* Command bar: AutoCAD-style command line floating over the viewport. */
+.bonsai-commandbar {
+	position: absolute;
+	left: 50%;
+	bottom: 1.5rem;
+	transform: translateX(-50%);
+	width: min(40rem, calc(100% - 32px));
+	z-index: 20;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-family: var(--dui-font-mono);
+}
+
+.bonsai-commandbar.is-fixed {
+	position: fixed;
+}
+
+.bonsai-commandbar[hidden],
+.bonsai-commandbar-menu[hidden] {
+	display: none;
+}
+
+.bonsai-commandbar-menu {
+	background: var(--dui-color-surface-raised);
+	border: 1px solid var(--dui-color-border-strong);
+	border-radius: var(--dui-radius);
+	box-shadow: var(--dui-shadow-overlay);
+	max-height: 16rem;
+	overflow: auto;
+	padding: 4px 0;
+}
+
+.bonsai-commandbar-item {
+	display: flex;
+	align-items: baseline;
+	gap: 0.75rem;
+	padding: 3px 10px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.bonsai-commandbar-item.is-active,
+.bonsai-commandbar-item:hover {
+	background: var(--dui-color-surface-selected);
+}
+
+.bonsai-commandbar-name {
+	color: var(--dui-color-text);
+}
+
+.bonsai-commandbar-detail {
+	color: var(--dui-color-text-muted);
+	font-family: var(--dui-font-ui);
+}
+
+.bonsai-commandbar-signature {
+	color: var(--dui-color-text-subtle);
+	margin-left: auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+.bonsai-commandbar-hint {
+	color: var(--dui-color-text-muted);
+	padding: 0 10px;
+	min-height: 1em;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+}
+
+.bonsai-commandbar-line {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	background: var(--dui-color-surface-raised);
+	border: 1px solid var(--dui-color-border-strong);
+	border-radius: var(--dui-radius);
+	box-shadow: var(--dui-shadow-overlay);
+	padding: 4px 10px;
+}
+
+.bonsai-commandbar-prompt {
+	color: var(--dui-color-accent);
+}
+
+.bonsai-commandbar-line .InputText {
+	flex: 1;
+	min-width: 0;
+	background: transparent;
+	border: 0;
+	font-family: var(--dui-font-mono);
+}
+
+.bonsai-commandbar-result {
+	color: var(--dui-color-info);
+	padding: 0 10px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+}
+
+.bonsai-commandbar-result.is-error {
+	color: var(--dui-color-danger);
 }
 
 /* Dropbox file manager: details view in the left workspace. */

@@ -11,6 +11,7 @@ app/headless.html       viewer    → dist/bonsai.js                (Bonsai)
 src/
   index.js              Bonsai: context, operator registration, viewer boot
   gui.js                Shell: layout, ribbon, panel dialog, progress bar
+  addons.js             configuration.app.Addons: register operators, merge ribbon
   assets.js             CDN URLs for the viewer scripts, zstd, and es-module-shims
   ops.js                Operator, Ops, the ops singleton, Ctrl+Z / Ctrl+Y
   context/
@@ -184,6 +185,8 @@ A panel class has a static `id` (the module id) and a static `spec` (group, posi
 | `properties` | None. The panel follows the selection. | Right: attributes, relationships, psets, qtos |
 | `viewer` | Camera, navigation, visibility, colour, federation | None. The ribbon and other modules call these. |
 | `code.terminal` | Show, new session, clear, close session | Bottom: a JavaScript REPL |
+
+Addons are modules that live outside the package. `configuration.app.Addons` lists them as `{ id, operators, ui, ribbon }`. `src/addons.js` registers their operators from `new Bonsai`, and `Shell` merges their ribbon into its configuration and mounts their panels after the built-in ones. See [api-structure.md](api-structure.md#addons).
 
 The spatial tree calls `getSpatialDecomposition` only when the model record has a live file. Until `liveIfcReady`, that panel has the model root and no storeys. The properties panel fills GlobalId in both modes, and fills attributes and property sets once an entity exists.
 

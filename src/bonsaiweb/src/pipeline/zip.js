@@ -239,12 +239,14 @@ export function writeStoredZip( files ) {
 		cursor += part.byteLength;
 
 	}
+
 	for ( const part of centralParts ) {
 
 		out.set( part, cursor );
 		cursor += part.byteLength;
 
 	}
+
 	out.set( eocd, cursor );
 	return out;
 

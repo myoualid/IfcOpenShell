@@ -13,7 +13,6 @@ export const defaultWorkMode = 'Project';
 
 export const workModes = [
 	{ id: 'Project', name: 'Project' },
-	{ id: 'Georeferencing', name: 'Georeferencing' },
 	{ id: 'Navigate', name: 'Navigate' },
 	{ id: 'View', name: 'View' },
 	{ id: 'Panels', name: 'Panels' },
@@ -56,18 +55,19 @@ export const ribbonButtons = [
 		button( 'RB_Profiler', 'Profiler', 'speed', 'Profiler.Toggle' ),
 	] ),
 
-	group( 'RG_Georeferencing', 'Survey', 'Georeferencing', [
-		button( 'RB_SurveyPoint', 'Survey point', 'my_location', 'Georeferencing.Toggle' ),
-	] ),
-
-	group( 'RG_Project', 'Set up', 'Project', [
-		button( 'RB_NewProject', 'New model', 'note_add', 'Project.New' ),
-		button( 'RB_LoadSample', 'Load sample', 'draft', 'Project.LoadSample' ),
-	] ),
 	group( 'RG_ProjectActions', 'Project', 'Project', [
 		button( 'RB_LoadIfc', 'Open', 'folder_open', 'Project.OpenFile' ),
 		button( 'RB_SaveProject', 'Save', 'download', 'Project.Download' ),
 		button( 'RB_ClearAll', 'Clear', 'clear', 'Project.Clear' ),
+	] ),
+
+	group( 'RG_Project', 'Models', 'Project', [
+		button( 'RB_NewProject', 'New model', 'note_add', 'Project.New' ),
+		button( 'RB_LoadSample', 'Load sample', 'draft', 'Project.LoadSample' ),
+	] ),
+
+	group( 'RG_Georeferencing', 'Federation', 'Project', [
+		button( 'RB_Federation', 'Federation', 'my_location', 'Georeferencing.Toggle' ),
 	] ),
 	group( 'RG_Settings', 'Settings', 'Project', [
 		button( 'RB_Dropbox', 'Dropbox', 'cloud', 'Dropbox.Toggle' ),
@@ -89,29 +89,10 @@ export const ribbonButtons = [
 		button( 'RB_Fly', 'Fly', 'videocam', 'Viewer.ToggleFly' ),
 	] ),
 
-	group( 'RG_Controls', 'Controls', 'Navigate', [
-		{
-			id: 'RB_NavPreset',
-			type: 'Dropdown',
-			operator: 'Viewer.SetNavPreset',
-			value: 'blender',
-			options: [
-				{ value: 'blender', name: 'Blender' },
-				{ value: 'rhino', name: 'Rhino' },
-				{ value: 'revit', name: 'Revit' },
-				{ value: 'web', name: 'Web' },
-			],
-		},
-	] ),
 	group( 'RG_Viewport', 'Viewport', 'View', [
 		checkbox( 'RB_Grid', 'Grid', 'Viewer.ToggleGrid' ),
 		checkbox( 'RB_Axes', 'Axes', 'Viewer.ToggleAxes' ),
 		checkbox( 'RB_Fog', 'Fog', 'Scene.ToggleFog' ),
-	] ),
-	group( 'RG_Display', 'Display', 'View', [
-		button( 'RB_Xray', 'X-ray', 'blur_on', 'Viewer.ToggleXray' ),
-		button( 'RB_ClearColors', 'Clear colors', 'format_color_reset', 'Viewer.ClearColors' ),
-		checkbox( 'RB_SelectionOutline', 'Outline', 'Viewer.ToggleSelectionOutline' ),
 	] ),
 	group( 'RG_Section', 'Section', 'View', [
 		button( 'RB_Section', 'Section', 'content_cut', 'Viewer.ToggleSection' ),
@@ -124,22 +105,8 @@ export const ribbonButtons = [
 		button( 'RB_MeasureUndo', 'Undo point', 'undo', 'Viewer.UndoMeasurePoint' ),
 		button( 'RB_MeasureClear', 'Clear', 'close', 'Viewer.ClearMeasure' ),
 	] ),
-	group( 'RG_Capture', 'Capture', 'View', [
+	group( 'RG_Capture', 'Capture', 'Project', [
 		button( 'RB_Snapshot', 'Snapshot', 'photo_camera', 'Viewer.Snapshot' ),
-		{
-			id: 'RB_SnapshotSize',
-			type: 'Dropdown',
-			operator: 'Viewer.SetSnapshotSize',
-			value: 'viewport',
-			options: [
-				{ value: 'viewport', name: 'Viewport' },
-				{ value: 'viewport2x', name: 'Viewport 2×' },
-				{ value: 'hd', name: '1920 × 1080' },
-				{ value: 'uhd', name: '3840 × 2160' },
-				{ value: 'uhd8k', name: '7680 × 4320' },
-			],
-		},
-		checkbox( 'RB_SnapshotTransparent', 'Transparent', 'Viewer.SetSnapshotTransparent' ),
 	] ),
 	group( 'RG_Visibility', 'Objects', 'View', [
 		button( 'RB_HideSelection', 'Hide', 'visibility_off', 'Viewer.HideSelected' ),

@@ -188,7 +188,7 @@ export class Loader {
 
 	static _sidecarName( ifcName ) {
 
-		return String( ifcName ).replace( /\.ifc$/i, '.ifcview' );
+		return String( ifcName ).replace( /\.(ifc|glb|gltf)$/i, '.ifcview' );
 
 	}
 
@@ -196,11 +196,11 @@ export class Loader {
 	// "house.ifcview" are one model; the latest row wins.
 	static _sourceIdBeside( ifcName ) {
 
-		const want = String( ifcName ).replace( /\.ifc(view)?$/i, '' ).toLowerCase();
+		const want = String( ifcName ).replace( /\.(ifc(view)?|glb|gltf)$/i, '' ).toLowerCase();
 		for ( let i = store.models.length - 1; i >= 0; i -- ) {
 
 			const entry = store.models[ i ];
-			const stem = String( entry.name ).replace( /\.ifc(view)?$/i, '' ).toLowerCase();
+			const stem = String( entry.name ).replace( /\.(ifc(view)?|glb|gltf)$/i, '' ).toLowerCase();
 			if ( stem === want ) return entry.id;
 
 		}
@@ -231,7 +231,7 @@ export class Loader {
 
 		}
 
-		await Loader._attachLive( sourceId, liveBytes, ifcName, hooks, liveTask );
+		if ( liveBytes ) await Loader._attachLive( sourceId, liveBytes, ifcName, hooks, liveTask );
 		return sourceId;
 
 	}
@@ -379,6 +379,7 @@ export class Loader {
 	//            live IFC beside it; otherwise convert → cache → stream.
 	//            The .ifcview stays in sidecarCache until the user saves it.
 	// .ifcview → stream directly (no-op if already loaded).
+	// .glb / .gltf → convert → cache → stream, with no live IFC.
 	// .zip     → look for a pre-baked (.ifc, .ifcview) pair inside.
 	static async loadLocalFile( file, hooks ) {
 
@@ -391,6 +392,14 @@ export class Loader {
 				const existing = Loader._sourceIdBeside( file.name );
 				if ( existing != null ) return existing;
 				return Loader.addFile( file, { replace: false } );
+
+			}
+
+			if ( lower.endsWith( '.glb' ) || lower.endsWith( '.gltf' ) ) {
+
+				const existing = Loader._sourceIdBeside( file.name );
+				if ( existing != null ) return existing;
+				return Loader._convertAndPair( new Uint8Array( await file.arrayBuffer() ), null, file.name, hooks );
 
 			}
 
@@ -566,7 +575,7 @@ export class Loader {
 
 			return {
 				files: walked
-					.filter( ( row ) => /\.(ifc|ifcview|zip)$/i.test( row.path ) )
+					.filter( ( row ) => /\.(ifc|ifcview|glb|gltf|zip)$/i.test( row.path ) )
 					.map( ( row ) => row.file ),
 			};
 
@@ -844,6 +853,14 @@ export class Loader {
 
 		}
 
+		if ( /\.(glb|gltf)$/i.test( name ) ) {
+
+			const existing = Loader._sourceIdBeside( name );
+			if ( existing != null ) return existing;
+			return Loader._convertAndPair( bytes, null, name, options );
+
+		}
+
 		const liveBytes = bytes.slice();
 		const existing = Loader._sourceIdBeside( name );
 		if ( existing != null ) {
@@ -953,9 +970,10 @@ export class Loader {
 
 	// Convert, optionally stream parts into a federated source, and attach
 	// the live IFC. The live parse starts immediately so it overlaps conversion.
+	// `liveBytes` is null for sources with no IFC behind them (glTF).
 	static async _convertAndPair( bytes, liveBytes, ifcName, hooks ) {
 
-		const liveTask = Loader._parseLiveIfc( liveBytes, ifcName );
+		const liveTask = liveBytes ? Loader._parseLiveIfc( liveBytes, ifcName ) : null;
 		const { delivery } = Loader.convertOptions( hooks );
 		const streaming = delivery === 'stream' && Loader._canStream();
 		if ( delivery === 'stream' && ! streaming ) {
@@ -1000,7 +1018,7 @@ export class Loader {
 		if ( streaming ) {
 
 			await Loader._finishStream( sourceId, ifcName, sidecarBytes );
-			await Loader._attachLive( sourceId, liveBytes, ifcName, hooks, liveTask );
+			if ( liveBytes ) await Loader._attachLive( sourceId, liveBytes, ifcName, hooks, liveTask );
 			return sourceId;
 
 		}
@@ -1026,10 +1044,7 @@ export class Loader {
 		// and the browser reuses the cached modules.
 		try {
 
-			const worker = await createIfcOpenShellWorker( CONVERT_WORKER_URL.href, {
-				shimUrl: assets.shim,
-				assets: { zstdModule: assets.zstdModule, zstdWasm: assets.zstdWasm },
-			} );
+			const worker = await createIfcOpenShellWorker( CONVERT_WORKER_URL.href, { shimUrl: assets.shim } );
 			convertWorker = worker;
 			worker.onmessage = ( ev ) => {
 
@@ -1215,9 +1230,7 @@ export class Loader {
 
 		if ( thread === 'main' ) {
 
-			const mainThread = await import( CONVERT_MAIN_URL.href );
-			mainThread.configureAssets( { zstdModule: assets.zstdModule, zstdWasm: assets.zstdWasm } );
-			const { convertBytes } = mainThread;
+			const { convertBytes } = await import( CONVERT_MAIN_URL.href );
 			const result = await convertBytes( bytes, filename, {
 				kernel,
 				numThreads,

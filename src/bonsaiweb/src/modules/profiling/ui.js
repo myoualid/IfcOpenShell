@@ -30,6 +30,12 @@ function column( ...children ) {
 
 }
 
+function isShown( node ) {
+
+	return Boolean( node?.isConnected ) && node.getClientRects().length > 0;
+
+}
+
 function fpsTone( fps ) {
 
 	if ( ! Number.isFinite( fps ) || fps <= 0 ) return '';
@@ -314,23 +320,32 @@ class ProfilerHudUI {
 
 	refresh() {
 
+		const footerShown = isShown( this.footer?.dom );
+		const renderShown = isShown( this.renderFooter?.root?.dom );
+		const panelShown = isShown( this.panel?.dom );
+		if ( ! footerShown && ! renderShown && ! panelShown ) return;
+
 		const snapshot = this.metrics.readViewer( Viewer.get() );
 		const fps = snapshot.wasmFps > 0 ? snapshot.wasmFps : snapshot.clientFps;
-		const tone = fpsTone( fps );
 
-		this.footerFps?.setValue( formatFps( fps ) );
-		this.footerMs?.setValue( snapshot.frameMs > 0 ? formatMs( snapshot.frameMs ) : '' );
-		this.footerFps?.removeClass( 'is-good' ).removeClass( 'is-ok' ).removeClass( 'is-low' );
-		if ( tone ) this.footerFps?.addClass( tone );
-		this.renderFooter?.update( snapshot );
+		if ( footerShown ) {
 
-		if ( ! this.visible ) return;
+			const tone = fpsTone( fps );
+			this.footerFps.setValue( formatFps( fps ) );
+			this.footerMs.setValue( snapshot.frameMs > 0 ? formatMs( snapshot.frameMs ) : '' );
+			this.footerFps.removeClass( 'is-good' ).removeClass( 'is-ok' ).removeClass( 'is-low' );
+			if ( tone ) this.footerFps.addClass( tone );
 
-		this.headerValues.viewer?.setValue( formatFps( snapshot.wasmFps ) );
-		this.headerValues.client?.setValue( formatFps( snapshot.clientFps ) );
-		this.headerValues.frame?.setValue( formatMs( snapshot.frameMs ) );
+		}
+
+		if ( renderShown ) this.renderFooter.update( snapshot );
+		if ( ! panelShown ) return;
+
+		this.headerValues.viewer.setValue( formatFps( snapshot.wasmFps ) );
+		this.headerValues.client.setValue( formatFps( snapshot.clientFps ) );
+		this.headerValues.frame.setValue( formatMs( snapshot.frameMs ) );
 		this.gauge?.update( fps );
-		if ( this.graphCanvas ) drawSparkline( this.graphCanvas.dom, this.metrics.getFpsHistory() );
+		drawSparkline( this.graphCanvas.dom, this.metrics.getFpsHistory() );
 
 	}
 

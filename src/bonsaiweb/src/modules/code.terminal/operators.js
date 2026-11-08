@@ -90,12 +90,13 @@ class TerminalExecute extends Operator {
 	async execute() {
 
 		const guid = this.terminalGuid || this.context.terminal?.activeTerminalGuid;
-		if ( ! Terminal.get( guid ) ) throw new Error( `No terminal found: ${ guid }` );
+		const session = Terminal.get( guid );
+		if ( ! session ) throw new Error( `No terminal found: ${ guid }` );
 
 		const trimmed = String( this.command ?? '' ).trim();
 		if ( ! trimmed ) return { status: 'CANCELLED', result: { success: false, output: '' } };
 
-		const result = await runUserCode( this.context, trimmed, { asExpression: true } );
+		const result = await runUserCode( this.context, trimmed, { asExpression: true, vars: session.vars ??= {} } );
 		const output = formatRunOutput( result );
 		Terminal.append( guid, trimmed, output, result.success );
 		this.context.terminal?.onCommandResult?.( {

@@ -12,90 +12,23 @@ import {
 
 import ops from '../../ops.js';
 import { Terminal } from '../../tool/index.js';
-import { scriptScope } from '../code.scripting/core.js';
+import { applyCompletion, getCompletions as completionsIn } from '../code.scripting/commands.js';
+import { commandScope } from '../code.scripting/core.js';
+import CommandBarUI from './commandbar.js';
 
 const TOP_LEVEL = [
-	'bonsai',
+	'bonsai', '$sel', '$entity', '$model', '$last',
 	'console', 'Math', 'JSON', 'Object', 'Array', 'Promise',
 	'setTimeout', 'clearTimeout', 'fetch', 'performance',
 ];
 
-function extractChain( text, cursorPos ) {
-
-	let i = cursorPos;
-	while ( i > 0 && /[\w$.]/.test( text[ i - 1 ] ) ) i --;
-	return text.slice( i, cursorPos );
-
-}
-
-function allProps( obj ) {
-
-	const seen = new Set();
-	let cur = obj;
-	while ( cur != null ) {
-
-		for ( const key of Object.getOwnPropertyNames( cur ) ) {
-
-			if ( ! key.startsWith( '__' ) ) seen.add( key );
-
-		}
-
-		cur = Object.getPrototypeOf( cur );
-		if ( cur === Object.prototype ) break;
-
-	}
-
-	return [ ...seen ].sort();
-
-}
-
+// Completions see what a terminal line sees: ops categories, session variables.
 function getCompletions( text, cursor, context ) {
 
-	cursor = cursor ?? text.length;
-	const chain = extractChain( text, cursor );
-	const dotIdx = chain.lastIndexOf( '.' );
-
-	if ( dotIdx === - 1 ) {
-
-		const partial = chain;
-		const completions = partial
-			? TOP_LEVEL.filter( ( k ) => k.startsWith( partial ) && k !== partial )
-			: [];
-		return { completions, chain, partial };
-
-	}
-
-	const objExpr = chain.slice( 0, dotIdx );
-	const partial = chain.slice( dotIdx + 1 );
-	if ( ! objExpr ) return { completions: [], chain, partial };
-
-	try {
-
-		const fn = new Function( 'bonsai', `return (${ objExpr })` );
-		const obj = fn( scriptScope( context ) );
-		if ( obj == null ) return { completions: [], chain, partial };
-		const completions = allProps( obj ).filter(
-			( k ) => ! partial || k.startsWith( partial ),
-		);
-		return { completions, chain, partial };
-
-	} catch {
-
-		return { completions: [], chain, partial };
-
-	}
-
-}
-
-function applyCompletion( text, cursor, chain, completion ) {
-
-	cursor = cursor ?? text.length;
-	const dotIdx = chain.lastIndexOf( '.' );
-	const keep = dotIdx === - 1 ? '' : chain.slice( 0, dotIdx + 1 );
-	const before = text.slice( 0, cursor - chain.length );
-	const after = text.slice( cursor );
-	const newText = before + keep + completion;
-	return { text: newText + after, cursor: newText.length };
+	const vars = Terminal.get( context.terminal?.activeTerminalGuid )?.vars ?? {};
+	const scope = commandScope( context, vars );
+	const names = [ ...new Set( [ ...TOP_LEVEL, ...Object.keys( scope ) ] ) ];
+	return completionsIn( text, cursor, scope, names );
 
 }
 
@@ -121,13 +54,13 @@ const SNIPPETS = [
 		label: 'bonsai.ops',
 		items: [
 			{ label: 'List operators', command: '[ ...bonsai.ops.registry.keys() ].sort()' },
-			{ label: 'New project', command: 'await bonsai.ops.Project.New()' },
-			{ label: 'Top view', command: 'bonsai.ops.Viewer.SetStandardView(\'TOP\')' },
-			{ label: 'View all', command: 'bonsai.ops.Viewer.ViewAll()' },
-			{ label: 'Isolate selection', command: 'bonsai.ops.Viewer.IsolateSelected()' },
-			{ label: 'Section', command: 'bonsai.ops.Viewer.ToggleSection()' },
-			{ label: 'Clear cuts', command: 'bonsai.ops.Viewer.ClearSection()' },
-			{ label: 'Show all', command: 'bonsai.ops.Viewer.ShowAll()' },
+			{ label: 'New project', command: 'await Project.New()' },
+			{ label: 'Top view', command: 'Viewer.SetStandardView(\'TOP\')' },
+			{ label: 'View all', command: 'Viewer.ViewAll()' },
+			{ label: 'Isolate selection', command: 'Viewer.IsolateSelected()' },
+			{ label: 'Section', command: 'Viewer.ToggleSection()' },
+			{ label: 'Clear cuts', command: 'Viewer.ClearSection()' },
+			{ label: 'Show all', command: 'Viewer.ShowAll()' },
 			{ label: 'Undo', command: 'bonsai.ops.undo()' },
 		],
 	},
@@ -224,7 +157,6 @@ class TerminalPanelUI {
 			if ( terminalGuid === this.activeTerminalGuid ) {
 
 				this.renderActiveTerminal();
-				this._focusInput();
 
 			}
 
@@ -579,6 +511,7 @@ class TerminalPanelUI {
 			panel.show( { open: needsOpen, select: needsOpen } );
 
 		}
+
 		this.visible = this.workspacePanel ? this.isVisible() : true;
 		if ( this.visible ) this._focusInput();
 		return this;
@@ -745,4 +678,4 @@ class TerminalPanelUI {
 
 }
 
-export default [ TerminalPanelUI ];
+export default [ TerminalPanelUI, CommandBarUI ];

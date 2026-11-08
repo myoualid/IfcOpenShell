@@ -34,6 +34,7 @@ tool.Viewer.get().getSelection();   // talk to the viewer directly
 | Tool | Role |
 |---|---|
 | `Viewer` | `Viewer.get()` returns the IfcViewer, or null until `Bonsai.start()` has created it. The viewer is created once per session, and nothing can replace it. |
+| | `Viewer.addMeshes( meshes, { name, metadata } )` adds meshes that have no IFC file (ifcopenshell geom shape) as a new source and resolves its source id once loaded. `Viewer.removeSource( id )` hides that source and frees its GPU buffers: IfcViewer cannot drop one model. `Viewer.pickPoint( x, y, anchor )` resolves the world point under canvas px, on a surface when the build can pick one, else on the plane through `anchor`. |
 | `Scene` | Scene-wide changes: `setBackground`, `setUnit`, `setFalseOrigin`, `setModelTransform` (pass null to clear). Each one updates the viewer and records the value, so `store.scene` and the saved project agree with what is on screen. |
 | `Ifc` | The live ifcopenshell file per model, and the entity behind a pick. |
 | `Loader` | Opening, converting and clearing models. Drag and drop. |
@@ -165,6 +166,43 @@ export default [ CountWalls ];
 
 List the module in `src/modules/operators.js` and it is registered at boot. After that, `bonsai.ops.MyAddon.CountWalls()` runs it.
 
+### Addons
+
+Code outside this package adds operators, panels and ribbon groups as an addon. `@aeco-dev/bonsaiweb` exports `Operator`, `ops` and `Signal` for that:
+
+```js
+import { Bonsai, Operator, tool } from '@aeco-dev/bonsaiweb';
+
+class CountWalls extends Operator {
+
+	static operatorName = 'MyAddon.CountWalls';
+
+	execute() {
+
+		return { status: 'FINISHED', result: tool.Ifc.get().byType( 'IfcWall' ).length };
+
+	}
+
+}
+
+const myAddon = {
+	id: 'my-addon',
+	operators: [ CountWalls ],
+	ui: [],          // panel classes: static id, static spec, a root; built with { context }
+	ribbon: {
+		workModes: [ { id: 'MyAddon', name: 'My addon' } ],
+		buttons: [ { id: 'RG_MyAddon', name: 'Walls', type: 'RibbonGroup', workMode: 'MyAddon', children: [
+			{ id: 'RB_CountWalls', name: 'Count', type: 'Button', icon: 'calculate', operator: 'MyAddon.CountWalls' },
+		] } ],
+	},
+};
+
+configuration.app.Addons = [ myAddon ];
+const bonsai = new Bonsai( document.body, configuration );
+```
+
+`new Bonsai` registers the operators of every addon whose `active` is not `false`, in order, and keeps the list on `bonsai.addons`. A `Shell` appends their ribbon groups and work modes to its own and mounts their panels after the built-in ones. An addon id may not reuse a built-in module id.
+
 - `poll()` returns false to cancel. The default is true.
 - `static undoable = true` records the operator; `undo()` must then reverse it, and `execute()` runs again for redo.
 - `register` throws if the name is not `Category.Name` in PascalCase.
@@ -208,4 +246,3 @@ A federation can hold millions of objects, so nothing here keeps one JavaScript 
 
 - Should `context.selectedIds` be a `Uint32Array` instead of an array? It would be cheaper when selecting everything in a large model.
 - Should an operator be callable with a different context than `bonsai.context`?
-- `Operator` is not exported from `@aeco-dev/bonsaiweb`, so code outside this repository cannot write an operator yet. Should it be?

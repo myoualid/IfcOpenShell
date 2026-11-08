@@ -1,5 +1,5 @@
 import { Operator } from '../../ops.js';
-import { getContainer, getPredefinedType, getRelationships, getType } from '../../tool/elementQuery.js';
+import { getContainer, getPredefinedType, getType } from '../../tool/elementQuery.js';
 import { Element, Ifc, Pset } from '../../tool/index.js';
 import { Viewer } from '../../tool/Viewer.js';
 
@@ -21,6 +21,44 @@ function rowsFromSet( sets ) {
 	}
 
 	return result;
+
+}
+
+// Type and storey only. A full inverse walk lists every relationship and
+// stalls the properties panel on large models.
+function typeAndStorey( element ) {
+
+	const rows = [];
+	const type = getType( element );
+	if ( type && type !== element ) {
+
+		rows.push( { key: 'Type', value: Element.displayName( type ) } );
+
+	}
+
+	const storey = storeyOf( element );
+	if ( storey ) rows.push( { key: 'Storey', value: Element.displayName( storey ) } );
+	return rows;
+
+}
+
+function storeyOf( element ) {
+
+	const seen = new Set();
+	let current = element;
+	while ( current ) {
+
+		const id = current.id();
+		if ( seen.has( id ) ) return null;
+		seen.add( id );
+		const container = getContainer( current );
+		if ( ! container ) return null;
+		if ( container.isA( 'IfcBuildingStorey' ) ) return container;
+		current = container;
+
+	}
+
+	return null;
 
 }
 
@@ -77,22 +115,7 @@ class PropertiesForPick extends Operator {
 
 			}
 
-			state.relationships = getRelationships( selection );
-
-			const type = getType( selection );
-			if ( type && ! state.relationships.some( ( row ) => row.key === 'Type' ) ) {
-
-				state.relationships.push( { key: 'Type', value: Element.displayName( type ) } );
-
-			}
-
-			const container = getContainer( selection );
-			const containerName = container ? Element.displayName( container ) : '';
-			if ( containerName && ! state.relationships.some( ( row ) => row.key === 'Container' && row.value === containerName ) ) {
-
-				state.relationships.push( { key: 'Container', value: containerName } );
-
-			}
+			state.relationships = typeAndStorey( selection );
 
 			state.property_sets = rowsFromSet( Pset.getPsets( selection, { psetsOnly: true } ) );
 			state.quantity_sets = rowsFromSet( Pset.getPsets( selection, { qtosOnly: true } ) );

@@ -37,6 +37,7 @@ export class RenderFooter {
 
 	update( snapshot ) {
 
+		if ( ! this.root?.dom?.isConnected ) return;
 		this.objects.setValue( formatObjects( snapshot.objectsVisible, snapshot.objectsTotal ) );
 		this.triangles.setValue( formatObjects( snapshot.trianglesVisible, snapshot.trianglesTotal ) );
 		this.drawCalls.setValue( formatCount( snapshot.drawCalls ) );

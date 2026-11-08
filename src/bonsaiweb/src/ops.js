@@ -8,6 +8,9 @@ class Operator {
 	static operatorName = '';
 	static operatorLabel = '';
 	static undoable = false;
+	// Positional arguments, for the command bar's hints:
+	// [ { name, type: 'enum'|'boolean'|'number'|'string'|'ids'|'color'|'object', options?, optional? } ]
+	static operatorArgs = [];
 
 	constructor( context ) {
 
