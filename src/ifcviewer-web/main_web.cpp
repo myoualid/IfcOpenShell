@@ -529,12 +529,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void raf_tick_c(void* user) {
     auto* app = static_cast<AppState*>(user);
     if (!app->ready) return;
 
+    // Reconfiguring writes canvas.width/height, which clears the bitmap, so
+    // the new size must be drawn this tick or the canvas presents blank.
     int w = 0, h = 0;
     app->host.framebufferSize(w, h);
     if (w != app->last_w || h != app->last_h) {
         app->core.configureSurface(w, h);
         app->last_w = w;
         app->last_h = h;
+        app->host.requestFrame();
     }
 
     // Fly mode: integrate held-key movement each frame (dt from wall clock).
@@ -555,6 +558,13 @@ extern "C" EMSCRIPTEN_KEEPALIVE void raf_tick_c(void* user) {
     }
 }
 
+// Draw on the next raf_tick_c although nothing in the scene changed. For
+// host-side events the wasm cannot observe: the browser discarding the canvas
+// bitmap on a window move, tab or occlusion change, or DOM re-parenting.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_request_redraw_c() {
+    if (g_app) g_app->host.requestFrame();
+}
+
 // Stream a .ifcview from a registered JS byte-source and APPEND it to the scene
 // (federation). the host page (web/ifcviewer.js) registers the source first — a picked File or a
 // remote URL, sized up front — into Module.__ifcvSources[source_id], then calls
@@ -562,6 +572,30 @@ extern "C" EMSCRIPTEN_KEEPALIVE void raf_tick_c(void* user) {
 // is read via ranges and chunks stream per-chunk, so a 500 MB .ifcview stays in
 // the File / on the server. Asynchronous; the model frames itself from the JS
 // completion callback. Call clear_scene_c first to replace instead of append.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_begin_stream_c(int source_id) {
+    if (!g_app || !g_app->ready) return;
+    g_app->federation.beginStream(source_id);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_append_part_c(int source_id, int part_source_id) {
+    if (!g_app || !g_app->ready) return;
+    std::string label = g_app->federation.modelName(source_id);
+    if (label.empty()) label = "source " + std::to_string(source_id);
+    g_app->core.loadIfcViewMetadataWeb(part_source_id, std::move(label),
+        [source_id](std::uint32_t session_model_id) {
+            if (!g_app) return;
+            g_app->federation.bindPart(source_id, session_model_id);
+        });
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_end_stream_c(int source_id) {
+    if (!g_app) return;
+    const std::uint32_t first = g_app->federation.sessionModelId(source_id);
+    EM_ASM({
+        if (Module.__ifcvOnModelLoaded) Module.__ifcvOnModelLoaded($0, $1);
+    }, source_id, int(first));
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE void load_ifcview_from_source_c(int source_id) {
     if (!g_app || !g_app->ready) return;
     // Label the model with whatever name the host page set for this source, so
@@ -811,6 +845,33 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_background_c(float r, float g,
                                                            float b, float a) {
     if (!g_app || !g_app->ready) return;
     g_app->core.setBackgroundColor(r, g, b, a);
+}
+
+// Offscreen snapshot at width × height device pixels. use_view_background 0
+// clears with (r, g, b, a) instead (sRGB in [0..1]; a = 0 is transparent).
+// Rows and completion come back through Module.__ifcvOnSnapshotRows /
+// __ifcvOnSnapshotDone, keyed by `token`. See ViewportCore::requestSnapshot.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_snapshot_c(int token, int width, int height,
+                                                     int use_view_background,
+                                                     float r, float g, float b, float a,
+                                                     int timeout_ms) {
+    if (!g_app || !g_app->ready) {
+        EM_ASM({
+            if (Module.__ifcvOnSnapshotDone) Module.__ifcvOnSnapshotDone($0, 0, $1, $2);
+        }, token, width, height);
+        return;
+    }
+    ViewportCore::SnapshotRequest req;
+    req.token  = token;
+    req.width  = width;
+    req.height = height;
+    req.use_view_background = use_view_background != 0;
+    req.background[0] = r;
+    req.background[1] = g;
+    req.background[2] = b;
+    req.background[3] = a;
+    if (timeout_ms > 0) req.timeout_ms = timeout_ms;
+    g_app->core.requestSnapshot(req);
 }
 
 // Mouse navigation scheme: "blender" | "rhino" | "revit" | "web". The preset
@@ -1118,25 +1179,36 @@ extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_frame_stats_c(double* out, int capa
 // Neither touches visibility.
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_unload_model_c(int source_id) {
     if (!g_app) return;
-    const std::uint32_t session_model_id = g_app->federation.sessionModelId(source_id);
-    if (session_model_id == 0) return;
-    g_app->core.unloadModel(session_model_id);
+    for (std::uint32_t session_model_id : g_app->federation.sessionModelIds(source_id)) {
+        g_app->core.unloadModel(session_model_id);
+    }
 }
 extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_load_model_c(int source_id) {
     if (!g_app) return 0;
-    const std::uint32_t session_model_id = g_app->federation.sessionModelId(source_id);
-    if (session_model_id == 0) return 0;
-    return g_app->core.loadModel(session_model_id) ? 1 : 0;
+    bool ok = true;
+    const auto ids = g_app->federation.sessionModelIds(source_id);
+    if (ids.empty()) return 0;
+    for (std::uint32_t session_model_id : ids) {
+        ok = g_app->core.loadModel(session_model_id) && ok;
+    }
+    return ok ? 1 : 0;
 }
 extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_model_unloaded_c(int source_id) {
     if (!g_app) return 0;
-    const std::uint32_t session_model_id = g_app->federation.sessionModelId(source_id);
-    return session_model_id != 0 && g_app->core.isModelUnloaded(session_model_id) ? 1 : 0;
+    const auto ids = g_app->federation.sessionModelIds(source_id);
+    if (ids.empty()) return 0;
+    for (std::uint32_t session_model_id : ids) {
+        if (!g_app->core.isModelUnloaded(session_model_id)) return 0;
+    }
+    return 1;
 }
 extern "C" EMSCRIPTEN_KEEPALIVE double ifcv_model_vram_bytes_c(int source_id) {
     if (!g_app) return 0.0;
-    const std::uint32_t session_model_id = g_app->federation.sessionModelId(source_id);
-    return session_model_id == 0 ? 0.0 : double(g_app->core.modelVramBytes(session_model_id));
+    double bytes = 0.0;
+    for (std::uint32_t session_model_id : g_app->federation.sessionModelIds(source_id)) {
+        bytes += double(g_app->core.modelVramBytes(session_model_id));
+    }
+    return bytes;
 }
 
 int main(int /*argc*/, char** /*argv*/) {

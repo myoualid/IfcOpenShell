@@ -232,6 +232,8 @@ public:
     // ---- Camera mutators / getters ------------------------------------------
 
     void viewAll();
+    bool initialViewApplied() const { return initial_view_applied_; }
+    void markInitialViewApplied() { initial_view_applied_ = true; }
     // viewAll scoped to specific models: frame the union of their world AABBs
     // with the same 1.10 padding, so "view this model" and "view everything"
     // sit the camera the same way. Returns whether it framed anything (an
@@ -292,6 +294,38 @@ public:
     // caller that leaves the background alone — the two are identical.
     void setBackgroundColor(float r, float g, float b, float a);
     const Eigen::Vector4f& backgroundColor() const { return background_color_; }
+
+    // ---- Viewport snapshots -------------------------------------------------
+    //
+    // Render the current view offscreen at width × height pixels, independent
+    // of the canvas size, and hand the pixels to the host as straight-alpha
+    // RGBA8 rows (host_->onSnapshotRows), then host_->onSnapshotDone. The
+    // output keeps the camera's vertical field of view, so a wider aspect than
+    // the canvas shows more of the scene to either side.
+    //
+    // The image is rendered as tiles the size of the canvas, each through a
+    // sub-window of the full projection, so any size up to kMaxSnapshotDim
+    // costs no attachment memory beyond what the viewport already holds. Tiles
+    // overlap by a margin that is cropped away, so the edge and selection
+    // passes have no seams. Interaction aids (section gizmo, pivot, corner
+    // axis, overlays) are left out; the grid and floor axes follow their
+    // visibility. Before drawing, the job streams in what the full-resolution
+    // view needs, giving up after timeout_ms or once residency stops moving.
+    //
+    // Requests queue and run one at a time; while a job renders, the canvas
+    // keeps its last frame. Nothing blocks: readback is async on every host.
+    static constexpr int kMaxSnapshotDim = 16384;
+    struct SnapshotRequest {
+        int   token  = 0;
+        int   width  = 0;
+        int   height = 0;
+        // false: clear with `background` (sRGB RGBA in [0..1]; alpha 0 gives a
+        // transparent image). true: use the viewport's own background colour.
+        bool  use_view_background = true;
+        float background[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        int   timeout_ms = 15000;
+    };
+    void requestSnapshot(const SnapshotRequest& request);
 
     // Frame the current selection: union the selected objects' world AABBs and
     // fit the camera to them (same 1.30 padding as the desktop "F" hotkey).
@@ -561,6 +595,7 @@ public:
     // against the source_id before the load finished.
     void loadIfcViewMetadataWeb(int source_id, std::string source_label,
                                 std::function<void(std::uint32_t)> on_loaded = {});
+    void setModelFederationSource(std::uint32_t session_model_id, int source_id);
 
     // On-demand fetch of the v15 element metadata block (elements + string
     // table) for a web-streamed model — what a UI (object tree / selected-name
@@ -748,6 +783,17 @@ public:
     // fails so the next frame retries cleanly.
     void render();
 
+    // The two halves of render() that a snapshot tile reuses. cullScene runs
+    // the CPU cull for `vp` (interactive: motion threshold, HiZ and the cull
+    // cache; otherwise none of them, and the cache is invalidated).
+    // encodeScene encodes the main pass and the passes that read its depth
+    // into `view`; interactive adds the gizmos, overlays and HiZ resolve and
+    // returns the HiZ slot it submitted (-1 otherwise).
+    void cullScene(const Eigen::Matrix4f& vp, float focal_px, bool interactive);
+    int  encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
+                     const Eigen::Matrix4f& vp, const float clear_rgba[4],
+                     int viewport_w_px, int viewport_h_px, bool interactive);
+
     // ---- Surface configuration (#84-u) ------------------------------------
     //
     // Configure the swapchain at the given physical size. Picks a present
@@ -925,7 +971,8 @@ public:
     // the sync pickObjectAt and the async pickSurfaceAtAsync.
     bool decodeMappedPickNormal(Eigen::Vector3f& out);
     // Logical (CSS-px) viewport size from the host framebuffer / DPR, for the
-    // section-gizmo hit-test + drag (which work in logical pixels).
+    // section-gizmo hit-test + drag (which work in logical pixels). DPR stays
+    // fractional: int(1.25) and int(1.5) would place the grab line off the arrow.
     void sectionLogicalViewport(int& w, int& h) const;
     // Decode the RGBA32F exact world position from the (already-mapped) position
     // staging buffer; unmaps. False if the texel was a miss (w == 0).
@@ -1581,6 +1628,7 @@ private:
     struct PendingWebChunk { std::uint32_t session_model_id; std::size_t ci; };
     std::vector<PendingWebChunk> web_pending_;
     std::size_t                  web_pending_head_ = 0;
+    std::unordered_map<std::uint32_t, std::vector<std::function<void(bool)>>> element_metadata_waiters_;
 
     // Settle burst: keep the render loop alive for a few frames after any
     // streaming activity so the cull→load→display latency (the draw + cull
@@ -1807,6 +1855,70 @@ private:
     // an sRGB-to-linear conversion on top so the on-screen colour
     // matches the hex value passed via setBackgroundColor.
     Eigen::Vector4f background_color_ = {0.125f, 0.137f, 0.161f, 1.0f};
+
+    // ---- Snapshot job (ViewportSnapshot.cpp) ---------------------------------
+    //
+    // buildViewProj applies these while a snapshot tile is culled and drawn:
+    // the output image's aspect instead of the canvas's, and a clip-space
+    // crop that maps the tile's window of the image onto the whole target.
+    float           aspect_override_ = 0.0f;
+    Eigen::Matrix4f ndc_crop_        = Eigen::Matrix4f::Identity();
+
+    // One row of tiles lands in one staging buffer, mapped as soon as the
+    // row's last tile is submitted. The map state is heap-owned so a callback
+    // that fires after the job is gone can find it orphaned and free it.
+    struct SnapshotMapState {
+        int  status   = 0;      // 0 pending, 1 mapped, 2 failed
+        bool orphaned = false;
+        ViewportCore* core = nullptr;
+    };
+    struct SnapshotBand {
+        WGPUBuffer        buffer    = nullptr;
+        SnapshotMapState* map       = nullptr;
+        int               y0        = 0;
+        int               rows      = 0;
+        bool              delivered = false;
+    };
+    struct SnapshotJob {
+        enum class Phase { Streaming, Rendering, Finishing };
+        SnapshotRequest request;
+        Phase    phase = Phase::Streaming;
+        float    clear_rgba[4] = { 0, 0, 0, 0 };
+        // Camera frozen at the start so input during the job cannot tear it.
+        float    target[3] = { 0, 0, 0 };
+        float    distance = 0, yaw = 0, pitch = 0;
+        bool     ortho = false;
+        Stopwatch started;
+        Stopwatch since_progress;
+        std::uint32_t last_missing = 0xffffffffu;
+        // Tile layout, against the canvas size it was made for.
+        int tile_w = 0, tile_h = 0, margin = 0;
+        int inner_w = 0, inner_h = 0, cols = 0, rows = 0, next_tile = 0;
+        std::uint32_t band_bpr = 0;
+        WGPUTexture     color_texture = nullptr;
+        WGPUTextureView color_view    = nullptr;
+        std::vector<SnapshotBand> bands;
+        bool failed = false;
+    };
+    std::unique_ptr<SnapshotJob>  snapshot_job_;
+    std::vector<SnapshotRequest>  snapshot_queue_;
+
+    // Advance the snapshot job by one frame. Returns true when the frame was
+    // spent on it (the canvas is not drawn), false to render normally.
+    bool stepSnapshot();
+    bool layoutSnapshotTiles(SnapshotJob& job);
+    void releaseSnapshotTiles(SnapshotJob& job);
+    void renderSnapshotTile(SnapshotJob& job);
+    void deliverSnapshotBands(SnapshotJob& job);
+    void finishSnapshot(bool ok);
+    // Swap the job's frozen camera and projection overrides in (or back out).
+    void enterSnapshotCamera(const SnapshotJob& job, const Eigen::Matrix4f& crop);
+    void leaveSnapshotCamera();
+    float saved_camera_[6] = { 0, 0, 0, 0, 0, 0 };
+    bool  saved_ortho_ = false;
+    // Wanted chunks (contributing to the last cull) not yet resident, and how
+    // many of those are loading right now.
+    void countWantedMissingChunks(std::uint32_t& missing, std::uint32_t& loading) const;
 
     // Whether the surface was configured with a premultiplied alpha mode, and
     // so whether background_color_'s alpha reaches the compositor at all.

@@ -128,6 +128,16 @@ public:
     virtual void saveScreenshotRgba8(const std::string& /*path*/,
                                      const std::uint8_t* /*rgba*/,
                                      int /*w*/, int /*h*/) {}
+
+    // ViewportCore::requestSnapshot results. Rows arrive as tightly-packed,
+    // straight-alpha RGBA8 bands of `width` × `rows` starting at image row
+    // `y0`, in any order (a band can repeat if the job restarts after a
+    // resize; the pixels are the same). Done fires once per token, after the
+    // last band, with ok false when the request was rejected or failed.
+    virtual void onSnapshotRows(int /*token*/, int /*y0*/, int /*width*/,
+                                int /*rows*/, const std::uint8_t* /*rgba*/) {}
+    virtual void onSnapshotDone(int /*token*/, bool /*ok*/,
+                                int /*width*/, int /*height*/) {}
 };
 
 #endif  // VIEWPORTHOST_H

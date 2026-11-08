@@ -65,6 +65,12 @@ public:
     bool wantsCpuMeshTriangles() const override { return false; }
     const FrameStats& lastFrameStats() const { return last_stats_; }
 
+    // Snapshot results go straight to the page (Module.__ifcvOnSnapshotRows /
+    // __ifcvOnSnapshotDone in web/ifcviewer.js), which assembles the image.
+    void onSnapshotRows(int token, int y0, int width, int rows,
+                        const std::uint8_t* rgba) override;
+    void onSnapshotDone(int token, bool ok, int width, int height) override;
+
 private:
     std::string canvas_selector_;
     bool        request_frame_pending_ = true;  // arm an initial frame
