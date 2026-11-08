@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Bonsai Web Headless</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<style>
+			html, body { margin: 0; height: 100%; background: #1a1a1a; }
+			body { position: relative; }
+		</style>
+		<script type="importmap">
+			{
+				"imports": {
+					"@aeco-dev/bonsaiweb": "../dist/bonsai.js",
+					"@aeco-dev/bonsaiweb/gui": "../dist/gui.js",
+					"@aeco-dev/gui": "https://cdn.jsdelivr.net/npm/@aeco-dev/gui@0.2.4/gui.js",
+					"@aeco-dev/layout": "https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.js",
+					"ifcopenshell": "https://cdn.jsdelivr.net/npm/ifcopenshell@0.9.0/dist/index.js",
+					"ifcopenshell/geom": "https://cdn.jsdelivr.net/npm/ifcopenshell@0.9.0/dist/geom/index.js",
+					"ifcopenshell/util": "https://cdn.jsdelivr.net/npm/ifcopenshell@0.9.0/dist/util/index.js",
+					"@ifcopenshell/wasm": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@0.9.0/browser.js",
+					"@ifcopenshell/wasm/api": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@0.9.0/wasm/ifcopenshell_api.mjs"
+				}
+			}
+		</script>
+	</head>
+	<body>
+		<script type="module">
+			import { Bonsai } from '@aeco-dev/bonsaiweb';
+			import { BonsaiWebConfiguration } from './configuration/config.js';
+
+			window.bonsai = new Bonsai( document.body, BonsaiWebConfiguration );
+			await window.bonsai.start();
+
+
+		</script>
+	</body>
+</html>
