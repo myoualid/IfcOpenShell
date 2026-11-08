@@ -155,6 +155,7 @@ set(IFCVIEWER_CORE_SOURCES
     StreamingThread.cpp
     SectionGizmoRenderer.cpp
     ViewportCore.cpp
+    ViewportPost.cpp
     ViewportSnapshot.cpp
     WgpuDynamicOffsets.cpp
 )
