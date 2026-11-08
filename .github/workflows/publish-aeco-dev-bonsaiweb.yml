@@ -1,6 +1,6 @@
 name: Publish @aeco-dev/bonsaiweb
 
-# Packs src/bonsaiweb from the fork's main branch, v0.9.0, and publishes
+# Packs src/bonsaiweb from the fork's main branch, aeco, and publishes
 # @aeco-dev/bonsaiweb, ahead of IfcOpenShell/IfcOpenShell. Features reach the
 # package by being merged into that branch. The version is chosen here and is
 # not committed.
@@ -36,7 +36,7 @@ jobs:
     steps:
       - name: Require the release branch
         env:
-          RELEASE_BRANCH: v0.9.0
+          RELEASE_BRANCH: aeco
         run: |
           if [ "$GITHUB_REF_NAME" != "$RELEASE_BRANCH" ]; then
             echo "::error::Packages are published from ${RELEASE_BRANCH}, the fork's main branch. Merge the feature there and dispatch this workflow on ${RELEASE_BRANCH}, not ${GITHUB_REF_NAME}."
@@ -44,12 +44,12 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"

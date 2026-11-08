@@ -1,6 +1,6 @@
 name: Publish @aeco-dev/viewer
 
-# Builds ifcviewer-web from the fork's main branch, v0.9.0, packs the wasm
+# Builds ifcviewer-web from the fork's main branch, aeco, packs the wasm
 # next to ifcviewer.js, and publishes @aeco-dev/viewer. Features reach the
 # package by being merged into that branch. The version is chosen here and is
 # not committed back.
@@ -21,12 +21,10 @@ on:
         type: boolean
         default: false
 
-# The called build workflow cannot exceed these. contents: read is required
-# for its checkout; id-token: write is what npm trusted publishing uses.
-permissions:
-  contents: read
-  actions: read
-  id-token: write
+# Each job declares what it needs. The called build workflow only reads the
+# repository; id-token: write, which npm trusted publishing uses, is granted
+# to the publish job alone.
+permissions: {}
 
 concurrency:
   group: publish-aeco-dev-viewer
@@ -41,7 +39,7 @@ jobs:
     steps:
       - name: Require the release branch
         env:
-          RELEASE_BRANCH: v0.9.0
+          RELEASE_BRANCH: aeco
         run: |
           if [ "$GITHUB_REF_NAME" != "$RELEASE_BRANCH" ]; then
             echo "::error::Packages are published from ${RELEASE_BRANCH}, the fork's main branch. Merge the feature there and dispatch this workflow on ${RELEASE_BRANCH}, not ${GITHUB_REF_NAME}."
@@ -51,7 +49,9 @@ jobs:
   build:
     needs: branch
     if: github.repository == 'myoualid/IfcOpenShell'
-    uses: ./.github/workflows/build-ifcviewer-web.yml
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-ifcviewer-web.yml # zizmor: ignore[self-repository] the ./ form is the documented reusable-workflow call
 
   publish:
     needs: build
@@ -64,18 +64,18 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Download ifcviewer-web
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: ifcviewer-web
           path: build-web
 
       - name: Set up Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
