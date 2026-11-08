@@ -36,6 +36,8 @@
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
 
+#include "ViewportGridSpec.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -233,6 +235,7 @@ NavKind classifyPress(const ViewportCore::NavBindings& b, int em_button,
 }
 
 EM_BOOL onMouseDown(int, const EmscriptenMouseEvent* e, void* user) {
+    if (static_cast<AppState*>(user)->core.tileWorld().enabled()) return EM_FALSE;
     auto* app = static_cast<AppState*>(user);
     // In fly mode a click exits (matches the desktop app).
     if (app->fly_mode) { setFlyMode(app, false); return EM_TRUE; }
@@ -371,6 +374,7 @@ EM_BOOL onMouseUp(int, const EmscriptenMouseEvent* e, void* user) {
 }
 
 EM_BOOL onWheel(int, const EmscriptenWheelEvent* e, void* user) {
+    if (static_cast<AppState*>(user)->core.tileWorld().enabled()) return EM_FALSE;
     auto* app = static_cast<AppState*>(user);
     if (!app->ready) return EM_FALSE;
 
@@ -424,6 +428,28 @@ void setFlyMode(AppState* app, bool on) {
     app->host.requestFrame();
 }
 
+// Tile-world joypad: arrows / WASD move, Z / Space / Enter = A, X / Shift = B
+// (hold to run). Returns true when the key belongs to the game.
+// Off when a host page owns the keyboard (several apps share one window):
+// it then feeds buttons through tw_set_buttons_c from its own focused element.
+bool g_tw_native_keys = true;
+
+bool tileWorldKey(AppState* app, const char* code, bool down) {
+    using namespace tw;
+    if (!g_tw_native_keys) return false;
+    uint32_t bit = 0;
+    if      (!std::strcmp(code, "ArrowUp")    || !std::strcmp(code, "KeyW")) bit = BtnUp;
+    else if (!std::strcmp(code, "ArrowDown")  || !std::strcmp(code, "KeyS")) bit = BtnDown;
+    else if (!std::strcmp(code, "ArrowLeft")  || !std::strcmp(code, "KeyA")) bit = BtnLeft;
+    else if (!std::strcmp(code, "ArrowRight") || !std::strcmp(code, "KeyD")) bit = BtnRight;
+    else if (!std::strcmp(code, "KeyZ") || !std::strcmp(code, "Space") || !std::strcmp(code, "Enter")) bit = BtnA;
+    else if (!std::strcmp(code, "KeyX") || !std::strcmp(code, "ShiftLeft") || !std::strcmp(code, "ShiftRight")) bit = BtnB;
+    if (!bit) return false;
+    TileWorld& world = app->core.tileWorld();
+    world.setButtons(down ? (world.buttons() | bit) : (world.buttons() & ~bit));
+    return true;
+}
+
 // Viewport hotkeys, matching the desktop bindings (ViewportWindow):
 //   Home view all · F zoom to selected · P ortho/persp · X/Y/Z (+Shift) views
 //   Shift+F enter fly · Esc exit fly · while flying: W/A/S/D/Q/E held + Shift.
@@ -431,6 +457,7 @@ EM_BOOL onKeyDown(int, const EmscriptenKeyboardEvent* e, void* user) {
     auto* app = static_cast<AppState*>(user);
     if (!app->ready) return EM_FALSE;
     const char* code = e->code;
+    if (app->core.tileWorld().enabled()) return tileWorldKey(app, code, true) ? EM_TRUE : EM_FALSE;
     const bool  shift = e->shiftKey;
     // Shift+F toggles fly; Esc leaves it.
     if (!std::strcmp(code, "KeyF") && shift && !e->repeat) { setFlyMode(app, !app->fly_mode); return EM_TRUE; }
@@ -481,6 +508,7 @@ EM_BOOL onKeyDown(int, const EmscriptenKeyboardEvent* e, void* user) {
 
 EM_BOOL onKeyUp(int, const EmscriptenKeyboardEvent* e, void* user) {
     auto* app = static_cast<AppState*>(user);
+    if (app->core.tileWorld().enabled()) return tileWorldKey(app, e->code, false) ? EM_TRUE : EM_FALSE;
     return setFlyKey(app, e->code, false) ? EM_TRUE : EM_FALSE;
 }
 
@@ -527,12 +555,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void raf_tick_c(void* user) {
     auto* app = static_cast<AppState*>(user);
     if (!app->ready) return;
 
+    // Reconfiguring writes canvas.width/height, which clears the bitmap, so
+    // the new size must be drawn this tick or the canvas presents blank.
     int w = 0, h = 0;
     app->host.framebufferSize(w, h);
     if (w != app->last_w || h != app->last_h) {
         app->core.configureSurface(w, h);
         app->last_w = w;
         app->last_h = h;
+        app->host.requestFrame();
     }
 
     // Fly mode: integrate held-key movement each frame (dt from wall clock).
@@ -553,6 +584,13 @@ extern "C" EMSCRIPTEN_KEEPALIVE void raf_tick_c(void* user) {
     }
 }
 
+// Draw on the next raf_tick_c although nothing in the scene changed. For
+// host-side events the wasm cannot observe: the browser discarding the canvas
+// bitmap on a window move, tab or occlusion change, or DOM re-parenting.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_request_redraw_c() {
+    if (g_app) g_app->host.requestFrame();
+}
+
 // Stream a .ifcview from a registered JS byte-source and APPEND it to the scene
 // (federation). the host page (web/ifcviewer.js) registers the source first — a picked File or a
 // remote URL, sized up front — into Module.__ifcvSources[source_id], then calls
@@ -560,6 +598,30 @@ extern "C" EMSCRIPTEN_KEEPALIVE void raf_tick_c(void* user) {
 // is read via ranges and chunks stream per-chunk, so a 500 MB .ifcview stays in
 // the File / on the server. Asynchronous; the model frames itself from the JS
 // completion callback. Call clear_scene_c first to replace instead of append.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_begin_stream_c(int source_id) {
+    if (!g_app || !g_app->ready) return;
+    g_app->federation.beginStream(source_id);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_append_part_c(int source_id, int part_source_id) {
+    if (!g_app || !g_app->ready) return;
+    std::string label = g_app->federation.modelName(source_id);
+    if (label.empty()) label = "source " + std::to_string(source_id);
+    g_app->core.loadIfcViewMetadataWeb(part_source_id, std::move(label),
+        [source_id](std::uint32_t session_model_id) {
+            if (!g_app) return;
+            g_app->federation.bindPart(source_id, session_model_id);
+        });
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_end_stream_c(int source_id) {
+    if (!g_app) return;
+    const std::uint32_t first = g_app->federation.sessionModelId(source_id);
+    EM_ASM({
+        if (Module.__ifcvOnModelLoaded) Module.__ifcvOnModelLoaded($0, $1);
+    }, source_id, int(first));
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE void load_ifcview_from_source_c(int source_id) {
     if (!g_app || !g_app->ready) return;
     // Label the model with whatever name the host page set for this source, so
@@ -589,6 +651,30 @@ extern "C" EMSCRIPTEN_KEEPALIVE void clear_scene_c() {
     // Source ids are re-minted from zero by the host page's next registration
     // pass, so stale per-source transforms would land on the wrong models.
     g_app->federation.clear();
+}
+
+// Load the embedded sample .ifcview (mounted into MEMFS via --embed-file in
+// CMakeLists.txt). It stays on the synchronous MEMFS read and bypasses the
+// source registry, so it has no source id.
+static bool loadEmbeddedSample(AppState* app) {
+    const std::uint32_t sample_id = app->core.loadIfcViewFromPath("/sample.ifcview");
+    if (!sample_id) {
+        Log::warn() << "ifcviewer-web: sample .ifcview load failed";
+        return false;
+    }
+    // Tell the federation directly, otherwise the first-model false-origin
+    // guess never runs for a page that only ever shows the sample.
+    app->federation.onModelLoadedWithoutSource(sample_id);
+    return true;
+}
+
+// Append the embedded sample again, for host pages that start empty
+// (clear_scene_c at boot) and offer it on demand.
+extern "C" EMSCRIPTEN_KEEPALIVE int load_sample_c() {
+    if (!g_app || !g_app->ready) return 0;
+    const bool ok = loadEmbeddedSample(g_app);
+    g_app->host.requestFrame();
+    return ok ? 1 : 0;
 }
 
 // Viewport-navigation entry points for the the host page (web/ifcviewer.js) toolbar (buttons that
@@ -628,6 +714,101 @@ extern "C" EMSCRIPTEN_KEEPALIVE void show_all_c()         { if (g_app && g_app->
 extern "C" EMSCRIPTEN_KEEPALIVE void hide_all_c()         { if (g_app && g_app->ready) g_app->core.hideAll(); }
 extern "C" EMSCRIPTEN_KEEPALIVE void toggle_xray_c()      { if (g_app && g_app->ready) g_app->core.toggleXray(); }
 extern "C" EMSCRIPTEN_KEEPALIVE int  xray_is_active_c()   { return (g_app && g_app->ready && g_app->core.xrayActive()) ? 1 : 0; }
+
+// Ground grid visibility, plus sparse RGB line grids (plane 0=XY, 1=XZ, 2=YZ).
+// Pass a negative colour component to keep the plane-default axis colour.
+extern "C" EMSCRIPTEN_KEEPALIVE void set_grid_visible_c(int visible) {
+    if (g_app && g_app->ready) g_app->core.setGridVisible(visible != 0);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int grid_is_visible_c() {
+    return (g_app && g_app->ready && g_app->core.gridVisible()) ? 1 : 0;
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void toggle_grid_c() {
+    if (g_app && g_app->ready) g_app->core.toggleGrid();
+}
+
+// World-space axes through the scene origin. `size` is metres either side
+// (bidirectional AxesHelper). Default 1000.
+extern "C" EMSCRIPTEN_KEEPALIVE void set_origin_axes_visible_c(int visible) {
+    if (g_app && g_app->ready) g_app->core.setOriginAxesVisible(visible != 0);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int origin_axes_visible_c() {
+    return (g_app && g_app->ready && g_app->core.originAxesVisible()) ? 1 : 0;
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void toggle_origin_axes_c() {
+    if (g_app && g_app->ready) g_app->core.toggleOriginAxes();
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void set_origin_axes_size_c(float size_metres) {
+    if (g_app && g_app->ready) g_app->core.setOriginAxesSize(size_metres);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE float origin_axes_size_c() {
+    return (g_app && g_app->ready) ? g_app->core.originAxesSize() : 1000.0f;
+}
+
+// Floor fade. near/far factors are multiples of the camera distance.
+// mode 1 = linear, 2 = exp2. Colour follows the background.
+extern "C" EMSCRIPTEN_KEEPALIVE void set_fog_c(int enabled, int mode,
+                                               float near_factor, float far_factor,
+                                               float density) {
+    if (g_app && g_app->ready) g_app->core.setFog(enabled != 0, mode, near_factor, far_factor, density);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void set_fog_enabled_c(int enabled) {
+    if (g_app && g_app->ready) g_app->core.setFogEnabled(enabled != 0);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int fog_is_enabled_c() {
+    return (g_app && g_app->ready && g_app->core.fogEnabled()) ? 1 : 0;
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void toggle_fog_c() {
+    if (g_app && g_app->ready) g_app->core.toggleFog();
+}
+// out: enabled, mode, nearFactor, farFactor, density
+extern "C" EMSCRIPTEN_KEEPALIVE void get_fog_c(float* out) {
+    if (!out) return;
+    if (!g_app || !g_app->ready) {
+        out[0] = 1.0f; out[1] = 1.0f; out[2] = 0.35f; out[3] = 2.2f; out[4] = 0.002f;
+        return;
+    }
+    out[0] = g_app->core.fogEnabled() ? 1.0f : 0.0f;
+    out[1] = float(g_app->core.fogMode());
+    out[2] = g_app->core.fogNearFactor();
+    out[3] = g_app->core.fogFarFactor();
+    out[4] = g_app->core.fogDensity();
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void grid_upsert_c(
+    const char* id_utf8,
+    double ox, double oy, double oz,
+    int plane,
+    float spacing, int divisions,
+    float color_u_r, float color_u_g, float color_u_b,
+    float color_v_r, float color_v_g, float color_v_b,
+    float opacity,
+    int visible) {
+    if (!g_app || !g_app->ready || !id_utf8 || !*id_utf8) return;
+
+    ViewportGridSpec spec;
+    spec.id        = id_utf8;
+    spec.origin    = Eigen::Vector3d(ox, oy, oz);
+    spec.plane     = static_cast<ViewportGridSpec::Plane>(std::clamp(plane, 0, 2));
+    spec.spacing   = spacing;
+    spec.divisions = divisions;
+    spec.opacity   = opacity < 0.0f ? 1.0f : std::clamp(opacity, 0.0f, 1.0f);
+    spec.visible   = visible != 0;
+
+    const bool custom_u = color_u_r >= 0.0f && color_u_g >= 0.0f && color_u_b >= 0.0f;
+    const bool custom_v = color_v_r >= 0.0f && color_v_g >= 0.0f && color_v_b >= 0.0f;
+    if (!custom_u || !custom_v) spec.applyDefaultAxisColors();
+    if (custom_u) spec.color_u = Eigen::Vector3f(color_u_r, color_u_g, color_u_b);
+    if (custom_v) spec.color_v = Eigen::Vector3f(color_v_r, color_v_g, color_v_b);
+
+    g_app->core.upsertViewportGrid(spec);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int grid_remove_c(const char* id_utf8) {
+    if (!g_app || !g_app->ready || !id_utf8 || !*id_utf8) return 0;
+    return g_app->core.removeViewportGrid(id_utf8) ? 1 : 0;
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void grid_clear_c() {
+    if (g_app && g_app->ready) g_app->core.clearViewportGrids();
+}
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_selection_outline_c(int on) {
     if (!g_app || !g_app->ready) return;
     g_app->core.setSelectionOutlineEnabled(on != 0);
@@ -659,6 +840,18 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_camera_c(float* out) {
     out[3] = s.distance;   out[4] = s.yaw;        out[5] = s.pitch;
     out[6] = eye.x();      out[7] = eye.y();      out[8] = eye.z();
 }
+// CSS pixels of a world point on the canvas, y down. Returns 0 when the point
+// is behind the camera. World (0,0,0) is the axes intersection. The survey
+// point is the false origin in metres, so a host pins its readout there.
+extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_project_world_c(float x, float y, float z,
+                                                         float* out) {
+    if (!g_app || !g_app->ready || !out) return 0;
+    float css_x = 0.0f, css_y = 0.0f;
+    if (!g_app->core.projectWorldToCss(x, y, z, css_x, css_y)) return 0;
+    out[0] = css_x;
+    out[1] = css_y;
+    return 1;
+}
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_camera_c(float tx, float ty, float tz,
                                                        float dist, float yaw, float pitch) {
     if (!g_app || !g_app->ready) return;
@@ -678,6 +871,120 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_background_c(float r, float g,
                                                            float b, float a) {
     if (!g_app || !g_app->ready) return;
     g_app->core.setBackgroundColor(r, g, b, a);
+}
+
+// ---- Render modes, shading, edges, ambient occlusion ----------------------
+// See ViewportCore::setRenderMode. Settings cross as flat float arrays so a
+// partial update can be merged on the JS side (get, patch, set):
+//   shading: [surface, base r, g, b, linear, exposure, tone_map,
+//             key dir x, y, z, fill dir x, y, z,
+//             key, fill, ambient intensity, sky r, g, b, ground r, g, b]  (22)
+//   edges:   [enabled, mode, r, g, b, opacity, width_px, crease_deg,
+//             antialias]                                                     (9)
+//   ao:      [enabled, radius, intensity, bias]                            (4)
+// Mode: 0 shaded, 1 shaded + edges, 2 technical, 3 clay, 4 x-ray.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_render_mode_c(int mode) {
+    if (!g_app || !g_app->ready || mode < 0 || mode > 4) return;
+    g_app->core.setRenderMode(ViewportCore::RenderMode(mode));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_render_mode_c() {
+    return (g_app && g_app->ready) ? int(g_app->core.renderMode()) : 0;
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shading_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::ShadingSettings& s = g_app->core.shading();
+    const float v[22] = {
+        float(int(s.surface)), s.base_color[0], s.base_color[1], s.base_color[2],
+        s.linear ? 1.0f : 0.0f, s.exposure, float(int(s.tone_map)),
+        s.key_dir[0], s.key_dir[1], s.key_dir[2],
+        s.fill_dir[0], s.fill_dir[1], s.fill_dir[2],
+        s.key_intensity, s.fill_intensity, s.ambient_intensity,
+        s.sky_color[0], s.sky_color[1], s.sky_color[2],
+        s.ground_color[0], s.ground_color[1], s.ground_color[2],
+    };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_shading_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::ShadingSettings s;
+    s.surface = ViewportCore::SurfaceStyle(std::clamp(int(v[0]), 0, 2));
+    for (int i = 0; i < 3; ++i) {
+        s.base_color[i]   = v[1 + i];
+        s.key_dir[i]      = v[7 + i];
+        s.fill_dir[i]     = v[10 + i];
+        s.sky_color[i]    = v[16 + i];
+        s.ground_color[i] = v[19 + i];
+    }
+    s.linear   = v[4] != 0.0f;
+    s.exposure = v[5];
+    s.tone_map = ViewportCore::ToneMap(std::clamp(int(v[6]), 0, 2));
+    s.key_intensity     = v[13];
+    s.fill_intensity    = v[14];
+    s.ambient_intensity = v[15];
+    g_app->core.setShading(s);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_edges_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::EdgeSettings& e = g_app->core.edges();
+    const float v[9] = { e.enabled ? 1.0f : 0.0f, float(int(e.mode)),
+                         e.color[0], e.color[1], e.color[2],
+                         e.opacity, e.width_px, e.crease_deg,
+                         e.antialias ? 1.0f : 0.0f };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_edges_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::EdgeSettings e;
+    e.enabled = v[0] != 0.0f;
+    e.mode    = ViewportCore::EdgeMode(std::clamp(int(v[1]), 0, 1));
+    for (int i = 0; i < 3; ++i) e.color[i] = v[2 + i];
+    e.opacity    = v[5];
+    e.width_px   = v[6];
+    e.crease_deg = v[7];
+    e.antialias  = v[8] != 0.0f;
+    g_app->core.setEdges(e);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_ao_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::AoSettings& a = g_app->core.ambientOcclusion();
+    const float v[4] = { a.enabled ? 1.0f : 0.0f, a.radius, a.intensity, a.bias };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_ao_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::AoSettings a;
+    a.enabled   = v[0] != 0.0f;
+    a.radius    = v[1];
+    a.intensity = v[2];
+    a.bias      = v[3];
+    g_app->core.setAmbientOcclusion(a);
+}
+
+// Offscreen snapshot at width × height device pixels. use_view_background 0
+// clears with (r, g, b, a) instead (sRGB in [0..1]; a = 0 is transparent).
+// Rows and completion come back through Module.__ifcvOnSnapshotRows /
+// __ifcvOnSnapshotDone, keyed by `token`. See ViewportCore::requestSnapshot.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_snapshot_c(int token, int width, int height,
+                                                     int use_view_background,
+                                                     float r, float g, float b, float a,
+                                                     int timeout_ms) {
+    if (!g_app || !g_app->ready) {
+        EM_ASM({
+            if (Module.__ifcvOnSnapshotDone) Module.__ifcvOnSnapshotDone($0, 0, $1, $2);
+        }, token, width, height);
+        return;
+    }
+    ViewportCore::SnapshotRequest req;
+    req.token  = token;
+    req.width  = width;
+    req.height = height;
+    req.use_view_background = use_view_background != 0;
+    req.background[0] = r;
+    req.background[1] = g;
+    req.background[2] = b;
+    req.background[3] = a;
+    if (timeout_ms > 0) req.timeout_ms = timeout_ms;
+    g_app->core.requestSnapshot(req);
 }
 
 // Mouse navigation scheme: "blender" | "rhino" | "revit" | "web". The preset
@@ -985,25 +1292,163 @@ extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_frame_stats_c(double* out, int capa
 // Neither touches visibility.
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_unload_model_c(int source_id) {
     if (!g_app) return;
-    const std::uint32_t session_model_id = g_app->federation.sessionModelId(source_id);
-    if (session_model_id == 0) return;
-    g_app->core.unloadModel(session_model_id);
+    for (std::uint32_t session_model_id : g_app->federation.sessionModelIds(source_id)) {
+        g_app->core.unloadModel(session_model_id);
+    }
 }
 extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_load_model_c(int source_id) {
     if (!g_app) return 0;
-    const std::uint32_t session_model_id = g_app->federation.sessionModelId(source_id);
-    if (session_model_id == 0) return 0;
-    return g_app->core.loadModel(session_model_id) ? 1 : 0;
+    bool ok = true;
+    const auto ids = g_app->federation.sessionModelIds(source_id);
+    if (ids.empty()) return 0;
+    for (std::uint32_t session_model_id : ids) {
+        ok = g_app->core.loadModel(session_model_id) && ok;
+    }
+    return ok ? 1 : 0;
 }
 extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_model_unloaded_c(int source_id) {
     if (!g_app) return 0;
-    const std::uint32_t session_model_id = g_app->federation.sessionModelId(source_id);
-    return session_model_id != 0 && g_app->core.isModelUnloaded(session_model_id) ? 1 : 0;
+    const auto ids = g_app->federation.sessionModelIds(source_id);
+    if (ids.empty()) return 0;
+    for (std::uint32_t session_model_id : ids) {
+        if (!g_app->core.isModelUnloaded(session_model_id)) return 0;
+    }
+    return 1;
 }
 extern "C" EMSCRIPTEN_KEEPALIVE double ifcv_model_vram_bytes_c(int source_id) {
     if (!g_app) return 0.0;
-    const std::uint32_t session_model_id = g_app->federation.sessionModelId(source_id);
-    return session_model_id == 0 ? 0.0 : double(g_app->core.modelVramBytes(session_model_id));
+    double bytes = 0.0;
+    for (std::uint32_t session_model_id : g_app->federation.sessionModelIds(source_id)) {
+        bytes += double(g_app->core.modelVramBytes(session_model_id));
+    }
+    return bytes;
+}
+
+// ---- Tile world -------------------------------------------------------------
+// A 2D grid-locked adventure layer drawn instead of the 3D scene while enabled.
+// See src/ifcviewer/TileWorld.h for the model; web/tileworld.js wraps these.
+
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_enable_c(int on) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setEnabled(on != 0);
+    g_app->core.tileWorld().setButtons(0);
+    g_app->host.requestFrame();
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_screen_c(int w, int h, int tile_px) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setTileSize(tile_px);
+    g_app->core.tileWorld().setScreen(w, h);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_atlas_c(const std::uint8_t* rgba, int w, int h) {
+    if (!g_app || !g_app->ready) return;
+    g_app->core.tileWorldRenderer().setAtlas(rgba, w, h);
+    g_app->core.tileWorld().setAtlasSize(w, h);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_map_c(int w, int h, const std::uint16_t* ground,
+                                                  const std::uint16_t* fg, const std::uint8_t* flags,
+                                                  int border_tile) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setMap(w, h, ground, fg, flags, std::uint16_t(border_tile));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_cell_c(int x, int y, int ground, int fg, int flags) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setCell(x, y, std::uint16_t(ground), std::uint16_t(fg), std::uint8_t(flags));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_region_c(int x, int y, int w, int h, int border_tile) {
+    if (g_app) g_app->core.tileWorld().setRegion(x, y, w, h, std::uint16_t(border_tile));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_tile_anim_c(int base, int frames, int period) {
+    if (!g_app) return;
+    g_app->core.tileWorld().setTileAnimation(std::uint16_t(base), frames, period);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int tw_spawn_actor_c(int x, int y, int sprite_base, int facing, int behavior) {
+    if (!g_app) return -1;
+    return g_app->core.tileWorld().spawnActor(x, y, sprite_base, tw::Dir(facing & 3),
+                                              tw::Behavior(std::clamp(behavior, 0, 2)));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_clear_actors_c() {
+    if (g_app) g_app->core.tileWorld().clearActors();
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_add_warp_c(int sx, int sy, int dx, int dy, int facing) {
+    if (g_app) g_app->core.tileWorld().addWarp(tw::Warp{sx, sy, dx, dy, tw::Dir(facing & 3)});
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_clear_warps_c() {
+    if (g_app) g_app->core.tileWorld().clearWarps();
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_teleport_c(int x, int y, int facing) {
+    if (g_app) g_app->core.tileWorld().teleportPlayer(x, y, tw::Dir(facing & 3));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_buttons_c(int buttons) {
+    if (g_app) g_app->core.tileWorld().setButtons(std::uint32_t(buttons));
+}
+// opts: 0 camera mode (0 follow, 1 snap), 1 clamp, 2 palette (0 original,
+// 1 green, 2 grey), 3 LCD grid, 4 collision debug, 5 sprite lift px, 6 shadow
+// tile, 7 paused, 8 native keyboard (window-wide keys), 9 fixed zoom scale
+// (0 = fit 160x144, and the screen goes back to 160x144)
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_set_option_c(int key, int value) {
+    if (!g_app) return;
+    tw::TileWorld& w = g_app->core.tileWorld();
+    TileWorldRenderer& r = g_app->core.tileWorldRenderer();
+    switch (key) {
+        case 0: w.setCameraMode(value ? tw::CameraMode::Snap : tw::CameraMode::Follow); break;
+        case 1: w.setCameraClamp(value != 0); break;
+        case 2: r.setPalette(value); break;
+        case 3: r.setLcdGrid(value != 0); break;
+        case 4: w.setDebugCollision(value != 0); break;
+        case 5: w.setSpriteLift(value); break;
+        case 6: w.setShadowTile(value); break;
+        case 7: w.setPaused(value != 0); break;
+        case 8: g_tw_native_keys = (value != 0); if (!value) w.setButtons(0); break;
+        case 9: r.setFixedScale(value); if (value <= 0) w.setScreen(160, 144); break;
+        default: break;
+    }
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_place_actor_c(int index, int x, int y, int facing,
+                                                      int behavior, int radius) {
+    if (!g_app) return;
+    g_app->core.tileWorld().placeActor(index, x, y, tw::Dir(facing & 3),
+                                       tw::Behavior(std::clamp(behavior, 0, 2)), radius);
+}
+// out[5*max]: per actor cx, cy, pixel x, pixel y, facing. Returns the count.
+extern "C" EMSCRIPTEN_KEEPALIVE int tw_get_actors_c(int* out, int max) {
+    if (!g_app || !out) return 0;
+    const tw::TileWorld& w = g_app->core.tileWorld();
+    const auto& actors = w.actors();
+    const int n = std::min(int(actors.size()), max);
+    for (int i = 0; i < n; ++i) {
+        int px, py;
+        w.actorPixelPos(i, px, py);
+        out[i * 5 + 0] = actors[size_t(i)].cx;
+        out[i * 5 + 1] = actors[size_t(i)].cy;
+        out[i * 5 + 2] = px;
+        out[i * 5 + 3] = py;
+        out[i * 5 + 4] = int(actors[size_t(i)].facing);
+    }
+    return n;
+}
+// out[8]: scale, offset x, offset y (device px), native screen w, h, tile px,
+// map w, map h. With the camera from tw_get_state_c, world pixel (x, y) lands
+// at offset + (x - cam) * scale in canvas backing-store pixels.
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_get_view_c(int* out) {
+    if (!g_app || !out) return;
+    const tw::TileWorld& w = g_app->core.tileWorld();
+    const TileWorldRenderer::View v = g_app->core.tileWorldRenderer().lastView();
+    out[0] = v.scale; out[1] = v.offset_x; out[2] = v.offset_y;
+    out[3] = w.screenW(); out[4] = w.screenH(); out[5] = w.tileSize();
+    out[6] = w.mapW(); out[7] = w.mapH();
+}
+
+// out[10]: cx, cy, facing, moving, cam_x, cam_y, cell flags, steps taken,
+// event mask (1 << tw::Event) since the previous call, last actor talked to.
+extern "C" EMSCRIPTEN_KEEPALIVE void tw_get_state_c(int* out) {
+    if (!g_app || !out) return;
+    tw::TileWorld& w = g_app->core.tileWorld();
+    const tw::PlayerState s = w.playerState();
+    int talked = -1;
+    const std::uint32_t events = w.takeEvents(talked);
+    out[0] = s.cx; out[1] = s.cy; out[2] = s.facing; out[3] = s.moving ? 1 : 0;
+    out[4] = s.cam_x; out[5] = s.cam_y; out[6] = s.cell_flags; out[7] = s.steps_taken;
+    out[8] = int(events); out[9] = talked;
 }
 
 int main(int /*argc*/, char** /*argv*/) {
@@ -1031,19 +1476,10 @@ int main(int /*argc*/, char** /*argv*/) {
         g_app->core.buildPickPipeline();
         g_app->core.buildSelectionOutlinePipelines();
 
-        // Load the embedded sample .ifcview (mounted into MEMFS via
-        // --embed-file in CMakeLists.txt). The sample stays on the
-        // synchronous MEMFS read; user-picked files go through the
-        // Blob.slice byte-range path (load_ifcview_from_blob_c) so large
-        // .ifcview files never enter the wasm heap.
-        if (const std::uint32_t sample_id = g_app->core.loadIfcViewFromPath("/sample.ifcview")) {
-            // Bypasses the source registry, so tell the federation directly —
-            // otherwise the first-model false-origin guess never runs for a
-            // page that only ever shows the sample.
-            g_app->federation.onModelLoadedWithoutSource(sample_id);
-        } else {
-            Log::warn() << "ifcviewer-web: sample .ifcview load failed";
-        }
+        // User-picked files go through the Blob.slice byte-range path
+        // (load_ifcview_from_blob_c) so large .ifcview files never enter
+        // the wasm heap.
+        loadEmbeddedSample(g_app);
 
         g_app->ready = true;
 

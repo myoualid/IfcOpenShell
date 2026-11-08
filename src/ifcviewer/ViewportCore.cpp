@@ -19,6 +19,8 @@
 
 #include "ViewportCore.h"
 
+#include <chrono>
+
 // wgpu-native extensions (log callback, MULTI_DRAW_INDIRECT). The web
 // build (emdawnwebgpu / Dawn) doesn't ship this header — validation
 // errors there go to the browser console, so the log-callback path
@@ -28,6 +30,7 @@
 #endif
 
 #include "CameraMath.h"
+#include "FederationMath.h"
 #include "GpuAllocScope.h"
 #include "InstanceCompose.h"
 #include "ModelLookup.h"
@@ -223,8 +226,30 @@ std::uint64_t ViewportCore::modelVramBytes(uint32_t session_model_id) const {
 
 void ViewportCore::setFederatedFalseOrigin(const Eigen::Matrix4d& matrix_meters) {
     if (federated_false_origin_meters_ == matrix_meters) return;
+    // Everything the user sees lives in world coordinates; only the GPU frame
+    // moves. Carry the camera and the section planes through the change so
+    // nothing jumps on screen except the survey marker.
+    const Eigen::Matrix4d delta = matrix_meters * federated_false_origin_meters_.inverse();
+    const Eigen::Matrix3f delta_r = delta.block<3, 3>(0, 0).cast<float>();
+    auto move_point = [&](const Eigen::Vector3f& q) {
+        return Eigen::Vector3f((delta * q.cast<double>().homogeneous()).head<3>().cast<float>());
+    };
+    for (SectionPlane& p : section_planes_) {
+        const Eigen::Vector3f on_plane = move_point(-p.d * p.n);
+        p.origin = move_point(p.origin);
+        p.n      = (delta_r * p.n).normalized();
+        p.d      = -p.n.dot(on_plane);
+    }
+    grid_helper_.setWorldToViewer(matrix_meters);
+    const Eigen::Vector4d t_old(camera_target_[0], camera_target_[1], camera_target_[2], 1.0);
+    const Eigen::Vector4d t_new = delta * t_old;
+    camera_target_[0] = float(t_new.x());
+    camera_target_[1] = float(t_new.y());
+    camera_target_[2] = float(t_new.z());
+    camera_yaw_deg_ += float(std::atan2(delta(1, 0), delta(0, 0)) * 180.0 / 3.14159265358979323846);
     federated_false_origin_meters_ = matrix_meters;
     for (auto& kv : models_gpu_) recomposeAndUploadModel(kv.first);
+    host_->requestFrame();
 }
 
 void ViewportCore::setModelCoordinateOperation(uint32_t session_model_id,
@@ -259,7 +284,8 @@ void ViewportCore::buildViewProj(Eigen::Matrix4f& view_out,
                        : Eigen::Vector3f(0.0f, 0.0f, 1.0f);
     view_out = lookAtRH(eye, target, up);
 
-    const float aspect = (configured_h_ > 0)
+    const float aspect = (aspect_override_ > 0.0f) ? aspect_override_
+                       : (configured_h_ > 0)
                             ? float(configured_w_) / float(configured_h_)
                             : 1.0f;
     Eigen::Matrix4f p;
@@ -276,7 +302,26 @@ void ViewportCore::buildViewProj(Eigen::Matrix4f& view_out,
     Eigen::Matrix4f z_remap = Eigen::Matrix4f::Identity();
     z_remap(2, 2) = 0.5f;
     z_remap(2, 3) = 0.5f;
-    proj_out = z_remap * p;
+    proj_out = ndc_crop_ * z_remap * p;
+}
+
+bool ViewportCore::projectWorldToCss(float x, float y, float z,
+                                     float& css_x, float& css_y) const {
+    if (configured_w_ <= 0 || configured_h_ <= 0 || !host_) return false;
+    Eigen::Matrix4f view, proj;
+    buildViewProj(view, proj);
+    const Eigen::Vector4f clip = (proj * view) * Eigen::Vector4f(x, y, z, 1.0f);
+    // Right-handed look-at puts the scene at negative view Z, so clip.w()
+    // is positive in front of the camera and ~0 on the camera plane.
+    if (clip.w() <= 1e-4f) return false;
+    const float ndc_x = clip.x() / clip.w();
+    const float ndc_y = clip.y() / clip.w();
+    const float dpr = host_->dpr() > 0.0f ? host_->dpr() : 1.0f;
+    const float px_x = (ndc_x * 0.5f + 0.5f) * float(configured_w_);
+    const float px_y_up = (ndc_y * 0.5f + 0.5f) * float(configured_h_);
+    css_x = px_x / dpr;
+    css_y = (float(configured_h_) - px_y_up) / dpr;
+    return true;
 }
 
 bool ViewportCore::computeSceneAabb(float mn[3], float mx[3]) const {
@@ -692,6 +737,47 @@ bool ViewportCore::pivotIndicatorVisible() const {
     return pivot_indicator_timer_.elapsed() < pivot_indicator_hide_ms_;
 }
 
+void ViewportCore::setOriginAxesVisible(bool visible) {
+    if (origin_axes_visible_ == visible) return;
+    origin_axes_visible_ = visible;
+    host_->requestFrame();
+}
+
+void ViewportCore::toggleOriginAxes() {
+    setOriginAxesVisible(!origin_axes_visible_);
+}
+
+void ViewportCore::setOriginAxesSize(float size_metres) {
+    if (!(size_metres > 0.0f)) return;
+    if (origin_axes_size_ == size_metres) return;
+    origin_axes_size_ = size_metres;
+    host_->requestFrame();
+}
+
+void ViewportCore::setFog(bool enabled, int mode, float near_factor, float far_factor,
+                          float density) {
+    mode = std::clamp(mode, 1, 2);
+    if (!(near_factor > 0.0f)) near_factor = fog_near_factor_;
+    if (!(far_factor > near_factor)) far_factor = near_factor * 1.5f;
+    if (!(density >= 0.0f)) density = fog_density_;
+    fog_enabled_     = enabled;
+    fog_mode_        = mode;
+    fog_near_factor_ = near_factor;
+    fog_far_factor_  = far_factor;
+    fog_density_     = density;
+    host_->requestFrame();
+}
+
+void ViewportCore::setFogEnabled(bool enabled) {
+    if (fog_enabled_ == enabled) return;
+    fog_enabled_ = enabled;
+    host_->requestFrame();
+}
+
+void ViewportCore::toggleFog() {
+    setFogEnabled(!fog_enabled_);
+}
+
 void ViewportCore::flyMove(bool fwd, bool back, bool right, bool left,
                            bool up, bool down, bool boost, float dt_seconds) {
     if (dt_seconds <= 0.0f) return;
@@ -917,6 +1003,13 @@ struct FrameUniforms {
     _pad_xray_0:  f32,
     _pad_xray_1:  f32,
     _pad_xray_2:  f32,
+    // x = surface style (0 model colours, 1 technical, 2 clay), y = linear
+    // lighting (0/1), z = exposure, w = tone map (0 none, 1 ACES, 2 AgX).
+    shading:      vec4<f32>,
+    // Technical / clay surface colour, sRGB.
+    base_color:   vec4<f32>,
+    // x = key, y = fill, z = ambient intensity.
+    light_params: vec4<f32>,
 };
 
 // Returns true if `world` lies on the positive (clipped-away) side of any
@@ -974,6 +1067,9 @@ struct VsOut {
     @location(1) color:     vec4<f32>,
     @location(2) world_pos: vec3<f32>,
     @location(3) @interpolate(flat) object_id: u32,
+    // 1 when the instance carries a setColor override, which technical and
+    // clay surfaces keep instead of their flat colour.
+    @location(4) @interpolate(flat) has_override: u32,
 };
 
 // Normal of the fragment's triangle, facing the viewer.
@@ -1054,15 +1150,17 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
     let world4 = inst.transform * vec4<f32>(pos_local, 1.0);
 
     var color = vec4<f32>(r, g, b, a);
+    var has_override = 0u;
     if (inst.color_override != 0u) {
         let cr = f32(inst.color_override         & 0xFFu) / 255.0;
         let cg = f32((inst.color_override >>  8u) & 0xFFu) / 255.0;
         let cb = f32((inst.color_override >> 16u) & 0xFFu) / 255.0;
         let ca = f32((inst.color_override >> 24u) & 0xFFu) / 255.0;
-        if (ca > 0.0) { color = vec4<f32>(cr, cg, cb, ca); }
+        if (ca > 0.0) { color = vec4<f32>(cr, cg, cb, ca); has_override = 1u; }
     }
 
     var out: VsOut;
+    out.has_override = has_override;
     out.clip_pos  = u_frame.view_proj * world4;
     out.color     = color;
     out.world_pos = world4.xyz;
@@ -1082,6 +1180,39 @@ fn srgbToLinear(s: vec3<f32>) -> vec3<f32> {
     return select(hi, lo, s <= vec3<f32>(0.04045));
 }
 
+// Tone mapping for the linear lighting path. 1 = ACES (Narkowicz fit),
+// 2 = AgX (polynomial fit of the default look), anything else clamps.
+fn toneMap(x: vec3<f32>, op: u32) -> vec3<f32> {
+    if (op == 1u) {
+        let a = x * (2.51 * x + 0.03);
+        let b = x * (2.43 * x + 0.59) + 0.14;
+        return clamp(a / b, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    if (op == 2u) {
+        let agx_in = mat3x3<f32>(
+            vec3<f32>(0.842479062253094, 0.0423282422610123, 0.0423756549057051),
+            vec3<f32>(0.0784335999999992, 0.878468636469772, 0.0784336),
+            vec3<f32>(0.0792237451477643, 0.0791661274605434, 0.879142973793104));
+        let agx_out = mat3x3<f32>(
+            vec3<f32>(1.19687900512017, -0.0528968517574562, -0.0529716355144438),
+            vec3<f32>(-0.0980208811401368, 1.15190312990417, -0.0980434501171241),
+            vec3<f32>(-0.0990297440797205, -0.0989611768448433, 1.15107367264116));
+        let min_ev = -12.47393;
+        let max_ev = 4.026069;
+        var v = agx_in * max(x, vec3<f32>(1e-10));
+        v = clamp(log2(v), vec3<f32>(min_ev), vec3<f32>(max_ev));
+        v = (v - min_ev) / (max_ev - min_ev);
+        let v2 = v * v;
+        let v4 = v2 * v2;
+        v = 15.5 * v4 * v2 - 40.14 * v4 * v + 31.96 * v4 - 6.868 * v2 * v
+          + 0.4298 * v2 + 0.1191 * v - 0.00232;
+        // The curve's output is display-encoded; bring it back to linear.
+        v = agx_out * v;
+        return pow(clamp(v, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(2.2));
+    }
+    return clamp(x, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 @fragment
 fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
     if (is_section_clipped(in.world_pos)) { discard; }
@@ -1094,25 +1225,52 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
     let ambient = mix(u_frame.ground_color.xyz, u_frame.sky_color.xyz, hemi_t);
 
     let key  = max(dot(n, u_frame.light_dir.xyz), 0.0);
-    let fill = max(dot(n, u_frame.fill_dir.xyz),  0.0) * 0.35;
+    let fill = max(dot(n, u_frame.fill_dir.xyz),  0.0);
+    let lp   = u_frame.light_params;
 
-    var color = in.color.xyz * (ambient + (key + fill) * 0.7);
+    // Technical and clay surfaces replace the model's colour with a flat
+    // one; an explicit colour override still shows through.
+    let style = u32(u_frame.shading.x + 0.5);
+    var albedo = in.color.xyz;
+    if (style != 0u && in.has_override == 0u) { albedo = u_frame.base_color.xyz; }
+
+    var color: vec3<f32>;
+    if (style == 1u) {
+        // Technical: near-flat, just enough key light to tell faces apart.
+        color = albedo * (0.84 + 0.16 * key);
+    } else if (u_frame.shading.y > 0.5) {
+        // Linear light: decode the sRGB inputs, light, expose, tone map.
+        // The result is display-referred linear; the sRGB target encodes it.
+        let a_lin   = srgbToLinear(albedo);
+        let amb_lin = srgbToLinear(ambient);
+        let hdr = a_lin * (amb_lin * lp.z + vec3<f32>(key * lp.x + fill * lp.y))
+                * u_frame.shading.z;
+        color = toneMap(hdr, u32(u_frame.shading.w + 0.5));
+    } else {
+        // Legacy: the GL viewer's gamma-space formula (defaults reproduce it).
+        color = albedo * (ambient * lp.z + key * lp.x + fill * lp.y);
+    }
+    let encoded_out = u_frame.shading.y > 0.5 && style != 1u;
 
     // Selection tint. bit 0 = in selection (cool blue mix), bit 1 = active
-    // (slightly stronger blue mix). Matches the GL main shader.
+    // (slightly stronger blue mix). Matches the GL main shader. Mixed in the
+    // space `color` is in, so the tint looks the same in both paths.
     if (in.object_id < arrayLength(&sel_flags)) {
         let flags = sel_flags[in.object_id];
-        if ((flags & 1u) != 0u) { color = mix(color, vec3<f32>(0.2, 0.6, 1.0), 0.45); }
-        if ((flags & 2u) != 0u) { color = mix(color, vec3<f32>(0.4, 0.8, 1.0), 0.40); }
+        let t0 = vec3<f32>(0.2, 0.6, 1.0);
+        let t1 = vec3<f32>(0.4, 0.8, 1.0);
+        if ((flags & 1u) != 0u) { color = mix(color, select(t0, srgbToLinear(t0), encoded_out), 0.45); }
+        if ((flags & 2u) != 0u) { color = mix(color, select(t1, srgbToLinear(t1), encoded_out), 0.40); }
     }
 
     // Cancel the swap chain's implicit linear→sRGB encoding so the final
-    // bytes match the GL backend (see srgbToLinear above). Alpha is
-    // clamped to `xray_alpha_cap` (default 1.0 = no effect; X-ray sets
-    // it to ~0.3) so a global translucency override lands without
-    // touching any per-instance state.
+    // bytes match the GL backend (see srgbToLinear above) — except on the
+    // linear path, whose output already is linear. Alpha is clamped to
+    // `xray_alpha_cap` (default 1.0 = no effect; X-ray sets it to ~0.3) so a
+    // global translucency override lands without touching any per-instance
+    // state.
     let alpha_out = min(in.color.a, u_frame.xray_alpha_cap);
-    return vec4<f32>(srgbToLinear(color), alpha_out);
+    return vec4<f32>(select(srgbToLinear(color), color, encoded_out), alpha_out);
 }
 
 // Selection silhouette mask. Same vertex pulling as vs_main, but the only
@@ -1391,6 +1549,13 @@ bool ViewportCore::buildPipelines() {
     // Corner axis gizmo + orbit pivot indicator (shared desktop + web).
     // Also optional: a failure costs the indicator, not the viewport.
     axis_indicator_.init(device_, queue_, surface_view_format_, kViewportSampleCount);
+
+    // Ground grid (shared desktop + web). Optional — a failure just means no
+    // grid, not a dead viewport. init installs the default base grid.
+    grid_helper_.init(device_, queue_, surface_view_format_, kViewportSampleCount);
+
+    // 2D tile world (idle until enabled). Optional, like the helpers above.
+    tile_renderer_.init(device_, queue_, surface_view_format_);
     return true;
 }
 
@@ -1498,12 +1663,26 @@ void ViewportCore::updateFrameUniforms() {
     // diff of the two backends only shows what the wgpu pipeline has yet to
     // implement (edge silhouette pass, MSAA polish, etc.) — not lighting
     // model differences. Key + fill are ~unit-length, ~120° apart.
-    Eigen::Vector3f L( 0.3f,  0.5f, 0.8f); L.normalize();
-    Eigen::Vector3f F(-0.3f, -0.5f, 0.8f); F.normalize();
+    // The ShadingSettings defaults are those values; setShading changes them.
+    const ShadingSettings& sh = shading_;
+    Eigen::Vector3f L(sh.key_dir[0],  sh.key_dir[1],  sh.key_dir[2]);
+    Eigen::Vector3f F(sh.fill_dir[0], sh.fill_dir[1], sh.fill_dir[2]);
+    if (L.squaredNorm() > 0.0f) L.normalize();
+    if (F.squaredNorm() > 0.0f) F.normalize();
     u.light_dir[0] = L.x(); u.light_dir[1] = L.y(); u.light_dir[2] = L.z(); u.light_dir[3] = 0;
     u.fill_dir [0] = F.x(); u.fill_dir [1] = F.y(); u.fill_dir [2] = F.z(); u.fill_dir [3] = 0;
-    u.sky_color   [0] = 0.55f; u.sky_color   [1] = 0.60f; u.sky_color   [2] = 0.70f;
-    u.ground_color[0] = 0.35f; u.ground_color[1] = 0.32f; u.ground_color[2] = 0.28f;
+    for (int i = 0; i < 3; ++i) {
+        u.sky_color[i]    = sh.sky_color[i];
+        u.ground_color[i] = sh.ground_color[i];
+        u.base_color[i]   = sh.base_color[i];
+    }
+    u.shading[0] = float(int(sh.surface));
+    u.shading[1] = sh.linear ? 1.0f : 0.0f;
+    u.shading[2] = sh.exposure;
+    u.shading[3] = float(int(sh.tone_map));
+    u.light_params[0] = sh.key_intensity;
+    u.light_params[1] = sh.fill_intensity;
+    u.light_params[2] = sh.ambient_intensity;
 
     // Pack active section planes. `is_section_clipped` (WGSL) reads
     // u.clip_count and u.clip_planes[0..clip_count) and discards
@@ -1520,6 +1699,7 @@ void ViewportCore::updateFrameUniforms() {
     u.xray_alpha_cap = xray_alpha_cap_;
     u._pad_xray[0] = u._pad_xray[1] = u._pad_xray[2] = 0.0f;
 
+    last_frame_uniforms_ = u;
     wgpuQueueWriteBuffer(queue_, frame_uniform_buffer_, 0, &u, sizeof(u));
 }
 
@@ -1766,7 +1946,10 @@ std::uint64_t ViewportCore::attachmentBytesPerPixel() {
          + 1 * msaa          // selection mask msaa (R8)
          + 1                 // selection mask resolve (R8)
          + 4                 // selection scratch (RGBA8)
-         + 4 + 8 + 16 + 4;   // pick: R32Uint id, RGBA16F normal, RGBA32F position, depth32
+         + 4 + 8 + 16 + 4    // pick: R32Uint id, RGBA16F normal, RGBA32F position, depth32
+         + 1                 // AO: two half-size R8 targets (2 x 1 B / 4 px, rounded up)
+         + 1                 // feature-edge coverage mask (R8)
+         + 2;                // supersampled line accumulator (R16F)
 }
 
 bool ViewportCore::onRequiredAllocationFailed(const char* what, std::uint64_t bytes) {
@@ -2167,6 +2350,12 @@ void ViewportCore::shutdown() {
     // we've torn down model state. Worker drains its queue then joins.
     streaming_thread_.stop();
 
+    if (snapshot_job_) finishSnapshot(false);
+    for (const SnapshotRequest& r : snapshot_queue_) {
+        host_->onSnapshotDone(r.token, false, r.width, r.height);
+    }
+    snapshot_queue_.clear();
+
     for (auto& [session_model_id, m] : models_gpu_) releaseWgpuModelGpuData(m, pool_);
     models_gpu_.clear();
 
@@ -2181,6 +2370,8 @@ void ViewportCore::shutdown() {
     if (main_pipeline_transparent_)  { wgpuRenderPipelineRelease(main_pipeline_transparent_); main_pipeline_transparent_ = nullptr; }
     section_gizmo_.destroy();
     axis_indicator_.destroy();
+    grid_helper_.destroy();
+    tile_renderer_.destroy();
     if (main_shader_module_)   { wgpuShaderModuleRelease(main_shader_module_);    main_shader_module_ = nullptr; }
     if (pipeline_layout_)      { wgpuPipelineLayoutRelease(pipeline_layout_);     pipeline_layout_ = nullptr; }
     if (model_bgl_)            { wgpuBindGroupLayoutRelease(model_bgl_);          model_bgl_ = nullptr; }
@@ -3816,10 +4007,14 @@ void ViewportCore::applyCachedModel(std::uint32_t session_model_id,
         recomposeAndUploadModel(session_model_id);
     }
 
+#if !defined(__EMSCRIPTEN__)
     if (!initial_view_applied_) {
         viewAll();
         initial_view_applied_ = true;
     }
+#endif
+    // Web: WebFederation frames after the false-origin guess so the camera
+    // is not set twice against pre- and post-shift AABBs.
     ensureSelectionFlagsBuffer();
     host_->requestFrame();
 }
@@ -4355,6 +4550,12 @@ void ViewportCore::loadIfcViewMetadataWeb(int source_id, std::string source_labe
         });
 }
 
+void ViewportCore::setModelFederationSource(std::uint32_t session_model_id, int source_id) {
+    auto it = models_gpu_.find(session_model_id);
+    if (it == models_gpu_.end()) return;
+    it->second.federation_source_id = source_id;
+}
+
 void ViewportCore::loadElementMetadataWeb(std::uint32_t session_model_id,
                                           std::function<void(bool)> done) {
     // On-demand fetch of the v15 element metadata block (elements + string table)
@@ -4370,19 +4571,32 @@ void ViewportCore::loadElementMetadataWeb(std::uint32_t session_model_id,
         if (done) done(true);
         return;
     }
+    if (m.element_metadata_loading) {
+        if (done) element_metadata_waiters_[session_model_id].push_back(std::move(done));
+        return;
+    }
+    m.element_metadata_loading = true;
     const std::uint64_t raw_size = m.element_metadata_raw_size;
     webReadRangesAsync(m.web_source_id, 0,
         {{m.element_metadata_comp_offset, m.element_metadata_comp_size}},
         [this, session_model_id, raw_size, done](bool ok, std::vector<std::uint8_t>&& cz) {
+            auto finish = [this, session_model_id, done](bool result) {
+                auto mit = models_gpu_.find(session_model_id);
+                if (mit != models_gpu_.end()) mit->second.element_metadata_loading = false;
+                auto waiters = std::move(element_metadata_waiters_[session_model_id]);
+                element_metadata_waiters_.erase(session_model_id);
+                if (done) done(result);
+                for (auto& waiter : waiters) waiter(result);
+            };
             auto mit = models_gpu_.find(session_model_id);
-            if (mit == models_gpu_.end()) { if (done) done(false); return; }
+            if (mit == models_gpu_.end()) { finish(false); return; }
             std::vector<std::uint8_t> buf(static_cast<std::size_t>(raw_size));
             IfcViewData tmp;
             if (!ok ||
                 !decompressIfcViewFrame(cz.data(), cz.size(), buf.data(), buf.size()) ||
                 !parseIfcViewElementMetadata(buf.data(), buf.size(), tmp)) {
                 Log::warn() << "loadElementMetadataWeb: read/decompress/parse failed";
-                if (done) done(false);
+                finish(false);
                 return;
             }
             mit->second.elements             = std::move(tmp.elements);
@@ -4394,7 +4608,7 @@ void ViewportCore::loadElementMetadataWeb(std::uint32_t session_model_id,
             mit->second.element_metadata_loaded = true;
             Log::info() << "ifcviewer-web: loaded element metadata ("
                         << mit->second.elements.size() << " elements)";
-            if (done) done(true);
+            finish(true);
         });
 }
 
@@ -4496,7 +4710,7 @@ ViewportCore::ElementRef makeElementRef(const ModelGpuData& m, int model_index,
     ViewportCore::ElementRef ref;
     ref.object_id   = e.object_id;
     ref.model_index = model_index;
-    ref.source_id   = m.web_source_id;
+    ref.source_id   = m.federation_source_id >= 0 ? m.federation_source_id : m.web_source_id;
     ref.guid        = str(e.guid_offset, e.guid_length);
     ref.name        = str(e.name_offset, e.name_length);
     ref.type        = str(e.type_offset, e.type_length);
@@ -4541,7 +4755,7 @@ void ViewportCore::visitModelElements(
     for (const ElementTableRecord& e : m.elements) {
         ElementSlices out;
         out.object_id = e.object_id;
-        out.source_id = m.web_source_id;
+        out.source_id = m.federation_source_id >= 0 ? m.federation_source_id : m.web_source_id;
         slice(e.guid_offset, e.guid_length, out.guid, out.guid_len);
         slice(e.name_offset, e.name_length, out.name, out.name_len);
         slice(e.type_offset, e.type_length, out.type, out.type_len);
@@ -4589,6 +4803,9 @@ void ViewportCore::streamingByteProgress(std::uint64_t& total_bytes,
     }
 }
 
+// Desktop progressive finalise (P3.3): call this on a new session model every
+// N meshes (or feed web beginStream/appendPart, which is the same grouping).
+// Drawing still waits on this commit, matching docs/viewport_architecture.rst.
 void ViewportCore::finalizeModel(std::uint32_t session_model_id) {
     auto it = pending_direct_loads_.find(session_model_id);
     if (it == pending_direct_loads_.end()) {
@@ -5193,6 +5410,7 @@ bool ViewportCore::ensureRenderAttachments(int width_px, int height_px) {
             ensureHizTextures(width_px, height_px);
             ensureSelectionOutlineTextures(width_px, height_px);
             createPickAttachments(width_px, height_px);
+            ensureAoTextures(width_px, height_px);
         },
         [&]() { releaseRenderAttachments(); },
         // Web learns of the failure after the views are already in use:
@@ -5218,6 +5436,7 @@ void ViewportCore::releaseRenderAttachments() {
     releaseHizTextures();
     releaseSelectionOutlineTextures();
     releasePickResources();
+    releaseAoTextures();
 }
 
 void ViewportCore::ensureDepthTexture(int w, int h) {
@@ -5333,9 +5552,10 @@ fn fs_main(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let t     = EDGE_THRESHOLD * c;
     let edge  = clamp((lap - t) * EDGE_SCALE, 0.0, 0.6);
 
-    // Multiplicative blend (Dst, Zero): output rgb = (1 - edge), so the
-    // existing surface colour is multiplied by (1 - edge) per channel.
-    return vec4<f32>(vec3<f32>(1.0 - edge), 1.0);
+    // Black drawn over with coverage `edge` (premultiplied over): the
+    // existing colour is scaled by (1 - edge), and alpha rises with the line
+    // so it survives a transparent clear.
+    return vec4<f32>(0.0, 0.0, 0.0, edge);
 }
 )";
 
@@ -5369,16 +5589,18 @@ bool ViewportCore::buildEdgePipeline() {
     sm_desc.label       = svFromCStr("ifcviewer-wgpu.edge_wgsl");
     edge_shader_module_ = wgpuDeviceCreateShaderModule(device_, &sm_desc);
 
-    // Multiplicative blend (Dst, Zero): out.rgb = src.rgb * dst.rgb.
-    // Fragment outputs (1 - edge, 1 - edge, 1 - edge) so the existing
-    // surface colour is scaled per-channel — strictly darkens, never
-    // brightens. Matches GL's renderEdgePass (GL_DST_COLOR, GL_ZERO).
+    // Premultiplied over (One, OneMinusSrcAlpha) of (0, 0, 0, edge):
+    // out.rgb = dst.rgb * (1 - edge), the same darkening as GL's
+    // renderEdgePass (GL_DST_COLOR, GL_ZERO) on an opaque target, and
+    // out.a = edge + dst.a * (1 - edge), so on a transparent background
+    // (setBackgroundColor alpha < 1, snapshots) the line keeps its coverage
+    // instead of fading with the pixel it darkens.
     WGPUBlendState blend = {};
-    blend.color.srcFactor = WGPUBlendFactor_Dst;
-    blend.color.dstFactor = WGPUBlendFactor_Zero;
+    blend.color.srcFactor = WGPUBlendFactor_One;
+    blend.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
     blend.color.operation = WGPUBlendOperation_Add;
-    blend.alpha.srcFactor = WGPUBlendFactor_Zero;
-    blend.alpha.dstFactor = WGPUBlendFactor_One;
+    blend.alpha.srcFactor = WGPUBlendFactor_One;
+    blend.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
     blend.alpha.operation = WGPUBlendOperation_Add;
 
     WGPUColorTargetState target = {};
@@ -5409,6 +5631,11 @@ bool ViewportCore::buildEdgePipeline() {
     if (!edge_pipeline_) {
         Log::warn() << "wgpu edge pipeline creation failed";
         return false;
+    }
+    // Feature edges and AO share this entry point so every host builds them.
+    if (!buildPostPipelines()) {
+        Log::warn() << "wgpu post-processing pipelines unavailable; "
+                       "feature edges and ambient occlusion stay off";
     }
     return true;
 }
@@ -5452,6 +5679,7 @@ void ViewportCore::encodeEdgePass(WGPUCommandEncoder enc,
 }
 
 void ViewportCore::releaseEdgeResources() {
+    releasePostResources();
     if (edge_bind_group_)      { wgpuBindGroupRelease(edge_bind_group_);      edge_bind_group_ = nullptr; }
     if (edge_pipeline_)        { wgpuRenderPipelineRelease(edge_pipeline_);   edge_pipeline_ = nullptr; }
     if (edge_shader_module_)   { wgpuShaderModuleRelease(edge_shader_module_);edge_shader_module_ = nullptr; }
@@ -6141,7 +6369,10 @@ void ViewportCore::createPickAttachments(int w, int h) {
     if (pick_depth_texture_)  { wgpuTextureRelease(pick_depth_texture_);  pick_depth_texture_ = nullptr; }
 
     WGPUTextureDescriptor cdesc = {};
-    cdesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
+    // TextureBinding: the same targets are the G-buffer the post passes
+    // (feature edges, AO) read, drawn by encodeGBufferPass.
+    cdesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc
+                        | WGPUTextureUsage_TextureBinding;
     cdesc.dimension     = WGPUTextureDimension_2D;
     cdesc.size.width    = std::uint32_t(w);
     cdesc.size.height   = std::uint32_t(h);
@@ -6572,6 +6803,39 @@ void ViewportCore::toggleXray() {
         << "[wgpu] x-ray " << (xray_alpha_cap_ < 1.0f ? "ON" : "OFF")
         << " (cap=" << xray_alpha_cap_ << ")";
     host_->requestFrame();
+}
+
+void ViewportCore::setGridVisible(bool visible) {
+    grid_helper_.setVisible(visible);
+    host_->requestFrame();
+}
+
+bool ViewportCore::gridVisible() const {
+    return grid_helper_.visible();
+}
+
+void ViewportCore::toggleGrid() {
+    setGridVisible(!gridVisible());
+}
+
+void ViewportCore::upsertViewportGrid(const ViewportGridSpec& spec) {
+    grid_helper_.upsertGrid(spec);
+    host_->requestFrame();
+}
+
+bool ViewportCore::removeViewportGrid(const std::string& id) {
+    const bool removed = grid_helper_.removeGrid(id);
+    if (removed) host_->requestFrame();
+    return removed;
+}
+
+void ViewportCore::clearViewportGrids() {
+    grid_helper_.clearGrids();
+    host_->requestFrame();
+}
+
+const std::vector<ViewportGridSpec>& ViewportCore::viewportGrids() const {
+    return grid_helper_.grids();
 }
 
 #if defined(__EMSCRIPTEN__)
@@ -7727,6 +7991,398 @@ inline float srgbToLinear(float c) {
 
 } // namespace
 
+void ViewportCore::cullScene(const Eigen::Matrix4f& vp_this_frame, float focal_px,
+                             bool interactive) {
+    Stopwatch cull_timer;
+    cull_timer.start();
+    cull_writes_this_frame_ = 0;
+    cull_write_bytes_this_frame_ = 0;
+
+    const Eigen::Vector3f target(camera_target_[0], camera_target_[1], camera_target_[2]);
+    const Eigen::Vector3f eye = orbitEye(camera_target_, camera_distance_,
+                                         camera_yaw_deg_, camera_pitch_deg_);
+    float planes[6][4];
+    extractFrustumPlanes(vp_this_frame.data(), planes);
+
+    // LOD focal: projected_px = world_radius * focal_px / view_z.
+    const Eigen::Vector3f fwd_q = (target - eye).normalized();
+    const Eigen::Vector3f world_up = (std::abs(camera_pitch_deg_) >= 89.0f)
+                                 ? Eigen::Vector3f(0.0f, 1.0f, 0.0f)
+                                 : Eigen::Vector3f(0.0f, 0.0f, 1.0f);
+    const Eigen::Vector3f right_q  = fwd_q.cross(world_up).normalized();
+    const Eigen::Vector3f up_q     = right_q.cross(fwd_q).normalized();
+    const float eye_a[3]   = { eye.x(),     eye.y(),     eye.z()    };
+    const float fwd_a[3]   = { fwd_q.x(),   fwd_q.y(),   fwd_q.z()  };
+    const float right_a[3] = { right_q.x(), right_q.y(), right_q.z() };
+    const float up_a[3]    = { up_q.x(),    up_q.y(),    up_q.z()    };
+
+    // A non-interactive cull (snapshot) always runs at the fine threshold,
+    // never trusts the HiZ pyramid (it was rendered for another projection)
+    // and bypasses the cull cache, which it then invalidates so the next
+    // interactive frame culls for its own camera again.
+    float effective_min_px  = min_pixel_radius_;
+    bool  hiz_for_this_frame = false;
+    HizOccludedFn hiz_occluded;
+    if (interactive) {
+        // Motion detection.
+        const bool camera_moved = has_prev_camera_
+            && (camera_target_[0] != prev_camera_target_[0]
+             || camera_target_[1] != prev_camera_target_[1]
+             || camera_target_[2] != prev_camera_target_[2]
+             || camera_distance_  != prev_camera_distance_
+             || camera_yaw_deg_   != prev_camera_yaw_deg_
+             || camera_pitch_deg_ != prev_camera_pitch_deg_);
+        if (camera_moved) {
+            motion_cull_latched_ = true;
+            motion_hold_timer_.start();
+        } else if (motion_cull_latched_
+                   && motion_hold_timer_.elapsed() >= kMotionHoldMs) {
+            motion_cull_latched_ = false;
+        }
+        // While the latch holds with the camera still, keep frames coming so
+        // the expiry actually happens and the fine-threshold re-cull runs —
+        // the loop is on demand, and a fully-resident scene would otherwise
+        // stay coarsely culled until the next input.
+        if (motion_cull_latched_ && !camera_moved) host_->requestFrame();
+        const bool use_motion_threshold =
+            motion_cull_latched_ && motion_min_pixel_radius_ > min_pixel_radius_;
+        effective_min_px =
+            use_motion_threshold ? motion_min_pixel_radius_ : min_pixel_radius_;
+        last_cull_was_motion_ = use_motion_threshold;
+
+        // HiZ stale-VP gate. Strict by default; WGPU_HIZ_MOTION=1 trusts
+        // the stale pyramid across motion.
+        static const bool hiz_trust_stale = []{
+            const char* e = std::getenv("WGPU_HIZ_MOTION");
+            return e && e[0] == '1';
+        }();
+        const bool hiz_vp_matches = hiz_valid_
+            && (hiz_trust_stale || hiz_vp_ == vp_this_frame);
+        hiz_for_this_frame = hiz_enabled_ && hiz_vp_matches;
+
+        // WGPU_HIZ_TRACE per-frame trace budget arm.
+        static const bool hiz_trace_on = []{
+            const char* e = std::getenv("WGPU_HIZ_TRACE");
+            return e && e[0] == '1';
+        }();
+        if (hiz_trace_on && hiz_for_this_frame) {
+            constexpr int kHizTracePerFrame = 12;
+            hiz_trace_budget_.store(kHizTracePerFrame, std::memory_order_relaxed);
+            Log::info()
+                << "[hiz trace] frame: vp_match="
+                << (hiz_vp_ == vp_this_frame ? "exact" : "loose")
+                << " pyramid_mip0=" << hiz_mip_w_[0] << "x" << hiz_mip_h_[0]
+                << " budget=" << kHizTracePerFrame;
+        } else if (hiz_trace_on) {
+            hiz_trace_budget_.store(0, std::memory_order_relaxed);
+        }
+
+        if (hiz_for_this_frame) {
+            hiz_occluded = [this](const float mn[3], const float mx[3]) {
+                return aabbOccludedByHiz(mn, mx);
+            };
+        }
+    }
+
+    // Re-cull only when something that can change its outcome did:
+    // the camera, the scene epoch (residency / visibility / colours /
+    // transforms / models / a new HiZ pyramid), or a cull-relevant
+    // setting. Everything the draw needs from a cull persists — the
+    // per-chunk counters and the uploaded visible_draws buffers — so a
+    // frame requested for an overlay, a pick highlight, or a streaming
+    // tick where nothing landed skips the whole walk. Benchmarks are
+    // exempt so bench numbers keep measuring the real cull.
+    const bool cull_inputs_unchanged =
+        interactive
+        && bench_total_ == 0
+        && has_last_cull_
+        && last_cull_epoch_  == scene_epoch_
+        && last_cull_vp_     == vp_this_frame
+        && last_cull_min_px_ == effective_min_px
+        && last_cull_lod_px_ == lod1_pixel_threshold_
+        && last_cull_xray_   == xray_alpha_cap_
+        && last_cull_hiz_    == hiz_for_this_frame;
+    if (cull_inputs_unchanged) {
+        last_cull_compute_ms_ = 0.0;
+        last_cull_upload_ms_  = 0.0;
+        return;
+    }
+    has_last_cull_    = interactive;
+    last_cull_epoch_  = scene_epoch_;
+    last_cull_vp_     = vp_this_frame;
+    last_cull_min_px_ = effective_min_px;
+    last_cull_lod_px_ = lod1_pixel_threshold_;
+    last_cull_xray_   = xray_alpha_cap_;
+    last_cull_hiz_    = hiz_for_this_frame;
+    last_visible_objects_   = 0;
+    last_visible_triangles_ = 0;
+    last_sub_draws_         = 0;
+    hiz_reject_count_       = 0;
+
+    // Force sequential on Emscripten: std::async(std::launch::async)
+    // without -pthread throws std::system_error from inside libstdc++,
+    // and we link without exceptions so that becomes abort(). Until
+    // COOP/COEP + -pthread wires the worker pool in #88, web stays
+    // on the serial path.
+#if defined(__EMSCRIPTEN__)
+    if (false) {
+#else
+    if (cull_threads_enabled_) {
+#endif
+        std::vector<std::pair<std::uint32_t, std::future<std::uint32_t>>> futures;
+        futures.reserve(models_gpu_.size());
+        for (auto& [session_model_id, m] : models_gpu_) {
+            if (!m.drawable()) continue;
+            auto& m_ref = m;
+            futures.emplace_back(session_model_id, std::async(std::launch::async,
+                [this, &m_ref, &planes, &eye_a, &fwd_a, &right_a, &up_a,
+                 focal_px, effective_min_px, &hiz_occluded]() {
+                    return cullModelCpuCompute(
+                        m_ref, planes, eye_a, fwd_a, right_a, up_a,
+                        focal_px,
+                        effective_min_px, lod1_pixel_threshold_,
+                        hiz_occluded);
+                }));
+        }
+        for (auto& [session_model_id, fut] : futures) {
+            hiz_reject_count_ += fut.get();
+        }
+    } else {
+        for (auto& [session_model_id, m] : models_gpu_) {
+            if (!m.drawable()) continue;
+            hiz_reject_count_ += cullModelCpuCompute(
+                m, planes, eye_a, fwd_a, right_a, up_a, focal_px,
+                effective_min_px, lod1_pixel_threshold_,
+                hiz_occluded);
+        }
+    }
+
+    const double cull_compute_ms = double(cull_timer.nsecsElapsed()) / 1e6;
+    Stopwatch upload_timer;
+    upload_timer.start();
+    for (auto& [session_model_id, m] : models_gpu_) {
+        if (!m.drawable()) continue;
+        cullModelCpuUpload(m);
+        for (const auto& c : m.chunks) {
+            last_visible_objects_   += c.total_visible_draws;
+            last_visible_triangles_ += c.total_visible_vertices / 3u;
+            if (c.total_visible_draws > 0) last_sub_draws_ += 1;
+        }
+    }
+    last_cull_compute_ms_ = cull_compute_ms;
+    last_cull_upload_ms_  = double(upload_timer.nsecsElapsed()) / 1e6;
+}
+
+int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
+                              const Eigen::Matrix4f& vp_this_frame,
+                              const float clear_rgba[4],
+                              int viewport_w_px, int viewport_h_px,
+                              bool interactive) {
+    WGPURenderPassColorAttachment color = {};
+    color.view          = msaa_color_view_;
+    color.resolveTarget = view;
+    color.loadOp        = WGPULoadOp_Clear;
+    color.storeOp       = WGPUStoreOp_Store;
+    color.clearValue    = { clear_rgba[0], clear_rgba[1], clear_rgba[2], clear_rgba[3] };
+    color.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+
+    WGPURenderPassDepthStencilAttachment depth = {};
+    depth.view              = depth_view_;
+    depth.depthLoadOp       = WGPULoadOp_Clear;
+    depth.depthStoreOp      = WGPUStoreOp_Store;
+    depth.depthClearValue   = 1.0f;
+    depth.stencilLoadOp     = WGPULoadOp_Undefined;
+    depth.stencilStoreOp    = WGPUStoreOp_Undefined;
+    depth.depthReadOnly     = false;
+    depth.stencilReadOnly   = true;
+
+    WGPURenderPassDescriptor pass_desc = {};
+    pass_desc.colorAttachmentCount = 1;
+    pass_desc.colorAttachments     = &color;
+    pass_desc.depthStencilAttachment = depth_view_ ? &depth : nullptr;
+
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &pass_desc);
+
+    const int dpr_int = std::max(1, int(host_->dpr()));
+
+    // Ground grid under scene geometry (depth-tested, no depth write).
+    {
+        const Eigen::Vector3f grid_eye = orbitEye(camera_target_, camera_distance_,
+                                                    camera_yaw_deg_, camera_pitch_deg_);
+        const Eigen::Vector3f grid_target(camera_target_[0], camera_target_[1], camera_target_[2]);
+        const Eigen::Vector3f grid_forward = (grid_target - grid_eye).normalized();
+        // Blender floor: the grid dissolves into the background with view
+        // distance, and the fade finishes before the finite grid's edge.
+        {
+            float grid_extent = 1.0f;
+            for (const auto& g : grid_helper_.grids()) {
+                if (!g.visible || g.spacing <= 0.0f || g.divisions <= 0) continue;
+                grid_extent = std::max(grid_extent, g.spacing * float(g.divisions));
+            }
+            const float dist = std::max(camera_distance_, 1.0f);
+            float far  = std::min(dist * fog_far_factor_, grid_extent * 0.9f);
+            float near = dist * fog_near_factor_;
+            if (!(near < far)) near = far * 0.5f;
+            const int mode = fog_enabled_ ? fog_mode_ : 0;
+            fog_.set(mode, near, far, fog_density_,
+                     background_color_.x(), background_color_.y(), background_color_.z());
+        }
+        grid_helper_.encode(pass, vp_this_frame, fog_, grid_eye, grid_forward,
+                            viewport_w_px, viewport_h_px, dpr_int);
+    }
+
+    // Two-pass main render: opaque first, then transparent.
+    if (main_pipeline_ && main_pipeline_no_cull_ && main_pipeline_transparent_
+        && frame_bind_group_ && !models_gpu_.empty()) {
+        wgpuRenderPassEncoderSetPipeline(pass,
+            backface_culling_ ? main_pipeline_ : main_pipeline_no_cull_);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, frame_bind_group_, 0, nullptr);
+
+        for (const auto& [session_model_id, m] : models_gpu_) {
+            if (!m.drawable()) continue;
+            for (const auto& c : m.chunks) {
+                if (!c.bind_group || c.opaque_visible_vertices == 0) continue;
+                wgpuRenderPassEncoderSetBindGroup(pass, 1, c.bind_group, 0, nullptr);
+                wgpuRenderPassEncoderDraw(pass,
+                                          c.opaque_visible_vertices, 1, 0, 0);
+            }
+        }
+
+        wgpuRenderPassEncoderSetPipeline(pass, main_pipeline_transparent_);
+        for (const auto& [session_model_id, m] : models_gpu_) {
+            if (!m.drawable()) continue;
+            for (const auto& c : m.chunks) {
+                if (!c.bind_group) continue;
+                const std::uint32_t transparent_verts =
+                    c.total_visible_vertices - c.opaque_visible_vertices;
+                if (transparent_verts == 0) continue;
+                wgpuRenderPassEncoderSetBindGroup(pass, 1, c.bind_group, 0, nullptr);
+                wgpuRenderPassEncoderDraw(pass,
+                                          transparent_verts, 1,
+                                          c.opaque_visible_vertices, 0);
+            }
+        }
+    }
+
+    // Build the per-frame OverlayFrame snapshot.
+    OverlayFrame overlay_frame;
+    overlay_frame.view_proj          = vp_this_frame;
+    overlay_frame.camera_target      = Eigen::Vector3f(camera_target_[0],
+                                                       camera_target_[1],
+                                                       camera_target_[2]);
+    overlay_frame.camera_distance    = camera_distance_;
+    overlay_frame.camera_yaw_deg     = camera_yaw_deg_;
+    overlay_frame.camera_pitch_deg   = camera_pitch_deg_;
+    overlay_frame.camera_fov_y_deg   = camera_fov_y_deg_;
+    overlay_frame.viewport_w_px      = viewport_w_px;
+    overlay_frame.viewport_h_px      = viewport_h_px;
+    overlay_frame.device_pixel_ratio = dpr_int;
+
+    // Interaction aids (section gizmo, pivot, host overlays, corner axis) are
+    // part of the live viewport only; a snapshot shows the scene without them.
+    if (interactive) {
+        // Section-plane gizmo — shared renderer, drawn for desktop + web from here.
+        // (The desktop's OverlayRenderer no longer draws it, to avoid doubling.)
+        section_gizmo_.encode(pass, vp_this_frame, section_planes_,
+                              viewport_w_px, viewport_h_px, dpr_int, section_selected_index_);
+
+        // Orbit pivot indicator — same shared-renderer story. Drawn while the host
+        // has it gated on (drag) or an afterglow is still running; in the latter
+        // case keep frames coming so the one that clears it actually lands.
+        const bool pivot_visible = pivotIndicatorVisible();
+        axis_indicator_.encodePivot(pass, overlay_frame, pivot_visible);
+        if (pivot_visible && pivot_indicator_timer_.isValid()) host_->requestFrame();
+    }
+
+    // Floor axes (X and Y) through world 0,0,0, along world X and Y. The
+    // false-origin matrix takes world into the viewer frame and draws the
+    // false origin at viewer zero, where the survey marker sits. With no false
+    // origin the two coincide. Same eye and fade as the grid for the long
+    // lines; the survey marker is a fixed size on screen.
+    {
+        const Eigen::Vector3f axis_eye = orbitEye(camera_target_, camera_distance_,
+                                                  camera_yaw_deg_, camera_pitch_deg_);
+        const Eigen::Vector3f axis_target(camera_target_[0], camera_target_[1], camera_target_[2]);
+        const Eigen::Vector3f axis_forward = (axis_target - axis_eye).normalized();
+        const Eigen::Vector3f world_origin =
+            worldOriginInViewer(federated_false_origin_meters_).cast<float>();
+        const Eigen::Vector3f world_x =
+            federated_false_origin_meters_.block<3, 1>(0, 0).cast<float>().normalized();
+        const Eigen::Vector3f world_y =
+            federated_false_origin_meters_.block<3, 1>(0, 1).cast<float>().normalized();
+        axis_indicator_.encodeOrigin(pass, overlay_frame, world_origin, world_x, world_y,
+                                     origin_axes_size_, fog_, axis_eye, axis_forward,
+                                     origin_axes_visible_);
+        axis_indicator_.encodeSurveyPoint(pass, overlay_frame, Eigen::Vector3f::Zero(),
+                                          origin_axes_visible_);
+    }
+
+    // Remaining in-pass overlays (highlight triangles, overlay lines/points).
+    // QtViewportHost forwards to overlays_.X(); the web host no-ops.
+    if (interactive) host_->encodeOverlaysInMainPass(pass, overlay_frame);
+
+    wgpuRenderPassEncoderEnd(pass);
+    wgpuRenderPassEncoderRelease(pass);
+
+    // Selection coverage, while the main pass's depth is still current. The
+    // halo itself composites AFTER the edge pass, so the edge multiply does
+    // not darken it.
+    encodeSelectionMaskPass(enc);
+
+    // Edge silhouette + HiZ resolve, before the surface-targeted overlays.
+    if (edges_enabled_ && edge_settings_.mode == EdgeMode::Depth) encodeEdgePass(enc, view);
+
+    // G-buffer, ambient occlusion and feature edges, when any are on.
+    encodePostPasses(enc, view, vp_this_frame, interactive);
+
+    encodeSelectionOutlinePass(enc, view, dpr_int);
+
+    if (!interactive) return -1;
+
+    int hiz_submitted_slot = -1;
+    if (hiz_enabled_) hiz_submitted_slot = encodeHizResolve(enc);
+
+    // Corner axis gizmo on the resolved surface — shared renderer, ahead of the
+    // host's own post-main overlays so marquee / labels still stack on top.
+    axis_indicator_.encodeCornerAxis(enc, view, overlay_frame);
+
+    // Remaining post-main overlays (marquee, labels) on the resolved surface.
+    // QtViewportHost forwards to overlays_.X(); the web host no-ops.
+    host_->encodeOverlaysPostMain(enc, view, overlay_frame);
+    return hiz_submitted_slot;
+}
+
+
+// The tile world owns the whole frame: advance the 60 Hz simulation by the
+// real time since the last frame, draw it, present, and keep the loop ticking.
+bool ViewportCore::renderTileWorld(WGPUTextureView view, WGPUTexture texture) {
+    if (!tile_renderer_.ready()) return false;
+    const double now_ms = double(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
+    if (tile_last_ms_ >= 0.0) tile_world_.advance(now_ms - tile_last_ms_);
+    tile_last_ms_ = now_ms;
+
+    // Fixed zoom: the native screen grows to cover the canvas at that scale.
+    if (const int z = tile_renderer_.fixedScale(); z > 0 && configured_w_ > 0 && configured_h_ > 0) {
+        const int sw = (configured_w_ + z - 1) / z, sh = (configured_h_ + z - 1) / z;
+        if (sw != tile_world_.screenW() || sh != tile_world_.screenH()) tile_world_.setScreen(sw, sh);
+    }
+
+    WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+    tile_renderer_.encode(enc, view, configured_w_, configured_h_, tile_world_);
+    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, nullptr);
+    wgpuQueueSubmit(queue_, 1, &cmd);
+    wgpuCommandBufferRelease(cmd);
+    wgpuCommandEncoderRelease(enc);
+    wgpuTextureViewRelease(view);
+#if !defined(__EMSCRIPTEN__)
+    wgpuSurfacePresent(surface_);
+#endif
+    wgpuTextureRelease(texture);
+    host_->requestFrame();
+    return true;
+}
+
 void ViewportCore::render() {
     if (!device_ || !queue_ || !surface_) return;
     // Device lost (e.g. GPU memory reclaimed by another client). Stop here so
@@ -7766,6 +8422,9 @@ void ViewportCore::render() {
 
     uploadSelectionFlagsIfDirty();
 
+    // A snapshot job owns the frame while it streams and draws its tiles.
+    if (stepSnapshot()) return;
+
     WGPUSurfaceTexture surf_tex = {};
     wgpuSurfaceGetCurrentTexture(surface_, &surf_tex);
 
@@ -7801,187 +8460,23 @@ void ViewportCore::render() {
     view_desc.aspect          = WGPUTextureAspect_All;
     WGPUTextureView view = wgpuTextureCreateView(surf_tex.texture, &view_desc);
 
+    if (tile_world_.enabled() && renderTileWorld(view, surf_tex.texture)) return;
+
     updateFrameUniforms();
 
     // ---- Per-frame cull --------------------------------------------------
     Stopwatch cull_timer;
     cull_timer.start();
-    cull_writes_this_frame_ = 0;
-    cull_write_bytes_this_frame_ = 0;
     Eigen::Matrix4f vp_this_frame;
     {
-        const Eigen::Vector3f target(camera_target_[0], camera_target_[1], camera_target_[2]);
-        const Eigen::Vector3f eye = orbitEye(camera_target_, camera_distance_,
-                                             camera_yaw_deg_, camera_pitch_deg_);
         Eigen::Matrix4f v, p;
         buildViewProj(v, p);
-        const Eigen::Matrix4f vp = p * v;
-        vp_this_frame = vp;
-        float planes[6][4];
-        extractFrustumPlanes(vp.data(), planes);
-
-        // LOD focal: projected_px = world_radius * focal_px / view_z.
-        const Eigen::Vector3f fwd_q = (target - eye).normalized();
-        const Eigen::Vector3f world_up = (std::abs(camera_pitch_deg_) >= 89.0f)
-                                     ? Eigen::Vector3f(0.0f, 1.0f, 0.0f)
-                                     : Eigen::Vector3f(0.0f, 0.0f, 1.0f);
-        const Eigen::Vector3f right_q  = fwd_q.cross(world_up).normalized();
-        const Eigen::Vector3f up_q     = right_q.cross(fwd_q).normalized();
-        const float eye_a[3]   = { eye.x(),     eye.y(),     eye.z()    };
-        const float fwd_a[3]   = { fwd_q.x(),   fwd_q.y(),   fwd_q.z()  };
-        const float right_a[3] = { right_q.x(), right_q.y(), right_q.z() };
-        const float up_a[3]    = { up_q.x(),    up_q.y(),    up_q.z()    };
+        vp_this_frame = p * v;
         const float focal_px = (configured_h_ > 0)
             ? (0.5f * float(configured_h_)
                 / std::tan(degreesToRadians(camera_fov_y_deg_) * 0.5f))
             : 0.0f;
-
-        // Motion detection.
-        const bool camera_moved = has_prev_camera_
-            && (camera_target_[0] != prev_camera_target_[0]
-             || camera_target_[1] != prev_camera_target_[1]
-             || camera_target_[2] != prev_camera_target_[2]
-             || camera_distance_  != prev_camera_distance_
-             || camera_yaw_deg_   != prev_camera_yaw_deg_
-             || camera_pitch_deg_ != prev_camera_pitch_deg_);
-        if (camera_moved) {
-            motion_cull_latched_ = true;
-            motion_hold_timer_.start();
-        } else if (motion_cull_latched_
-                   && motion_hold_timer_.elapsed() >= kMotionHoldMs) {
-            motion_cull_latched_ = false;
-        }
-        // While the latch holds with the camera still, keep frames coming so
-        // the expiry actually happens and the fine-threshold re-cull runs —
-        // the loop is on demand, and a fully-resident scene would otherwise
-        // stay coarsely culled until the next input.
-        if (motion_cull_latched_ && !camera_moved) host_->requestFrame();
-        const bool use_motion_threshold =
-            motion_cull_latched_ && motion_min_pixel_radius_ > min_pixel_radius_;
-        const float effective_min_px =
-            use_motion_threshold ? motion_min_pixel_radius_ : min_pixel_radius_;
-        last_cull_was_motion_ = use_motion_threshold;
-
-        // HiZ stale-VP gate. Strict by default; WGPU_HIZ_MOTION=1 trusts
-        // the stale pyramid across motion.
-        static const bool hiz_trust_stale = []{
-            const char* e = std::getenv("WGPU_HIZ_MOTION");
-            return e && e[0] == '1';
-        }();
-        const bool hiz_vp_matches = hiz_valid_
-            && (hiz_trust_stale || hiz_vp_ == vp_this_frame);
-        const bool hiz_for_this_frame = hiz_enabled_ && hiz_vp_matches;
-
-        // WGPU_HIZ_TRACE per-frame trace budget arm.
-        static const bool hiz_trace_on = []{
-            const char* e = std::getenv("WGPU_HIZ_TRACE");
-            return e && e[0] == '1';
-        }();
-        if (hiz_trace_on && hiz_for_this_frame) {
-            constexpr int kHizTracePerFrame = 12;
-            hiz_trace_budget_.store(kHizTracePerFrame, std::memory_order_relaxed);
-            Log::info()
-                << "[hiz trace] frame: vp_match="
-                << (hiz_vp_ == vp_this_frame ? "exact" : "loose")
-                << " pyramid_mip0=" << hiz_mip_w_[0] << "x" << hiz_mip_h_[0]
-                << " budget=" << kHizTracePerFrame;
-        } else if (hiz_trace_on) {
-            hiz_trace_budget_.store(0, std::memory_order_relaxed);
-        }
-
-        HizOccludedFn hiz_occluded;
-        if (hiz_for_this_frame) {
-            hiz_occluded = [this](const float mn[3], const float mx[3]) {
-                return aabbOccludedByHiz(mn, mx);
-            };
-        }
-
-        // Re-cull only when something that can change its outcome did:
-        // the camera, the scene epoch (residency / visibility / colours /
-        // transforms / models / a new HiZ pyramid), or a cull-relevant
-        // setting. Everything the draw needs from a cull persists — the
-        // per-chunk counters and the uploaded visible_draws buffers — so a
-        // frame requested for an overlay, a pick highlight, or a streaming
-        // tick where nothing landed skips the whole walk. Benchmarks are
-        // exempt so bench numbers keep measuring the real cull.
-        const bool cull_inputs_unchanged =
-            bench_total_ == 0
-            && has_last_cull_
-            && last_cull_epoch_  == scene_epoch_
-            && last_cull_vp_     == vp_this_frame
-            && last_cull_min_px_ == effective_min_px
-            && last_cull_lod_px_ == lod1_pixel_threshold_
-            && last_cull_xray_   == xray_alpha_cap_
-            && last_cull_hiz_    == hiz_for_this_frame;
-        if (!cull_inputs_unchanged) {
-            has_last_cull_    = true;
-            last_cull_epoch_  = scene_epoch_;
-            last_cull_vp_     = vp_this_frame;
-            last_cull_min_px_ = effective_min_px;
-            last_cull_lod_px_ = lod1_pixel_threshold_;
-            last_cull_xray_   = xray_alpha_cap_;
-            last_cull_hiz_    = hiz_for_this_frame;
-            last_visible_objects_   = 0;
-            last_visible_triangles_ = 0;
-            last_sub_draws_         = 0;
-            hiz_reject_count_       = 0;
-
-        // Force sequential on Emscripten: std::async(std::launch::async)
-        // without -pthread throws std::system_error from inside libstdc++,
-        // and we link without exceptions so that becomes abort(). Until
-        // COOP/COEP + -pthread wires the worker pool in #88, web stays
-        // on the serial path.
-#if defined(__EMSCRIPTEN__)
-        if (false) {
-#else
-        if (cull_threads_enabled_) {
-#endif
-            std::vector<std::pair<std::uint32_t, std::future<std::uint32_t>>> futures;
-            futures.reserve(models_gpu_.size());
-            for (auto& [session_model_id, m] : models_gpu_) {
-                if (!m.drawable()) continue;
-                auto& m_ref = m;
-                futures.emplace_back(session_model_id, std::async(std::launch::async,
-                    [this, &m_ref, &planes, &eye_a, &fwd_a, &right_a, &up_a,
-                     focal_px, effective_min_px, &hiz_occluded]() {
-                        return cullModelCpuCompute(
-                            m_ref, planes, eye_a, fwd_a, right_a, up_a,
-                            focal_px,
-                            effective_min_px, lod1_pixel_threshold_,
-                            hiz_occluded);
-                    }));
-            }
-            for (auto& [session_model_id, fut] : futures) {
-                hiz_reject_count_ += fut.get();
-            }
-        } else {
-            for (auto& [session_model_id, m] : models_gpu_) {
-                if (!m.drawable()) continue;
-                hiz_reject_count_ += cullModelCpuCompute(
-                    m, planes, eye_a, fwd_a, right_a, up_a, focal_px,
-                    effective_min_px, lod1_pixel_threshold_,
-                    hiz_occluded);
-            }
-        }
-
-        const double cull_compute_ms = double(cull_timer.nsecsElapsed()) / 1e6;
-        Stopwatch upload_timer;
-        upload_timer.start();
-        for (auto& [session_model_id, m] : models_gpu_) {
-            if (!m.drawable()) continue;
-            cullModelCpuUpload(m);
-            for (const auto& c : m.chunks) {
-                last_visible_objects_   += c.total_visible_draws;
-                last_visible_triangles_ += c.total_visible_vertices / 3u;
-                if (c.total_visible_draws > 0) last_sub_draws_ += 1;
-            }
-        }
-        last_cull_compute_ms_ = cull_compute_ms;
-        last_cull_upload_ms_  = double(upload_timer.nsecsElapsed()) / 1e6;
-        } else {
-            last_cull_compute_ms_ = 0.0;
-            last_cull_upload_ms_  = 0.0;
-        }
+        cullScene(vp_this_frame, focal_px, /*interactive=*/true);
     }
 
     const double cull_only_ms = double(cull_timer.nsecsElapsed()) / 1e6;
@@ -8008,11 +8503,6 @@ void ViewportCore::render() {
 
     WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(device_, nullptr);
 
-    WGPURenderPassColorAttachment color = {};
-    color.view          = msaa_color_view_;
-    color.resolveTarget = view;
-    color.loadOp        = WGPULoadOp_Clear;
-    color.storeOp       = WGPUStoreOp_Store;
     // A premultiplied surface expects colour already scaled by alpha, so the
     // clear fades toward transparent instead of tinting what shows through:
     // leaving it unscaled would have the compositor add the background colour
@@ -8020,121 +8510,17 @@ void ViewportCore::render() {
     // opaque the alpha is discarded anyway, and scaling would darken the
     // colour for nothing — so hold alpha at 1 and write it straight.
     const float bg_a = surface_premultiplied_ ? background_color_[3] : 1.0f;
-    color.clearValue    = {
+    const float clear_rgba[4] = {
         srgbToLinear(background_color_[0]) * bg_a,
         srgbToLinear(background_color_[1]) * bg_a,
         srgbToLinear(background_color_[2]) * bg_a,
         bg_a,
     };
-    color.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-
-    WGPURenderPassDepthStencilAttachment depth = {};
-    depth.view              = depth_view_;
-    depth.depthLoadOp       = WGPULoadOp_Clear;
-    depth.depthStoreOp      = WGPUStoreOp_Store;
-    depth.depthClearValue   = 1.0f;
-    depth.stencilLoadOp     = WGPULoadOp_Undefined;
-    depth.stencilStoreOp    = WGPUStoreOp_Undefined;
-    depth.depthReadOnly     = false;
-    depth.stencilReadOnly   = true;
-
-    WGPURenderPassDescriptor pass_desc = {};
-    pass_desc.colorAttachmentCount = 1;
-    pass_desc.colorAttachments     = &color;
-    pass_desc.depthStencilAttachment = depth_view_ ? &depth : nullptr;
-
-    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &pass_desc);
-
-    // Two-pass main render: opaque first, then transparent.
-    if (main_pipeline_ && main_pipeline_no_cull_ && main_pipeline_transparent_
-        && frame_bind_group_ && !models_gpu_.empty()) {
-        wgpuRenderPassEncoderSetPipeline(pass,
-            backface_culling_ ? main_pipeline_ : main_pipeline_no_cull_);
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, frame_bind_group_, 0, nullptr);
-
-        for (const auto& [session_model_id, m] : models_gpu_) {
-            if (!m.drawable()) continue;
-            for (const auto& c : m.chunks) {
-                if (!c.bind_group || c.opaque_visible_vertices == 0) continue;
-                wgpuRenderPassEncoderSetBindGroup(pass, 1, c.bind_group, 0, nullptr);
-                wgpuRenderPassEncoderDraw(pass,
-                                          c.opaque_visible_vertices, 1, 0, 0);
-            }
-        }
-
-        wgpuRenderPassEncoderSetPipeline(pass, main_pipeline_transparent_);
-        for (const auto& [session_model_id, m] : models_gpu_) {
-            if (!m.drawable()) continue;
-            for (const auto& c : m.chunks) {
-                if (!c.bind_group) continue;
-                const std::uint32_t transparent_verts =
-                    c.total_visible_vertices - c.opaque_visible_vertices;
-                if (transparent_verts == 0) continue;
-                wgpuRenderPassEncoderSetBindGroup(pass, 1, c.bind_group, 0, nullptr);
-                wgpuRenderPassEncoderDraw(pass,
-                                          transparent_verts, 1,
-                                          c.opaque_visible_vertices, 0);
-            }
-        }
-    }
-
-    // Build the per-frame OverlayFrame snapshot.
     int viewport_w_px = 0, viewport_h_px = 0;
     host_->framebufferSize(viewport_w_px, viewport_h_px);
-    const int dpr_int = std::max(1, int(host_->dpr()));
-
-    OverlayFrame overlay_frame;
-    overlay_frame.view_proj          = vp_this_frame;
-    overlay_frame.camera_target      = Eigen::Vector3f(camera_target_[0],
-                                                       camera_target_[1],
-                                                       camera_target_[2]);
-    overlay_frame.camera_distance    = camera_distance_;
-    overlay_frame.camera_yaw_deg     = camera_yaw_deg_;
-    overlay_frame.camera_pitch_deg   = camera_pitch_deg_;
-    overlay_frame.camera_fov_y_deg   = camera_fov_y_deg_;
-    overlay_frame.viewport_w_px      = viewport_w_px;
-    overlay_frame.viewport_h_px      = viewport_h_px;
-    overlay_frame.device_pixel_ratio = dpr_int;
-
-    // Section-plane gizmo — shared renderer, drawn for desktop + web from here.
-    // (The desktop's OverlayRenderer no longer draws it, to avoid doubling.)
-    section_gizmo_.encode(pass, vp_this_frame, section_planes_,
-                          viewport_w_px, viewport_h_px, dpr_int, section_selected_index_);
-
-    // Orbit pivot indicator — same shared-renderer story. Drawn while the host
-    // has it gated on (drag) or an afterglow is still running; in the latter
-    // case keep frames coming so the one that clears it actually lands.
-    const bool pivot_visible = pivotIndicatorVisible();
-    axis_indicator_.encodePivot(pass, overlay_frame, pivot_visible);
-    if (pivot_visible && pivot_indicator_timer_.isValid()) host_->requestFrame();
-
-    // Remaining in-pass overlays (highlight triangles, overlay lines/points).
-    // QtViewportHost forwards to overlays_.X(); the web host no-ops.
-    host_->encodeOverlaysInMainPass(pass, overlay_frame);
-
-    wgpuRenderPassEncoderEnd(pass);
-    wgpuRenderPassEncoderRelease(pass);
-
-    // Selection coverage, while the main pass's depth is still current. The
-    // halo itself composites AFTER the edge pass, so the edge multiply does
-    // not darken it.
-    encodeSelectionMaskPass(enc);
-
-    // Edge silhouette + HiZ resolve, before the surface-targeted overlays.
-    if (edges_enabled_) encodeEdgePass(enc, view);
-
-    encodeSelectionOutlinePass(enc, view, dpr_int);
-
-    int hiz_submitted_slot = -1;
-    if (hiz_enabled_) hiz_submitted_slot = encodeHizResolve(enc);
-
-    // Corner axis gizmo on the resolved surface — shared renderer, ahead of the
-    // host's own post-main overlays so marquee / labels still stack on top.
-    axis_indicator_.encodeCornerAxis(enc, view, overlay_frame);
-
-    // Remaining post-main overlays (marquee, labels) on the resolved surface.
-    // QtViewportHost forwards to overlays_.X(); the web host no-ops.
-    host_->encodeOverlaysPostMain(enc, view, overlay_frame);
+    const int hiz_submitted_slot = encodeScene(enc, view, vp_this_frame, clear_rgba,
+                                               viewport_w_px, viewport_h_px,
+                                               /*interactive=*/true);
 
     // Optional capture: encode copy on the same command buffer.
     WGPUBuffer    capture_buffer     = nullptr;
@@ -8478,12 +8864,15 @@ void ViewportCore::clearSectionPlanes() {
 }
 
 // Logical (CSS-px) viewport from the host framebuffer + DPR.
+// Mouse events are CSS pixels. Truncating DPR to int (1.25 and 1.5 both
+// become 1) stretches this size past the canvas, so the grab line misses
+// the arrow that was drawn.
 void ViewportCore::sectionLogicalViewport(int& w, int& h) const {
     int fb_w = 0, fb_h = 0;
     host_->framebufferSize(fb_w, fb_h);
-    const int dpr = std::max(1, int(host_->dpr()));
-    w = fb_w / dpr;
-    h = fb_h / dpr;
+    const float dpr = std::max(host_->dpr(), 1.0f);
+    w = std::max(1, int(std::lround(float(fb_w) / dpr)));
+    h = std::max(1, int(std::lround(float(fb_h) / dpr)));
 }
 
 int ViewportCore::hitTestSectionGizmo(int x, int y) {
@@ -8530,16 +8919,27 @@ void ViewportCore::updateSectionDrag(int mouse_x, int mouse_y) {
     };
     Eigen::Vector2f s_origin, s_n;
     if (!to_screen(section_drag_start_origin_, s_origin)) return;
-    if (!to_screen(section_drag_start_origin_ + p.n, s_n)) return;
+    // Same shortening as the hit test: a 1 m tip behind the camera must not
+    // freeze a drag that started on the visible part of the arrow.
+    bool tip_ok = false;
+    float axis_meters = 1.0f;
+    for (float len = 1.0f; len >= 0.05f; len *= 0.5f) {
+        if (to_screen(section_drag_start_origin_ + p.n * len, s_n)) {
+            axis_meters = len;
+            tip_ok = true;
+            break;
+        }
+    }
+    if (!tip_ok) return;
     const Eigen::Vector2f axis = s_n - s_origin;
     const float len2 = axis.squaredNorm();
     if (len2 < 1e-3f) return;  // arrow edge-on
 
-    // Project the pixel delta onto the screen-space normal axis; the axis is 1 m
-    // in world space, so (delta·axis)/|axis|² is the slide in metres.
+    // Project the pixel delta onto the screen-space normal. `axis` covers
+    // `axis_meters` of the normal, so the coefficient is scaled back to metres.
     const Eigen::Vector2f delta(float(mouse_x - section_drag_start_mx_),
                                 float(mouse_y - section_drag_start_my_));
-    const float meters = delta.dot(axis) / len2;
+    const float meters = delta.dot(axis) / len2 * axis_meters;
     p.origin = section_drag_start_origin_ + p.n * meters;
     p.d      = -p.n.dot(p.origin);
     host_->requestFrame();

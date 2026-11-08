@@ -62,6 +62,20 @@ void WebViewportHost::requestFrame() {
     request_frame_pending_ = true;
 }
 
+void WebViewportHost::onSnapshotRows(int token, int y0, int width, int rows,
+                                     const std::uint8_t* rgba) {
+    // The page copies the rows out before this returns; the buffer is reused.
+    EM_ASM({
+        if (Module.__ifcvOnSnapshotRows) Module.__ifcvOnSnapshotRows($0, $1, $2, $3, $4);
+    }, token, y0, width, rows, rgba);
+}
+
+void WebViewportHost::onSnapshotDone(int token, bool ok, int width, int height) {
+    EM_ASM({
+        if (Module.__ifcvOnSnapshotDone) Module.__ifcvOnSnapshotDone($0, $1, $2, $3);
+    }, token, ok ? 1 : 0, width, height);
+}
+
 void WebViewportHost::quit() {
     // emscripten_force_exit honours -sEXIT_RUNTIME=1; without that flag
     // the runtime swallows the call and keeps the page interactive.
