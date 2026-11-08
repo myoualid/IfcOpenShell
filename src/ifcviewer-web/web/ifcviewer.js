@@ -1736,6 +1736,7 @@
         if (!Module._load_sample_c) return false;
         objectIndex = null;
         objectsById = null;
+        objectsPromise = null;
         return Module._load_sample_c() !== 0;
       },
 
