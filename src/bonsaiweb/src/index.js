@@ -1,16 +1,19 @@
+import { registerAddons } from './addons.js';
 import { context } from './context/context.js';
-import { addSignal, logSignals, removeSignal } from './context/signals.js';
+import { addSignal, logSignals, removeSignal, Signal } from './context/signals.js';
 import { store } from './context/store.js';
 import { setBundledDropboxClientId } from './modules/dropbox/const.js';
 import { registerOperators } from './modules/operators.js';
 import { publishModelLoaded, publishPick, publishSelection } from './modules/viewer/events.js';
-import ops, { bindKeyboard } from './ops.js';
+import ops, { bindKeyboard, Operator } from './ops.js';
 import { initIfcOpenShell } from './runtime.js';
 import tool from './tool/index.js';
+import { fetchSharedFile, sharedSrc } from './tool/remote.js';
 import { createViewer, destroyViewer } from './tool/Viewer.js';
 import { createLogger } from './util/log.js';
 
-export { tool };
+// Operator, ops and Signal are what an addon needs to add commands and events.
+export { tool, ops, Operator, Signal };
 
 const log = createLogger( 'bonsai' );
 const ms = ( start ) => `${ ( performance.now() - start ).toFixed( 0 ) }ms`;
@@ -45,10 +48,14 @@ export class Bonsai {
 		this.tool = tool;
 
 		setBundledDropboxClientId( configuration.dropbox?.clientId );
+		this.sharedLink = configuration.sharedLink !== false;
 		this.context.geometry = configuration.geometry ?? null;
 		this.tool.Loader.configure( configuration.geometry );
 
 		registerOperators( configuration.app?.CoreModules );
+
+		// The active addons, in order. A Shell mounts their panels and ribbon.
+		this.addons = registerAddons( configuration.app?.Addons );
 
 		bindKeyboard();
 
@@ -102,6 +109,27 @@ export class Bonsai {
 		log.log( `boot: ifcopenshell ready in ${ ms( t ) }` );
 		context.signals.appReady.dispatch( true );
 		this.tool.Loader.warmRuntimes();
+		await this.openSharedLink();
+
+	}
+
+	// `?src=` is one file (an .ifc, a project zip, or a Dropbox share of either).
+	// A host that opens its own model passes sharedLink: false.
+	async openSharedLink() {
+
+		if ( ! this.sharedLink ) return;
+		const src = sharedSrc( globalThis.location?.search ?? '' );
+		if ( ! src ) return;
+		try {
+
+			const file = await fetchSharedFile( src, globalThis.document?.baseURI );
+			await ops.Project.LoadIfc( file );
+
+		} catch ( error ) {
+
+			log.error( `shared link: ${ error.message }` );
+
+		}
 
 	}
 

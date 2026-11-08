@@ -16,7 +16,7 @@ function openModelFilePicker( onFile ) {
 
 	const input = document.createElement( 'input' );
 	input.type = 'file';
-	input.accept = '.ifc,.ifcview,.ifcfed,.zip,application/zip';
+	input.accept = '.ifc,.ifcview,.ifcfed,.glb,.gltf,.zip,application/zip';
 	input.style.display = 'none';
 
 	const cleanup = () => {

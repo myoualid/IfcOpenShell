@@ -1,4 +1,5 @@
 const IFVW_MAGIC = [ 0x49, 0x46, 0x56, 0x57 ]; // "IFVW"
+const GLB_MAGIC = [ 0x67, 0x6c, 0x54, 0x46 ]; // "glTF"
 const ZIP_MAGIC = [ 0x50, 0x4b ]; // "PK"
 const IFC_SPF_PREFIX = 'ISO-10303-21';
 function matchesMagic( bytes, magic, offset = 0 ) {
@@ -63,6 +64,12 @@ export function detectFormat( bytes, filename ) {
 
 	}
 
+	if ( matchesMagic( bytes, GLB_MAGIC ) ) {
+
+		return 'gltf';
+
+	}
+
 	if ( matchesMagic( bytes, ZIP_MAGIC ) ) {
 
 		return 'rdbview';
@@ -82,6 +89,9 @@ export function detectFormat( bytes, filename ) {
 			return 'ifc-spf';
 		case '.ifcview':
 			return 'ifcview';
+		case '.glb':
+		case '.gltf':
+			return 'gltf';
 		default:
 			return 'unknown';
 
@@ -99,6 +109,8 @@ export function formatLabel( format ) {
 			return 'IFC sidecar (.ifcview)';
 		case 'rdbview':
 			return 'RDBView bundle (.rdbview)';
+		case 'gltf':
+			return 'glTF (.glb / .gltf)';
 		default:
 			return 'unknown format';
 

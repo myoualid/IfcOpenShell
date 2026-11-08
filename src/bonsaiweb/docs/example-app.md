@@ -126,6 +126,8 @@ Panels is special. It has no `operator`. After modules activate, `bindPanelDialo
 
 **Bottom, Terminal.** A JavaScript prompt (`bonsai >`) with sessions, history, and completions. The header holds the session tabs and icons to create, clear, and close a session. A side column holds snippets in two scrollable tabs: `bonsai.tool` queries the model and selection, and `bonsai.ops` runs operators (`bonsai.ops.Viewer.ViewAll()`). Open or close the panel from Panels.
 
+**Command bar.** Typing `c` then `d` over the viewport opens an empty command line there, like AutoCAD's. The menu lists matching operators (`grid` finds `Viewer.ToggleGrid`), then the values of the argument under the cursor. A line runs as JavaScript (`Viewer.SetStandardView('TOP')`; category names need no `bonsai.ops.` prefix) or as `Command arg arg` (`SetStandardView TOP`, `ToggleGrid off`, `SetColor $sel #f40`). `$sel`, `$entity`, `$model` and `$last` are built in, and `name = …` keeps a variable in the session. Enter on an empty line repeats the last command; Esc closes. It shares the terminal panel's session and history. Operators describe their arguments for the menu with `static operatorArgs`.
+
 **Viewport.** `bonsai.viewport` fills the Viewport region, and `#viewer-canvas` fills it. Orbit uses the Blender preset until a Navigate button changes it. Dropping a file on the viewport loads it. Drops anywhere else on the window are cancelled so the browser does not navigate away.
 
 **Footer.** A status bar. It shows dependency loading, then conversion progress, then settles to a short "ready" message.

@@ -85,11 +85,13 @@ function jacobiEigen3( m00, m01, m02, m11, m12, m22 ) {
 			p = 0; q = 2; off = Math.abs( a[ 0 ][ 2 ] );
 
 		}
+
 		if ( Math.abs( a[ 1 ][ 2 ] ) > off ) {
 
 			p = 1; q = 2; off = Math.abs( a[ 1 ][ 2 ] );
 
 		}
+
 		if ( off < 1e-12 ) break;
 		const app = a[ p ][ p ];
 		const aqq = a[ q ][ q ];
@@ -113,6 +115,7 @@ function jacobiEigen3( m00, m01, m02, m11, m12, m22 ) {
 			a[ k ][ q ] = a[ q ][ k ] = s * akp + c * akq;
 
 		}
+
 		for ( let k = 0; k < 3; k ++ ) {
 
 			const vkp = v[ k ][ p ];
@@ -123,6 +126,7 @@ function jacobiEigen3( m00, m01, m02, m11, m12, m22 ) {
 		}
 
 	}
+
 	return {
 		values: [ a[ 0 ][ 0 ], a[ 1 ][ 1 ], a[ 2 ][ 2 ] ],
 		vectors: v,
@@ -150,6 +154,7 @@ export function polygonArea( points ) {
 		}
 
 	}
+
 	centroid[ 0 ] /= n; centroid[ 1 ] /= n; centroid[ 2 ] /= n;
 	const diag = Math.hypot( max[ 0 ] - min[ 0 ], max[ 1 ] - min[ 1 ], max[ 2 ] - min[ 2 ] );
 	let c00 = 0, c01 = 0, c02 = 0, c11 = 0, c12 = 0, c22 = 0;
@@ -162,6 +167,7 @@ export function polygonArea( points ) {
 		c11 += dy * dy; c12 += dy * dz; c22 += dz * dz;
 
 	}
+
 	const eigen = jacobiEigen3( c00, c01, c02, c11, c12, c22 );
 	let axis = 0;
 	if ( eigen.values[ 1 ] < eigen.values[ axis ] ) axis = 1;
@@ -176,6 +182,7 @@ export function polygonArea( points ) {
 		sq += d * d;
 
 	}
+
 	const rms = Math.sqrt( sq / n );
 	const planar = diag > 0 && ( rms / diag ) < 1e-3;
 	if ( ! planar ) {
@@ -185,12 +192,14 @@ export function polygonArea( points ) {
 		return { area, method: 'fan' };
 
 	}
+
 	let u = [ normal[ 1 ] * 0 - normal[ 2 ] * 0, normal[ 2 ] * 1 - normal[ 0 ] * 0, normal[ 0 ] * 0 - normal[ 1 ] * 1 ];
 	if ( dot( u, u ) < 1e-6 ) {
 
 		u = [ normal[ 1 ] * 0 - normal[ 2 ] * 1, normal[ 2 ] * 0 - normal[ 0 ] * 0, normal[ 0 ] * 1 - normal[ 1 ] * 0 ];
 
 	}
+
 	u = normalize( u );
 	const v = [
 		normal[ 1 ] * u[ 2 ] - normal[ 2 ] * u[ 1 ],
@@ -211,6 +220,7 @@ export function polygonArea( points ) {
 		shoelace += a[ 0 ] * b[ 1 ] - b[ 0 ] * a[ 1 ];
 
 	}
+
 	return { area: 0.5 * Math.abs( shoelace ), method: 'planar' };
 
 }
@@ -247,6 +257,7 @@ function chain( points, close ) {
 		segments.push( segment( points[ i ], points[ i + 1 ], `${ dist3( points[ i ], points[ i + 1 ] ).toFixed( 3 ) } m` ) );
 
 	}
+
 	if ( close && points.length > 2 ) {
 
 		const a = points[ points.length - 1 ];
@@ -254,6 +265,7 @@ function chain( points, close ) {
 		segments.push( segment( a, b, `${ dist3( a, b ).toFixed( 3 ) } m` ) );
 
 	}
+
 	return segments;
 
 }
@@ -298,6 +310,7 @@ function lengthReadout( points, normals ) {
 			}
 
 		}
+
 		return {
 			lines: [
 				`Length: ${ metres( dist3( a, b ) ) }`,
@@ -307,6 +320,7 @@ function lengthReadout( points, normals ) {
 		};
 
 	}
+
 	if ( n === 3 ) {
 
 		const [ a, b, c ] = points;
@@ -320,6 +334,7 @@ function lengthReadout( points, normals ) {
 		};
 
 	}
+
 	const poly = polygonArea( points );
 	let perimeter = 0;
 	for ( let i = 0; i < n; i ++ ) perimeter += dist3( points[ i ], points[ ( i + 1 ) % n ] );
@@ -345,6 +360,7 @@ function areaReadout( points, patches ) {
 		};
 
 	}
+
 	if ( points.length < 3 ) {
 
 		return {
@@ -353,6 +369,7 @@ function areaReadout( points, patches ) {
 		};
 
 	}
+
 	const poly = polygonArea( points );
 	let perimeter = 0;
 	for ( let i = 0; i < points.length; i ++ ) perimeter += dist3( points[ i ], points[ ( i + 1 ) % points.length ] );
@@ -374,6 +391,7 @@ function volumeReadout( volumes ) {
 		return { lines: [ `Volume: ${ volumes.total.toFixed( 4 ) } m³  (${ count } ${ count === 1 ? 'object' : 'objects' })` ] };
 
 	}
+
 	if ( count === 0 ) return { lines: [ 'Volume: 0.0000 m³  (0 objects)' ] };
 	return { lines: [ `Volume: select objects with a viewer that exports mesh volume  (${ count } selected)` ] };
 
@@ -440,6 +458,7 @@ export function cameraRay( cam, canvas, x, y ) {
 		};
 
 	}
+
 	const vx = ndcX * aspect * t;
 	const vy = ndcY * t;
 	return {
@@ -474,6 +493,7 @@ export function pickOnWorkPlane( api, x, y, anchor ) {
 		point = hitPlane( ray, through, normal );
 
 	}
+
 	if ( ! point ) return null;
 	return { point, normal, placement: 'plane' };
 
@@ -521,9 +541,11 @@ export async function resolvePick( api, click, points = [] ) {
 			break;
 
 		}
+
 		hit ??= pickOnWorkPlane( api, x, y, points[ points.length - 1 ] );
 
 	}
+
 	return hit;
 
 }
@@ -540,11 +562,13 @@ export function readVolumes( api, ids ) {
 		return { total, count, source: 'viewer' };
 
 	}
+
 	if ( typeof api?.volumeOf === 'function' ) {
 
 		return { total: Number( api.volumeOf( list ) ) || 0, count, source: 'viewer' };
 
 	}
+
 	return { total: null, count, source: 'none' };
 
 }
@@ -607,6 +631,7 @@ export class Measure {
 			this._normals.pop();
 
 		}
+
 		if ( this._points.length === 0 && this._patches.length === 0 ) this._placement = null;
 		return this.snapshot();
 
@@ -625,6 +650,7 @@ export class Measure {
 			this._normals.push( hit.normal ? copyPoint( hit.normal ) : null );
 
 		}
+
 		if ( hit.placement ) this._placement = hit.placement;
 		return this.snapshot();
 
@@ -672,6 +698,7 @@ export function projectPoint( api, xyz ) {
 		if ( projected ) return projected;
 
 	}
+
 	const cam = typeof api?.getCamera === 'function' ? api.getCamera() : null;
 	const canvas = api?.canvas;
 	if ( ! cam || ! canvas ) return null;
@@ -700,6 +727,7 @@ export function projectPoint( api, xyz ) {
 		cw = - vz;
 
 	}
+
 	if ( cw <= 1e-4 ) return null;
 	const ndcX = cx / cw;
 	const ndcY = cy / cw;

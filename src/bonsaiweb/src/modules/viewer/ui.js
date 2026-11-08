@@ -9,8 +9,6 @@ const BUTTONS = {
 	RB_Grid: 'grid',
 	RB_Axes: 'axes',
 	RB_Fog: 'fog',
-	RB_Xray: 'xray',
-	RB_SelectionOutline: 'outline',
 };
 
 const MEASURE_BUTTONS = {
@@ -105,6 +103,7 @@ class ViewerToolsUI {
 			canvas.style.cursor = placing ? 'crosshair' : '';
 
 		}
+
 		if ( this.measureState.mode ) this._watch();
 		else if ( this._raf ) {
 
@@ -123,6 +122,7 @@ class ViewerToolsUI {
 			for ( const [ id, key ] of Object.entries( BUTTONS ) ) this._press( id, !! state[ key ] );
 
 		}
+
 		const mode = this.measureState?.mode ?? null;
 		for ( const [ id, key ] of Object.entries( MEASURE_BUTTONS ) ) this._press( id, mode === key );
 
@@ -141,6 +141,7 @@ class ViewerToolsUI {
 			return;
 
 		}
+
 		el.classList.toggle( 'Active', on );
 		el.setAttribute( 'aria-pressed', String( on ) );
 
@@ -163,6 +164,7 @@ class ViewerToolsUI {
 			}
 
 		}
+
 		this.hint.hidden = lines.length === 0;
 		this.hint.textContent = lines.join( '\n' );
 
@@ -194,6 +196,7 @@ class ViewerToolsUI {
 			this.overlay.append( text );
 
 		}
+
 		for ( const point of state.dots ?? [] ) {
 
 			const screen = projectPoint( viewer, point );
@@ -206,6 +209,7 @@ class ViewerToolsUI {
 			this.overlay.append( dot );
 
 		}
+
 		const preview = this.preview?.point;
 		if ( ! preview ) return;
 		const screen = projectPoint( viewer, preview );
@@ -228,6 +232,7 @@ class ViewerToolsUI {
 			}
 
 		}
+
 		const mark = ns( 'circle' );
 		mark.setAttribute( 'cx', screen.x );
 		mark.setAttribute( 'cy', screen.y );
@@ -267,10 +272,12 @@ class ViewerToolsUI {
 				return;
 
 			}
+
 			this._paintOverlay();
 			this._raf = requestAnimationFrame( tick );
 
 		};
+
 		this._raf = requestAnimationFrame( tick );
 
 	}
@@ -298,6 +305,7 @@ class ViewerToolsUI {
 			return;
 
 		}
+
 		if ( this.tools?.section || this.tools?.fly ) return;
 		const rect = canvas.getBoundingClientRect();
 		const serial = ++ this._hoverSerial;

@@ -52,6 +52,7 @@ export const Signals = {
 	// SCENE: VISIBILITY & DISPLAY
 	visibilityChanged: new Signal(), // ({ action, target? })
 	viewerToolsChanged: new Signal(), // ({ section, fly, ortho, grid, axes, fog, xray, outline })
+	renderModeChanged: new Signal(), // ({ mode })
 	measureChanged: new Signal(), // ({ mode, points, lines, segments, placement })
 	colorsChanged: new Signal(), // ({ action, target?, color? })
 	backgroundChanged: new Signal(), // ({ color })

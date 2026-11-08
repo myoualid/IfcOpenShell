@@ -1,9 +1,9 @@
 // Module loaded inside a classic worker (see worker-host.js) so the page
 // import map applies. The main thread keeps its own ifcopenshell instance
-// for live files; this one only tessellates .ifc → .ifcview.
+// for live files; this one only converts .ifc / .glb / .gltf → .ifcview.
 
 import { createLogger } from '../util/log.js';
-import { convertBytes, configureCompressor, warmRuntime } from './ifcopenshell/convert.js';
+import { convertBytes, warmRuntime } from './ifcopenshell/convert.js';
 
 const log = createLogger( 'convert-worker' );
 log.log( 'module loading…' );
@@ -14,9 +14,6 @@ self.addEventListener( 'unhandledrejection', ( ev ) => {
 
 } );
 
-const { zstdModule, zstdWasm } = self.bonsaiAssets ?? {};
-if ( ! zstdModule || ! zstdWasm ) throw new Error( 'convert worker missing dependency paths' );
-configureCompressor( { moduleUrl: zstdModule, wasmUrl: zstdWasm } );
 log.log( 'imports resolved' );
 
 // A trap inside the wasm (out-of-bounds access, unreachable) leaves the

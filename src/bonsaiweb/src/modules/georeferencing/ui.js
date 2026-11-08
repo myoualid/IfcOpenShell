@@ -240,6 +240,7 @@ class GeoreferencingPanelUI {
 			this.refresh();
 
 		};
+
 		this.dialog.onHide = () => this.syncRibbon();
 
 		context.georeferencing = context.georeferencing || {};

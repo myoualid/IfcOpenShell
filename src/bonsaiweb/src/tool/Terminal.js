@@ -25,6 +25,7 @@ export class Terminal {
 			name: name || `Terminal ${ nextIndex ++ }`,
 			history: [],
 			commandHistory: [],
+			vars: {},
 		};
 		sessions.set( session.guid, session );
 		return session;

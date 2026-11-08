@@ -8,13 +8,12 @@
 
 import * as ifcopenshell from 'ifcopenshell';
 import * as ifcopenshellGeom from 'ifcopenshell/geom';
-import { SidecarMeshAccumulator } from '../sidecar/mesh-builder.js';
-import { writeViewerSidecarBytes } from '../sidecar/serialize.js';
+import { IfcViewBuilder, appendIfcMesh, loadConverter } from '../ifcview/index.js';
+import { computeModelGeoref } from './georef.js';
+import { convertGltfBytes } from '../ifcview/gltf.js';
 import { detectFormat } from '../detect.js';
 import { resolveNumThreads } from '../thread.js';
-import { warmSidecarCompressor } from '../sidecar/compress.js';
 import { initIfcOpenShell } from '../../runtime.js';
-export { configureCompressor } from '../sidecar/compress.js';
 
 const TESSELLATION_START = 0.25;
 const TESSELLATION_SPAN = 0.6;
@@ -144,7 +143,7 @@ function rememberShape( metadata, mesh ) {
 
 function partFlushDue( state, now ) {
 
-	if ( state.partAccumulator.uniqueMeshCount === 0 ) return false;
+	if ( state.partBuilder.meshCount === 0 ) return false;
 	if ( state.partCount === 0 ) {
 
 		return state.partMeshes >= FIRST_PART_MESHES || ( now - state.lastFlush ) >= FIRST_PART_MS;
@@ -157,20 +156,17 @@ function partFlushDue( state, now ) {
 
 async function flushPart( state, metadata, options, force ) {
 
-	if ( ! options.onPart || ! state.partAccumulator ) return;
+	if ( ! options.onPart || ! state.partBuilder ) return;
 	if ( ! force && ! partFlushDue( state, performance.now() ) ) return;
-	if ( state.partAccumulator.uniqueMeshCount === 0 ) return;
+	if ( state.partBuilder.meshCount === 0 ) return;
 
-	const bytes = await writeViewerSidecarBytes(
-		state.partAccumulator.build( metadata, { modelId: options.modelId } ),
-		{ level: 1 },
-	);
+	const bytes = state.partBuilder.finish( options.modelId ?? 1 );
 	await options.onPart( bytes, { index: state.partCount } );
 	state.partCount += 1;
 	state.partMeshes = 0;
 	state.partVertexBytes = 0;
 	state.lastFlush = performance.now();
-	state.partAccumulator = new SidecarMeshAccumulator();
+	state.partBuilder.clear();
 	if ( state.partCount >= 8 ) {
 
 		const grow = 1 + ( state.partCount - 8 ) / Math.max( 1, MAX_PARTS - 8 );
@@ -181,7 +177,7 @@ async function flushPart( state, metadata, options, force ) {
 }
 
 /**
- * Load schema/mapping/kernel plugins (and zstd) so the first conversion does
+ * Load schema/mapping/kernel plugins (and the converter) so the first conversion does
  * not pay cold-start on the critical path. Never call this on several workers
  * at once: parallel plugin loads contend badly.
  */
@@ -191,7 +187,7 @@ export async function warmRuntime( kernel = 'opencascade' ) {
 	await ensurePlugin( 'schema', 'ifc4' );
 	await ensurePlugin( 'mapping', 'ifc4' );
 	for ( const plugin of kernelPlugins( kernel ) ) await ensurePlugin( 'kernel', plugin );
-	warmSidecarCompressor();
+	await loadConverter();
 	return runtime;
 
 }
@@ -200,6 +196,7 @@ export async function warmRuntime( kernel = 'opencascade' ) {
  * Tessellate an IFC with an IfcOpenShell geometry kernel and serialize a
  * `.ifcview` sidecar. `options.kernel` is the kernel plugin id.
  * `options.onPart(bytes)` receives intermediate sidecars while tessellating.
+ * glTF/GLB input skips ifcopenshell and goes straight to the converter.
  */
 export async function convertBytes( bytes, filename = 'model.ifc', options = {} ) {
 
@@ -211,6 +208,8 @@ export async function convertBytes( bytes, filename = 'model.ifc', options = {} 
 		return { sidecarBytes: view.slice(), meshCount: 0, productCount: 0 };
 
 	}
+
+	if ( format === 'gltf' ) return convertGltfBytes( view, filename, options );
 
 	if ( format !== 'ifc-spf' && format !== 'unknown' ) {
 
@@ -228,9 +227,10 @@ export async function convertBytes( bytes, filename = 'model.ifc', options = {} 
 	await ensurePlugin( 'schema', schema );
 	await ensurePlugin( 'mapping', schema );
 	for ( const plugin of kernelPlugins( kernel ) ) await ensurePlugin( 'kernel', plugin );
+	await loadConverter();
 	const initMs = performance.now() - initStarted;
 
-	let file, settings, iterator;
+	let file, settings, iterator, builder, partBuilder;
 	try {
 
 		const openStarted = performance.now();
@@ -260,10 +260,23 @@ export async function convertBytes( bytes, filename = 'model.ifc', options = {} 
 
 		}
 
-		const accumulator = new SidecarMeshAccumulator();
-		const partState = options.onPart
+		builder = new IfcViewBuilder();
+		partBuilder = options.onPart ? new IfcViewBuilder() : null;
+		// Bake the IfcMapConversion like the desktop baker does; clear() keeps it.
+		const georef = computeModelGeoref( file );
+		if ( georef ) {
+
+			for ( const target of [ builder, partBuilder ] ) {
+
+				target?.setGeoref( georef.coordinateOperationMeters, georef.projectLengthToMeters, georef.mapUnitToMeters );
+
+			}
+
+		}
+
+		const partState = partBuilder
 			? {
-				partAccumulator: new SidecarMeshAccumulator(),
+				partBuilder,
 				partMeshes: 0,
 				partVertexBytes: 0,
 				partCount: 0,
@@ -288,10 +301,10 @@ export async function convertBytes( bytes, filename = 'model.ifc', options = {} 
 			const mesh = readShape( iterator );
 			if ( ! mesh.faces.length ) continue;
 			rememberShape( metadata, mesh );
-			accumulator.appendMesh( mesh, metadata );
+			appendIfcMesh( builder, mesh, metadata );
 			if ( partState ) {
 
-				partState.partAccumulator.appendMesh( mesh, metadata );
+				appendIfcMesh( partBuilder, mesh, metadata );
 				partState.partMeshes += 1;
 				partState.partVertexBytes += mesh.vertices.byteLength;
 				await flushPart( partState, metadata, options, false );
@@ -303,7 +316,7 @@ export async function convertBytes( bytes, filename = 'model.ifc', options = {} 
 
 				options.onProgress?.( {
 					phase: 'tessellating',
-					message: `Tessellating ${ tessellated.toLocaleString() } elements (${ accumulator.uniqueMeshCount.toLocaleString() } meshes)…`,
+					message: `Tessellating ${ tessellated.toLocaleString() } elements (${ builder.meshCount.toLocaleString() } meshes)…`,
 					ratio: TESSELLATION_START + Math.min( tessellated / Math.max( metadata.size, 1 ), 1 ) * TESSELLATION_SPAN,
 					current: tessellated,
 				} );
@@ -311,26 +324,28 @@ export async function convertBytes( bytes, filename = 'model.ifc', options = {} 
 			}
 
 		} while ( iterator.next() );
+
 		const tessellateMs = performance.now() - tessellateStarted;
 
 		if ( partState ) await flushPart( partState, metadata, options, true );
 
-		if ( accumulator.uniqueMeshCount === 0 ) throw new Error( 'Tessellation produced no visible geometry.' );
+		const meshCount = builder.meshCount;
+		if ( meshCount === 0 ) throw new Error( 'Tessellation produced no visible geometry.' );
 
 		options.onProgress?.( {
 			phase: 'serializing',
-			message: `Building sidecar (${ accumulator.uniqueMeshCount.toLocaleString() } meshes)…`,
+			message: `Building sidecar (${ meshCount.toLocaleString() } meshes)…`,
 			ratio: 0.88,
-			current: accumulator.uniqueMeshCount,
+			current: meshCount,
 		} );
 		const serializeStarted = performance.now();
-		const sidecarBytes = await writeViewerSidecarBytes( accumulator.build( metadata, { modelId: options.modelId } ) );
+		const sidecarBytes = builder.finish( options.modelId ?? 1 );
 		const serializeMs = performance.now() - serializeStarted;
 		options.onProgress?.( {
 			phase: 'complete',
-			message: `Sidecar ready (${ accumulator.uniqueMeshCount.toLocaleString() } meshes)…`,
+			message: `Sidecar ready (${ meshCount.toLocaleString() } meshes)…`,
 			ratio: 1,
-			current: accumulator.uniqueMeshCount,
+			current: meshCount,
 		} );
 		const timings = {
 			initMs,
@@ -343,7 +358,7 @@ export async function convertBytes( bytes, filename = 'model.ifc', options = {} 
 		};
 		return {
 			sidecarBytes,
-			meshCount: accumulator.uniqueMeshCount,
+			meshCount,
 			productCount: metadata.size,
 			numThreads,
 			timings,
@@ -354,6 +369,8 @@ export async function convertBytes( bytes, filename = 'model.ifc', options = {} 
 		iterator?.dispose();
 		settings?.dispose?.();
 		file?.dispose();
+		builder?.free();
+		partBuilder?.free();
 
 	}
 

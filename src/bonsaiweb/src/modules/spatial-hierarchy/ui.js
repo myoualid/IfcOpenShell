@@ -434,6 +434,7 @@ class SpatialHierarchyPanelUI {
 			return;
 
 		}
+
 		if ( this._selectionOrigin === 'panel' ) {
 
 			this._selectionOrigin = null;

@@ -1,5 +1,7 @@
 import { assets } from '../assets.js';
 import { Signals } from '../context/signals.js';
+import { sidecarFromIfcMeshes } from '../pipeline/ifcview/index.js';
+import { resolvePick } from './measure.js';
 
 // Must match IFCVIEW_VERSION. IfcViewer.create refuses to start without it.
 const SIDECAR_FORMAT_VERSION = 19;
@@ -8,6 +10,33 @@ const NAV_PRESET = 'blender';
 let viewer = null;
 let overlays = [];
 let unbindOriginReadout = null;
+
+// A source that was just added streams in after addFile returns. Waits for
+// its modelLoaded, so its objects are in getObjects() once this resolves.
+function sourceLoaded( sourceId, timeoutMs = 10000 ) {
+
+	return new Promise( ( resolve ) => {
+
+		const done = () => {
+
+			clearTimeout( timer );
+			Signals.modelLoaded.remove( onLoaded );
+			resolve();
+
+		};
+
+		const onLoaded = ( payload ) => {
+
+			if ( payload?.sourceId === sourceId ) done();
+
+		};
+
+		const timer = setTimeout( done, timeoutMs );
+		Signals.modelLoaded.add( onLoaded );
+
+	} );
+
+}
 
 function appendScript( src ) {
 
@@ -147,6 +176,46 @@ export class Viewer {
 	static get() {
 
 		return viewer;
+
+	}
+
+	// Add meshes made outside an IFC file as a new viewer source, and return
+	// its source id once it has loaded. Each mesh has the ifcopenshell geom
+	// shape: { id, vertices, normals, faces, colors, materialIds, transform }
+	// (transform is 16 numbers, column-major). `metadata` maps a mesh id to
+	// { guid, name, type } for the element table. The source is not added to
+	// store.models: it has no IFC file behind it.
+	static async addMeshes( meshes, { name = 'meshes', metadata = new Map() } = {} ) {
+
+		const bytes = await sidecarFromIfcMeshes( meshes, metadata );
+		const file = new File( [ bytes ], `${ name.replace( /\.ifcview$/i, '' ) }.ifcview` );
+		const sourceId = await viewer.addFile( file, { name } );
+		await sourceLoaded( sourceId );
+		viewer.requestRedraw();
+		return sourceId;
+
+	}
+
+	// IfcViewer cannot drop one model from the scene. This hides the
+	// source's objects and frees its GPU buffers, so it is no longer drawn.
+	static async removeSource( sourceId ) {
+
+		const ids = ( await viewer.getObjects() )
+			.filter( ( object ) => object.sourceId === sourceId && object.objectId > 0 )
+			.map( ( object ) => object.objectId );
+		if ( ids.length ) viewer.hide( ids );
+		viewer.unloadModel( sourceId );
+		viewer.requestRedraw();
+
+	}
+
+	// The world point under canvas-relative CSS px (x, y): a surface hit when
+	// the viewer build has one, otherwise the horizontal plane through
+	// `anchor` (or the camera target). Resolves { point, normal, placement }
+	// or null.
+	static pickPoint( x, y, anchor = null ) {
+
+		return resolvePick( viewer, { x, y }, anchor ? [ anchor ] : [] );
 
 	}
 

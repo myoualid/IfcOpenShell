@@ -10,6 +10,8 @@ export default [
 			'**/node_modules/**',
 			'dist/**',
 			'**/vendor/**',
+			// wasm-bindgen output of ifcview-rs
+			'src/pipeline/ifcview/wasm/**',
 		]
 	},
 

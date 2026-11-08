@@ -373,6 +373,55 @@ const ViewerSetFalseOrigin = command( 'Scene.SetFalseOrigin', 'Set False Origin'
 const ViewerSetModelTransform = command( 'Scene.SetModelTransform', 'Set Model Transform', ( viewer, context, sourceId, transform ) => Scene.setModelTransform( sourceId, transform ), true );
 const ViewerClearModelTransform = command( 'Scene.ClearModelTransform', 'Clear Model Transform', ( viewer, context, sourceId ) => Scene.setModelTransform( sourceId, null ), true );
 
+// Render modes and their tuning. Each needs a viewer build that has them;
+// an older one cancels with a warning instead of throwing.
+const RENDER_MODES = Object.freeze( [ 'shaded', 'shadedEdges', 'technical', 'clay', 'xray' ] );
+
+function renderCommand( name, label, method, check ) {
+
+	return command( name, label, ( viewer, context, value ) => {
+
+		if ( typeof viewer[ method ] !== 'function' ) {
+
+			log.warn( `${ name }: this viewer build has no ${ method }(); it needs a newer @aeco-dev/viewer` );
+			return { status: 'CANCELLED' };
+
+		}
+
+		if ( check && ! check( value ) ) return { status: 'CANCELLED' };
+		viewer[ method ]( value );
+
+	}, true );
+
+}
+
+// 'shaded' | 'shadedEdges' | 'technical' | 'clay' | 'xray'.
+const ViewerRenderMode = command( 'Viewer.SetRenderMode', 'Render Mode', ( viewer, context, mode ) => {
+
+	if ( typeof viewer.setRenderMode !== 'function' ) {
+
+		log.warn( 'Viewer.SetRenderMode: this viewer build has no setRenderMode(); it needs a newer @aeco-dev/viewer' );
+		return { status: 'CANCELLED' };
+
+	}
+
+	if ( ! RENDER_MODES.includes( mode ) ) return { status: 'CANCELLED' };
+	viewer.setRenderMode( mode );
+	context.signals.renderModeChanged.dispatch( { mode } );
+
+}, true );
+// Partial settings objects, as viewer.setShading / setEdges / setAmbientOcclusion take.
+const ViewerShading = renderCommand( 'Viewer.SetShading', 'Set Shading', 'setShading' );
+const ViewerEdges = renderCommand( 'Viewer.SetEdges', 'Set Edges', 'setEdges' );
+const ViewerAmbientOcclusion = renderCommand( 'Viewer.SetAmbientOcclusion', 'Set Ambient Occlusion', 'setAmbientOcclusion' );
+// true / false: smooth the feature lines (on by default).
+const ViewerEdgeAntialias = command( 'Viewer.SetEdgeAntialias', 'Smooth Lines', ( viewer, context, on ) => {
+
+	if ( typeof viewer.setEdges !== 'function' ) return { status: 'CANCELLED' };
+	viewer.setEdges( { antialias: !! on } );
+
+}, true );
+
 // Snapshot size presets and the ribbon's current choice. Viewer.Snapshot uses
 // these when it is called without options.
 const SNAPSHOT_SIZES = Object.freeze( {
@@ -432,9 +481,46 @@ const ViewerSnapshot = command( 'Viewer.Snapshot', 'Snapshot', async ( viewer, c
 
 } );
 
-export { HideSelectionOperator, ShowAllOperator, ShowSelectionOperator };
+// Argument hints for the terminal's command bar (see Operator.operatorArgs).
+const ON = { name: 'on', type: 'boolean', optional: true };
+const IDS = { name: 'ids', type: 'ids' };
+const SETTINGS = { name: 'settings', type: 'object' };
+const COMMAND_ARGS = {
+	'Viewer.HideSelected': [ { ...IDS, optional: true } ],
+	'Viewer.ShowSelected': [ { ...IDS, optional: true } ],
+	'Viewer.ToggleGrid': [ ON ],
+	'Viewer.ToggleAxes': [ ON ],
+	'Scene.ToggleFog': [ ON ],
+	'Viewer.ToggleSelectionOutline': [ ON ],
+	'Viewer.SetStandardView': [ { name: 'view', type: 'enum', options: Object.keys( VIEWS ) } ],
+	'Viewer.SetNavPreset': [ { name: 'preset', type: 'enum', options: NAV_PRESETS } ],
+	'Viewer.SetSelection': [ IDS ],
+	'Viewer.AddToSelection': [ IDS ],
+	'Viewer.RemoveFromSelection': [ IDS ],
+	'Viewer.SelectGlobalId': [ { name: 'guid', type: 'string' } ],
+	'Viewer.SetVisible': [ IDS, { name: 'on', type: 'boolean' } ],
+	'Viewer.Show': [ IDS ],
+	'Viewer.Hide': [ IDS ],
+	'Viewer.SetColor': [ IDS, { name: 'color', type: 'color' } ],
+	'Scene.SetBackground': [ { name: 'color', type: 'color' } ],
+	'Scene.SetFog': [ { name: 'options', type: 'object' } ],
+	'Viewer.SetCamera': [ { name: 'state', type: 'object' } ],
+	'Scene.SetFederationUnit': [ { name: 'unit', type: 'string' } ],
+	'Scene.SetFalseOrigin': [ { name: 'origin', type: 'object' } ],
+	'Scene.SetModelTransform': [ { name: 'sourceId', type: 'number' }, { name: 'transform', type: 'object' } ],
+	'Scene.ClearModelTransform': [ { name: 'sourceId', type: 'number' } ],
+	'Viewer.Measure': [ { name: 'mode', type: 'enum', options: MEASURE_MODES } ],
+	'Viewer.SetRenderMode': [ { name: 'mode', type: 'enum', options: RENDER_MODES } ],
+	'Viewer.SetShading': [ SETTINGS ],
+	'Viewer.SetEdges': [ SETTINGS ],
+	'Viewer.SetAmbientOcclusion': [ SETTINGS ],
+	'Viewer.SetEdgeAntialias': [ { name: 'on', type: 'boolean' } ],
+	'Viewer.Snapshot': [ { name: 'options', type: 'object', optional: true } ],
+	'Viewer.SetSnapshotSize': [ { name: 'size', type: 'enum', options: Object.keys( SNAPSHOT_SIZES ) } ],
+	'Viewer.SetSnapshotTransparent': [ { name: 'on', type: 'boolean' } ],
+};
 
-export default [
+const operators = [
 	HideSelectionOperator,
 	ShowSelectionOperator,
 	ShowAllOperator,
@@ -474,7 +560,23 @@ export default [
 	ViewerMeasureClick,
 	ViewerMeasureUndo,
 	ViewerMeasureClear,
+	ViewerRenderMode,
+	ViewerShading,
+	ViewerEdges,
+	ViewerAmbientOcclusion,
+	ViewerEdgeAntialias,
 	ViewerSnapshot,
 	ViewerSnapshotSize,
 	ViewerSnapshotTransparent,
 ];
+
+for ( const OperatorClass of operators ) {
+
+	const args = COMMAND_ARGS[ OperatorClass.operatorName ];
+	if ( args ) OperatorClass.operatorArgs = args;
+
+}
+
+export { HideSelectionOperator, ShowAllOperator, ShowSelectionOperator };
+
+export default operators;

@@ -1,5 +1,6 @@
 import { FloatingDialog, InputList, LabeledBoxItem, StatusBar, TabView } from '@aeco-dev/gui';
 import { Layout, World } from '@aeco-dev/layout';
+import { withAddonRibbon } from './addons.js';
 import { modulePanels } from './modules/ui.js';
 import ops from './ops.js';
 import { createLogger } from './util/log.js';
@@ -49,7 +50,18 @@ function createWorkspacePanel( layout, options, body ) {
 
 }
 
-function mountUi( context, layout, configs ) {
+function mountPanel( context, layout, UI, panels ) {
+
+	const instance = new UI( { context } );
+	if ( ! UI.spec || ! instance.root ) return;
+	const panel = createWorkspacePanel( layout, UI.spec, instance.root );
+	instance.attach?.( panel );
+	panels.push( { spec: UI.spec, panel } );
+
+}
+
+// Built-in panels follow CoreModules; addon panels follow, in addon order.
+function mountUi( context, layout, configs, addons ) {
 
 	const panels = [];
 	for ( const item of configs ) {
@@ -57,14 +69,15 @@ function mountUi( context, layout, configs ) {
 		if ( item.active === false ) continue;
 		for ( const UI of modulePanels ) {
 
-			if ( UI.id !== item.id ) continue;
-			const instance = new UI( { context } );
-			if ( ! UI.spec || ! instance.root ) continue;
-			const panel = createWorkspacePanel( layout, UI.spec, instance.root );
-			instance.attach?.( panel );
-			panels.push( { spec: UI.spec, panel } );
+			if ( UI.id === item.id ) mountPanel( context, layout, UI, panels );
 
 		}
+
+	}
+
+	for ( const addon of addons ) {
+
+		for ( const UI of addon.ui ?? [] ) mountPanel( context, layout, UI, panels );
 
 	}
 
@@ -128,16 +141,6 @@ function bindRibbon( context, ribbon, layout ) {
 				void ops.execute( spec.operator, context, el.value );
 
 			} );
-			if ( spec.operator === 'Viewer.SetNavPreset' ) {
-
-				context.signals.navPresetChanged.add( ( payload ) => {
-
-					const preset = payload?.preset;
-					if ( preset && el.value !== preset ) el.value = preset;
-
-				} );
-
-			}
 			return;
 
 		}
@@ -329,6 +332,7 @@ function setPanelMounted( panel, mounted, spec = {} ) {
 			panel.show( { open: needsOpen, select: needsOpen } );
 
 		}
+
 		return;
 
 	}
@@ -617,10 +621,12 @@ function bindModelProgress( signals, progress ) {
  */
 export class Shell {
 
-	constructor( bonsai, configuration ) {
+	constructor( bonsai, pageConfiguration ) {
 
 		const t0 = performance.now();
 		const { context } = bonsai;
+		const addons = bonsai.addons ?? [];
+		const configuration = withAddonRibbon( pageConfiguration, addons );
 
 		const shell = mountShell( context.dom, configuration.ui );
 		shell.viewport.appendChild( context.viewport );
@@ -632,7 +638,7 @@ export class Shell {
 
 		bindModelProgress( context.signals, progress );
 
-		const panels = mountUi( context, shell.layout, configuration.app.CoreModules );
+		const panels = mountUi( context, shell.layout, configuration.app.CoreModules, addons );
 		bindPanelDialog( document.getElementById( 'RB_Panels' ), panels );
 		log.log( `boot: gui ready in ${ ( performance.now() - t0 ).toFixed( 0 ) }ms` );
 

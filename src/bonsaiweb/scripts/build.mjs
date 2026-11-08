@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import { copyFile, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +11,13 @@ async function copyAssets( outdir ) {
 	await copyFile(
 		resolve( root, 'app/files/ifc/window_wall.ifc' ),
 		resolve( root, outdir, 'window_wall.ifc' ),
+	);
+	// The .ifcview converter's wasm, at the URL src/pipeline/ifcview/index.js
+	// resolves from every bundle in this directory.
+	await mkdir( resolve( root, outdir, 'wasm' ), { recursive: true } );
+	await copyFile(
+		resolve( root, 'src/pipeline/ifcview/wasm/ifcview_wasm_bg.wasm' ),
+		resolve( root, outdir, 'wasm/ifcview_wasm_bg.wasm' ),
 	);
 
 }

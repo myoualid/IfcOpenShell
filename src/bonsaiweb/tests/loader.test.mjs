@@ -218,9 +218,9 @@ test( 'one walked file stays a single model drop', async () => {
 test( 'several files keep only the loadable formats', async () => {
 
 	const payload = await Loader.collectDrop( itemsTransfer( [
-		fileEntry( 'a.ifc' ), fileEntry( 'b.ifcview' ), fileEntry( 'notes.txt' ),
+		fileEntry( 'a.ifc' ), fileEntry( 'b.ifcview' ), fileEntry( 'notes.txt' ), fileEntry( 'c.glb' ),
 	] ) );
-	assert.deepEqual( payload.files.map( ( f ) => f.name ), [ 'a.ifc', 'b.ifcview' ] );
+	assert.deepEqual( payload.files.map( ( f ) => f.name ), [ 'a.ifc', 'b.ifcview', 'c.glb' ] );
 
 } );
 
