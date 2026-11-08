@@ -50,6 +50,7 @@
     "docs:sphinx": "typedoc --options typedoc.sphinx.jsonc && node scripts/prepare-sphinx-docs.mjs",
     "docs:check": "typedoc --emit none",
     "lint": "eslint src",
+    "lint:docs": "cd ../../../docs/ifcopenshell/examples && eslint .",
     "prepack": "npm run build",
     "test": "vitest run",
     "test:report": "vitest run tests/python --reporter=default --reporter=json --outputFile.json=../../transpiler/parity/results.json",
