@@ -22,7 +22,7 @@ export interface OperationProgress {
   current?: number;
 }
 import type { Settings } from '../geom/settings.js';
-import { IfcOpenShellError, abortError, ifcopenshell, fs } from '../init.js';
+import { IfcOpenShellError, abortError, nativeModule, fs } from '../init.js';
 
 /** Formats supported by {@link exportToBuffer}. */
 export type SerializerFormat = 'obj' | 'svg' | 'ttl';
@@ -76,14 +76,14 @@ export async function exportToBuffer(
 
   try {
     if (format === 'obj') {
-      obj = ifcopenshell.geom.createBuffer();
-      mtl = ifcopenshell.geom.createBuffer();
-      serializer = ifcopenshell.geom.createGeometrySerializerByStream(
+      obj = nativeModule().geom.createBuffer();
+      mtl = nativeModule().geom.createBuffer();
+      serializer = nativeModule().geom.createGeometrySerializerByStream(
         'obj', mtl, obj, geomSettings,
       );
     } else {
       outputPath = uniquePath(format);
-      serializer = ifcopenshell.geom.createGeometrySerializerByPath(
+      serializer = nativeModule().geom.createGeometrySerializerByPath(
         format, outputPath, outputPath, geomSettings,
       );
     }
@@ -91,7 +91,7 @@ export async function exportToBuffer(
     serializer.setFile(file);
     serializer.writeHeader();
 
-    iterator = ifcopenshell.geom.createIterator(kernel, geomSettings, file, options.numThreads ?? 1);
+    iterator = nativeModule().geom.createIterator(kernel, geomSettings, file, options.numThreads ?? 1);
     if (!iterator || iterator.ptr === 0) throw new IfcOpenShellError('Failed to create geometry iterator');
     if (!iterator.initialize()) return null;
 
