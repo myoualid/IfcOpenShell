@@ -150,3 +150,5 @@ CLAUDE.local.md
 /src/transpiler/parity/golden/
 /src/transpiler/parity/results.json
 /src/transpiler/TRACKING.md
+
+build-web/

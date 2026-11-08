@@ -141,6 +141,10 @@ endif()
 set(IFCVIEWER_CORE_SOURCES
     AxisIndicatorRenderer.cpp
     BufferPool.cpp
+    GridHelperRenderer.cpp
+    TileWorld.cpp
+    TileWorldRenderer.cpp
+    ViewportFog.cpp
     ChunkPlanner.cpp
     InstanceCompose.cpp
     ModelLookup.cpp
@@ -153,6 +157,8 @@ set(IFCVIEWER_CORE_SOURCES
     StreamingThread.cpp
     SectionGizmoRenderer.cpp
     ViewportCore.cpp
+    ViewportPost.cpp
+    ViewportSnapshot.cpp
     WgpuDynamicOffsets.cpp
 )
 # Web needs a zstd DECODER (Emscripten has no zstd port; the desktop links the
@@ -193,6 +199,12 @@ endif()
 set(IFCVIEWER_CORE_HEADERS
     AxisIndicatorRenderer.h
     BufferPool.h
+    GridHelperRenderer.h
+    TileWorld.h
+    TileWorldRenderer.h
+    ViewportFog.h
+    ViewportFogWgsl.h
+    ViewportGridSpec.h
     CameraMath.h
     ChunkPlanner.h
     InstanceCompose.h

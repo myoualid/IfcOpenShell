@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class ViewportCore;
 
@@ -67,8 +68,15 @@ public:
     std::string modelName(int source_id) const;
 
     // Session model id for a source, or 0 when that source has not finished
-    // loading. Session ids start at 1, so 0 is unambiguous.
+    // loading. Session ids start at 1, so 0 is unambiguous. For a streamed
+    // source this is the first part.
     std::uint32_t sessionModelId(int source_id) const;
+    std::vector<std::uint32_t> sessionModelIds(int source_id) const;
+
+    // One source, many parts: mint the federation entry now, bind each
+    // loaded session model as a part, then fire onModelLoaded once.
+    void beginStream(int source_id);
+    void bindPart(int source_id, std::uint32_t session_model_id);
 
     // ---- Lifecycle -------------------------------------------------------
 
@@ -101,10 +109,11 @@ private:
     void guessFalseOriginFrom(std::uint32_t session_model_id);
 
     struct ModelState {
-        std::uint32_t       session_model_id = 0;  // 0 until loaded
+        std::vector<std::uint32_t> session_model_ids;
         std::string         name;
         ModelTransformation transformation;
         bool                has_transformation = false;
+        bool                streaming = false;
     };
 
     ViewportCore&                      core_;

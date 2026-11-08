@@ -133,6 +133,9 @@ endif()
 # visibility). Subjects are inline in their .h files, so no SOURCES needed.
 add_ifcviewer_unit_test(test_selection)
 add_ifcviewer_unit_test(test_visibility)
+add_ifcviewer_unit_test(test_tile_world
+    SOURCES ${IFCVIEWER_SRC}/TileWorld.cpp
+)
 
 # GpuBudget: the pure policy deciding how much device memory the geometry
 # cache may hold and how it yields under pressure. No wgpu at all.

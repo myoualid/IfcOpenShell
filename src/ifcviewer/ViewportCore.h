@@ -49,6 +49,7 @@
 
 #include "AxisIndicatorRenderer.h"
 #include "BufferPool.h"
+#include "GridHelperRenderer.h"
 #include "GpuBudget.h"
 #include "GpuMemory.h"
 #include "ModelLookup.h"
@@ -60,6 +61,8 @@
 #include "Stopwatch.h"
 #include "IfcViewReader.h"
 #include "StreamingThread.h"
+#include "TileWorld.h"
+#include "TileWorldRenderer.h"
 #include "ViewportHost.h"
 #include "VisibilityState.h"
 
@@ -87,13 +90,17 @@ struct FrameUniforms {
     float clip_planes[kMaxSectionPlanes][4]; // xyz = world-space unit normal, w = plane offset
     float xray_alpha_cap;   // X-ray mode: fragment alpha clamped to min(in.color.a, cap)
     float _pad_xray[3];     // pad to 16-byte alignment so the struct stays vec4-aligned
+    float shading[4];       // x = SurfaceStyle, y = linear (0/1), z = exposure, w = ToneMap
+    float base_color[4];    // xyz = Technical / Clay surface colour (sRGB)
+    float light_params[4];  // x = key, y = fill, z = ambient intensity
 };
 static_assert(sizeof(FrameUniforms)
                   == 16 * sizeof(float)
                    + 4 * 4 * sizeof(float)
                    + 4 * sizeof(int)
                    + kMaxSectionPlanes * 4 * sizeof(float)
-                   + 4 * sizeof(float),
+                   + 4 * sizeof(float)
+                   + 3 * 4 * sizeof(float),
               "FrameUniforms must match WGSL layout");
 
 class ViewportCore {
@@ -201,6 +208,13 @@ public:
     // VP into 2D pixels — the streaming loader's priority signal.
     void buildViewProj(Eigen::Matrix4f& view_out,
                        Eigen::Matrix4f& proj_out) const;
+    // Project a world-space point to CSS pixels of the canvas (y down).
+    // World (0,0,0) is where the false origin is drawn (the survey marker).
+    // The floor axes cross at world 0,0,0, which is elsewhere once a false
+    // origin is set. Returns false
+    // when the point is behind the camera or the surface has not been sized.
+    bool projectWorldToCss(float x, float y, float z,
+                           float& css_x, float& css_y) const;
     bool computeSceneAabb(float mn[3], float mx[3]) const;
     // The same union restricted to `session_model_ids`. Unknown ids contribute
     // nothing; false means none of them resolved to any geometry. Unlike
@@ -224,6 +238,8 @@ public:
     // ---- Camera mutators / getters ------------------------------------------
 
     void viewAll();
+    bool initialViewApplied() const { return initial_view_applied_; }
+    void markInitialViewApplied() { initial_view_applied_ = true; }
     // viewAll scoped to specific models: frame the union of their world AABBs
     // with the same 1.10 padding, so "view this model" and "view everything"
     // sit the camera the same way. Returns whether it framed anything (an
@@ -285,6 +301,113 @@ public:
     void setBackgroundColor(float r, float g, float b, float a);
     const Eigen::Vector4f& backgroundColor() const { return background_color_; }
 
+    // ---- Viewport snapshots -------------------------------------------------
+    //
+    // Render the current view offscreen at width × height pixels, independent
+    // of the canvas size, and hand the pixels to the host as straight-alpha
+    // RGBA8 rows (host_->onSnapshotRows), then host_->onSnapshotDone. The
+    // output keeps the camera's vertical field of view, so a wider aspect than
+    // the canvas shows more of the scene to either side.
+    //
+    // The image is rendered as tiles the size of the canvas, each through a
+    // sub-window of the full projection, so any size up to kMaxSnapshotDim
+    // costs no attachment memory beyond what the viewport already holds. Tiles
+    // overlap by a margin that is cropped away, so the edge and selection
+    // passes have no seams. Interaction aids (section gizmo, pivot, corner
+    // axis, overlays) are left out; the grid and floor axes follow their
+    // visibility. Before drawing, the job streams in what the full-resolution
+    // view needs, giving up after timeout_ms or once residency stops moving.
+    //
+    // Requests queue and run one at a time; while a job renders, the canvas
+    // keeps its last frame. Nothing blocks: readback is async on every host.
+    static constexpr int kMaxSnapshotDim = 16384;
+    struct SnapshotRequest {
+        int   token  = 0;
+        int   width  = 0;
+        int   height = 0;
+        // false: clear with `background` (sRGB RGBA in [0..1]; alpha 0 gives a
+        // transparent image). true: use the viewport's own background colour.
+        bool  use_view_background = true;
+        float background[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        int   timeout_ms = 15000;
+    };
+    void requestSnapshot(const SnapshotRequest& request);
+
+    // ---- Render modes, shading and post-processing (ViewportPost.cpp) ------
+    //
+    // Three independent groups of settings, all plain uniforms or pass
+    // toggles, so changing any of them costs nothing beyond the next frame:
+    //
+    //   ShadingSettings  how the main pass lights a surface: its colour
+    //                    source (the model's colours, flat technical white,
+    //                    or clay grey; a setColor override always wins), the
+    //                    lights, and whether lighting runs in linear light
+    //                    with exposure and tone mapping (ACES / AgX) or in
+    //                    the legacy gamma-space formula the GL viewer used.
+    //   EdgeSettings     Depth: the soft depth-crease darkening (default).
+    //                    Feature: crisp lines wherever the element changes,
+    //                    the surface folds past `crease_deg`, or an element
+    //                    steps off its own plane (its silhouette over itself).
+    //   AoSettings       screen-space ambient occlusion at half resolution,
+    //                    blurred depth-aware, multiplied over the surface.
+    //
+    // Feature edges and AO read a G-buffer (element id, normal, position)
+    // drawn by the pick pipeline into the pick attachments, which exist at
+    // viewport size already; only the two half-size AO targets are added.
+    // The G-buffer pass costs one extra geometry pass, and only runs while
+    // feature edges or AO are on.
+    //
+    // setRenderMode applies a preset of all three (and X-ray); each group can
+    // still be tuned afterwards.
+    enum class RenderMode { Shaded = 0, ShadedEdges = 1, Technical = 2, Clay = 3, Xray = 4 };
+    enum class SurfaceStyle { Color = 0, Technical = 1, Clay = 2 };
+    enum class ToneMap { None = 0, Aces = 1, AgX = 2 };
+    enum class EdgeMode { Depth = 0, Feature = 1 };
+    struct ShadingSettings {
+        SurfaceStyle surface = SurfaceStyle::Color;
+        float base_color[3] = { 0.96f, 0.96f, 0.96f };  // sRGB, Technical / Clay
+        bool  linear = false;          // linear light + exposure + tone map
+        float exposure = 1.0f;         // linear only
+        ToneMap tone_map = ToneMap::Aces;  // linear only
+        float key_dir[3]  = {  0.3f,  0.5f, 0.8f };  // toward the light, world
+        float fill_dir[3] = { -0.3f, -0.5f, 0.8f };
+        float key_intensity  = 0.7f;
+        float fill_intensity = 0.245f;
+        float ambient_intensity = 1.0f;
+        float sky_color[3]    = { 0.55f, 0.60f, 0.70f };  // sRGB hemisphere ambient
+        float ground_color[3] = { 0.35f, 0.32f, 0.28f };
+    };
+    struct EdgeSettings {
+        bool     enabled = true;
+        EdgeMode mode    = EdgeMode::Depth;
+        float    color[3] = { 0.0f, 0.0f, 0.0f };  // sRGB, Feature only
+        float    opacity  = 1.0f;                   // Feature only
+        float    width_px = 1.0f;                   // CSS px, Feature only
+        float    crease_deg = 30.0f;                // Feature only
+        // Feature only: smooth the lines. While the view moves, FXAA over a
+        // line-coverage mask; once it holds still, the masks of kLineSamples
+        // sub-pixel-jittered G-buffer samples accumulate into true coverage.
+        // Off draws them aliased, straight onto the image.
+        bool     antialias = true;
+    };
+    struct AoSettings {
+        bool  enabled   = false;
+        float radius    = 0.0f;   // world units (metres); <= 0 follows the view distance
+        float intensity = 1.0f;
+        float bias      = 0.03f;  // fraction of the radius
+    };
+    // Feature lines are supersampled from this many jittered G-buffer samples
+    // once the view holds still (EdgeSettings::antialias).
+    static constexpr int kLineSamples = 16;
+    void setRenderMode(RenderMode mode);
+    RenderMode renderMode() const { return render_mode_; }
+    void setShading(const ShadingSettings& s);
+    const ShadingSettings& shading() const { return shading_; }
+    void setEdges(const EdgeSettings& e);
+    const EdgeSettings& edges() const { return edge_settings_; }
+    void setAmbientOcclusion(const AoSettings& a);
+    const AoSettings& ambientOcclusion() const { return ao_settings_; }
+
     // Frame the current selection: union the selected objects' world AABBs and
     // fit the camera to them (same 1.30 padding as the desktop "F" hotkey).
     // No-op with an empty selection or no resolvable AABBs; returns whether it
@@ -321,6 +444,31 @@ public:
     // keeps requesting frames until an armed afterglow expires.
     void setPivotIndicatorVisible(bool visible, int hide_after_ms = 0);
     bool pivotIndicatorVisible() const;
+
+    // Blender floor axes through world 0,0,0 along world X and Y, i.e.
+    // before the false-origin shift. X and Y only, `size` metres either
+    // side. They share the grid's distance fade. The survey point is a
+    // separate amber survey marker at viewer (0,0,0), where the false origin
+    // is drawn, and is shown with these axes. Default size 1000. Off until a
+    // host turns it on.
+    void setOriginAxesVisible(bool visible);
+    bool originAxesVisible() const { return origin_axes_visible_; }
+    void toggleOriginAxes();
+    void setOriginAxesSize(float size_metres);
+    float originAxesSize() const { return origin_axes_size_; }
+
+    // Floor fade for the grid and the X/Y axes. `near_factor` and `far_factor`
+    // are multiples of the camera distance (0.35 starts the fade at 35% of
+    // the view distance). Colour is the background, so the floor dissolves
+    // into it. `mode` is 1 linear or 2 exp2; `enabled` false turns the fade off.
+    void setFog(bool enabled, int mode, float near_factor, float far_factor, float density);
+    void setFogEnabled(bool enabled);
+    bool fogEnabled() const { return fog_enabled_; }
+    void toggleFog();
+    int fogMode() const { return fog_mode_; }
+    float fogNearFactor() const { return fog_near_factor_; }
+    float fogFarFactor() const { return fog_far_factor_; }
+    float fogDensity() const { return fog_density_; }
 
     // ---- First-person / fly navigation --------------------------------------
     //
@@ -528,6 +676,7 @@ public:
     // against the source_id before the load finished.
     void loadIfcViewMetadataWeb(int source_id, std::string source_label,
                                 std::function<void(std::uint32_t)> on_loaded = {});
+    void setModelFederationSource(std::uint32_t session_model_id, int source_id);
 
     // On-demand fetch of the v15 element metadata block (elements + string
     // table) for a web-streamed model — what a UI (object tree / selected-name
@@ -715,6 +864,17 @@ public:
     // fails so the next frame retries cleanly.
     void render();
 
+    // The two halves of render() that a snapshot tile reuses. cullScene runs
+    // the CPU cull for `vp` (interactive: motion threshold, HiZ and the cull
+    // cache; otherwise none of them, and the cache is invalidated).
+    // encodeScene encodes the main pass and the passes that read its depth
+    // into `view`; interactive adds the gizmos, overlays and HiZ resolve and
+    // returns the HiZ slot it submitted (-1 otherwise).
+    void cullScene(const Eigen::Matrix4f& vp, float focal_px, bool interactive);
+    int  encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
+                     const Eigen::Matrix4f& vp, const float clear_rgba[4],
+                     int viewport_w_px, int viewport_h_px, bool interactive);
+
     // ---- Surface configuration (#84-u) ------------------------------------
     //
     // Configure the swapchain at the given physical size. Picks a present
@@ -892,7 +1052,8 @@ public:
     // the sync pickObjectAt and the async pickSurfaceAtAsync.
     bool decodeMappedPickNormal(Eigen::Vector3f& out);
     // Logical (CSS-px) viewport size from the host framebuffer / DPR, for the
-    // section-gizmo hit-test + drag (which work in logical pixels).
+    // section-gizmo hit-test + drag (which work in logical pixels). DPR stays
+    // fractional: int(1.25) and int(1.5) would place the grab line off the arrow.
     void sectionLogicalViewport(int& w, int& h) const;
     // Decode the RGBA32F exact world position from the (already-mapped) position
     // staging buffer; unmaps. False if the texel was a miss (w == 0).
@@ -956,6 +1117,22 @@ public:
     // the cull classifier routes every instance through the transparent pass.
     void toggleXray();
     bool xrayActive() const { return xray_alpha_cap_ < 1.0f; }
+
+    // Sparse RGB axis-aligned line grids (XY / XZ / YZ). A default "base" grid
+    // is created at init. setGridVisible is the master switch; upsert replaces
+    // a grid with the same id or adds a new one.
+    // 2D tile-world mode. While the world is enabled, render() skips the 3D
+    // scene entirely and draws the tile world instead (see TileWorld.h).
+    tw::TileWorld&          tileWorld()         { return tile_world_; }
+    TileWorldRenderer&      tileWorldRenderer() { return tile_renderer_; }
+
+    void setGridVisible(bool visible);
+    bool gridVisible() const;
+    void toggleGrid();
+    void upsertViewportGrid(const ViewportGridSpec& spec);
+    bool removeViewportGrid(const std::string& id);
+    void clearViewportGrids();
+    const std::vector<ViewportGridSpec>& viewportGrids() const;
 
 #if defined(__EMSCRIPTEN__)
     // Async object pick for the web build: encodes the same pick pass as
@@ -1231,7 +1408,20 @@ private:
     // Corner axis gizmo + orbit pivot indicator, likewise shared by desktop +
     // web. Same lift out of the Qt-coupled OverlayRenderer.
     AxisIndicatorRenderer axis_indicator_;
+    GridHelperRenderer    grid_helper_;
+    tw::TileWorld         tile_world_;
+    TileWorldRenderer     tile_renderer_;
+    double                tile_last_ms_ = -1.0;
+    bool renderTileWorld(WGPUTextureView view, WGPUTexture texture);
+    ViewportFog           fog_;
+    bool                  fog_enabled_      = true;
+    int                   fog_mode_         = 1;      // 1 linear, 2 exp2
+    float                 fog_near_factor_  = 0.35f;  // × camera distance
+    float                 fog_far_factor_   = 2.2f;
+    float                 fog_density_      = 0.002f;
     bool                  pivot_indicator_visible_ = false;
+    bool                  origin_axes_visible_     = false;
+    float                 origin_axes_size_        = 1000.0f;
     // Only running while an afterglow is armed; a drag-held indicator leaves it
     // invalid so the triad stays up until the host clears it.
     Stopwatch             pivot_indicator_timer_;
@@ -1311,6 +1501,56 @@ private:
     WGPURenderPipeline  edge_pipeline_        = nullptr;
     WGPUBindGroup       edge_bind_group_      = nullptr;
     bool                edges_enabled_        = true;
+
+    // Render-mode state and the post-processing pipelines (ViewportPost.cpp).
+    // One shader module and bind-group layout serve all four passes; bind
+    // groups are made per frame, since they name the per-pixel attachments.
+    RenderMode          render_mode_   = RenderMode::Shaded;
+    ShadingSettings     shading_;
+    EdgeSettings        edge_settings_;
+    AoSettings          ao_settings_;
+    WGPUShaderModule    post_shader_module_     = nullptr;
+    WGPUBindGroupLayout post_bgl_               = nullptr;
+    WGPUPipelineLayout  post_pipeline_layout_   = nullptr;
+    WGPURenderPipeline  feature_edge_pipeline_  = nullptr;
+    WGPURenderPipeline  edge_mask_pipeline_     = nullptr;
+    WGPURenderPipeline  edge_aa_pipeline_       = nullptr;
+    WGPUTexture         edge_mask_texture_      = nullptr;
+    WGPUTextureView     edge_mask_view_         = nullptr;
+    WGPURenderPipeline  edge_accum_pipeline_    = nullptr;
+    WGPURenderPipeline  edge_resolve_pipeline_  = nullptr;
+    WGPUTexture         line_accum_texture_     = nullptr;
+    WGPUTextureView     line_accum_view_        = nullptr;
+    WGPUBuffer          line_sample_uniforms_[kLineSamples] = {};
+    // Accumulated samples, and what they were taken for: a change to either
+    // restarts the accumulation.
+    int                 line_accum_count_ = 0;
+    std::uint64_t       line_accum_epoch_ = 0;
+    FrameUniforms       line_accum_frame_ = {};
+    // The frame uniforms updateFrameUniforms last wrote; line samples copy
+    // them with a jittered view_proj.
+    FrameUniforms       last_frame_uniforms_ = {};
+    WGPURenderPipeline  ao_pipeline_            = nullptr;
+    WGPURenderPipeline  ao_blur_pipeline_       = nullptr;
+    WGPURenderPipeline  ao_composite_pipeline_  = nullptr;
+    WGPUBuffer          post_uniform_buffer_    = nullptr;
+    WGPUSampler         post_sampler_           = nullptr;
+    WGPUTexture         ao_texture_[2]          = { nullptr, nullptr };
+    WGPUTextureView     ao_view_[2]             = { nullptr, nullptr };
+    int                 ao_w_ = 0;
+    int                 ao_h_ = 0;
+    bool buildPostPipelines();
+    void releasePostResources();
+    void ensureAoTextures(int w, int h);
+    void releaseAoTextures();
+    // The G-buffer is drawn when feature edges or AO need it.
+    bool gbufferWanted() const;
+    void encodeGBufferPass(WGPUCommandEncoder enc, WGPUBindGroup frame_group);
+    // G-buffer, AO and feature edges into `view`, after the main pass.
+    // `interactive` accumulates line samples across frames; otherwise (a
+    // snapshot tile) they are all taken now.
+    void encodePostPasses(WGPUCommandEncoder enc, WGPUTextureView view,
+                          const Eigen::Matrix4f& vp, bool interactive);
 
     // Selection silhouette outline. The mask is rendered multisampled so it
     // can share the main depth attachment, then resolved; the scratch holds
@@ -1528,6 +1768,7 @@ private:
     struct PendingWebChunk { std::uint32_t session_model_id; std::size_t ci; };
     std::vector<PendingWebChunk> web_pending_;
     std::size_t                  web_pending_head_ = 0;
+    std::unordered_map<std::uint32_t, std::vector<std::function<void(bool)>>> element_metadata_waiters_;
 
     // Settle burst: keep the render loop alive for a few frames after any
     // streaming activity so the cull→load→display latency (the draw + cull
@@ -1754,6 +1995,70 @@ private:
     // an sRGB-to-linear conversion on top so the on-screen colour
     // matches the hex value passed via setBackgroundColor.
     Eigen::Vector4f background_color_ = {0.125f, 0.137f, 0.161f, 1.0f};
+
+    // ---- Snapshot job (ViewportSnapshot.cpp) ---------------------------------
+    //
+    // buildViewProj applies these while a snapshot tile is culled and drawn:
+    // the output image's aspect instead of the canvas's, and a clip-space
+    // crop that maps the tile's window of the image onto the whole target.
+    float           aspect_override_ = 0.0f;
+    Eigen::Matrix4f ndc_crop_        = Eigen::Matrix4f::Identity();
+
+    // One row of tiles lands in one staging buffer, mapped as soon as the
+    // row's last tile is submitted. The map state is heap-owned so a callback
+    // that fires after the job is gone can find it orphaned and free it.
+    struct SnapshotMapState {
+        int  status   = 0;      // 0 pending, 1 mapped, 2 failed
+        bool orphaned = false;
+        ViewportCore* core = nullptr;
+    };
+    struct SnapshotBand {
+        WGPUBuffer        buffer    = nullptr;
+        SnapshotMapState* map       = nullptr;
+        int               y0        = 0;
+        int               rows      = 0;
+        bool              delivered = false;
+    };
+    struct SnapshotJob {
+        enum class Phase { Streaming, Rendering, Finishing };
+        SnapshotRequest request;
+        Phase    phase = Phase::Streaming;
+        float    clear_rgba[4] = { 0, 0, 0, 0 };
+        // Camera frozen at the start so input during the job cannot tear it.
+        float    target[3] = { 0, 0, 0 };
+        float    distance = 0, yaw = 0, pitch = 0;
+        bool     ortho = false;
+        Stopwatch started;
+        Stopwatch since_progress;
+        std::uint32_t last_missing = 0xffffffffu;
+        // Tile layout, against the canvas size it was made for.
+        int tile_w = 0, tile_h = 0, margin = 0;
+        int inner_w = 0, inner_h = 0, cols = 0, rows = 0, next_tile = 0;
+        std::uint32_t band_bpr = 0;
+        WGPUTexture     color_texture = nullptr;
+        WGPUTextureView color_view    = nullptr;
+        std::vector<SnapshotBand> bands;
+        bool failed = false;
+    };
+    std::unique_ptr<SnapshotJob>  snapshot_job_;
+    std::vector<SnapshotRequest>  snapshot_queue_;
+
+    // Advance the snapshot job by one frame. Returns true when the frame was
+    // spent on it (the canvas is not drawn), false to render normally.
+    bool stepSnapshot();
+    bool layoutSnapshotTiles(SnapshotJob& job);
+    void releaseSnapshotTiles(SnapshotJob& job);
+    void renderSnapshotTile(SnapshotJob& job);
+    void deliverSnapshotBands(SnapshotJob& job);
+    void finishSnapshot(bool ok);
+    // Swap the job's frozen camera and projection overrides in (or back out).
+    void enterSnapshotCamera(const SnapshotJob& job, const Eigen::Matrix4f& crop);
+    void leaveSnapshotCamera();
+    float saved_camera_[6] = { 0, 0, 0, 0, 0, 0 };
+    bool  saved_ortho_ = false;
+    // Wanted chunks (contributing to the last cull) not yet resident, and how
+    // many of those are loading right now.
+    void countWantedMissingChunks(std::uint32_t& missing, std::uint32_t& loading) const;
 
     // Whether the surface was configured with a premultiplied alpha mode, and
     // so whether background_color_'s alpha reaches the compositor at all.

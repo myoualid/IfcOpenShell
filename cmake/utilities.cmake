@@ -271,7 +271,7 @@ function(ifcopenshell_wasm_plugin_link_options TARGET REGISTRATION_SYMBOL)
     )
 
     target_compile_options(${TARGET} PRIVATE -fwasm-exceptions)
-    target_link_options(${TARGET} PRIVATE "SHELL:-fwasm-exceptions" "SHELL:-s SIDE_MODULE=${PLUGIN_SIDE_MODULE}" "SHELL:-s ALLOW_TABLE_GROWTH=1" "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0" "SHELL:-sSUPPORT_LONGJMP=wasm" ${PLUGIN_OPTIMIZATION})
+    target_link_options(${TARGET} PRIVATE "SHELL:-fwasm-exceptions" "SHELL:-s SIDE_MODULE=${PLUGIN_SIDE_MODULE}" "SHELL:-sWASM_BIGINT=1" "SHELL:-s ALLOW_TABLE_GROWTH=1" "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0" "SHELL:-sSUPPORT_LONGJMP=wasm" ${PLUGIN_OPTIMIZATION})
     if(PLUGIN_EXPORT_DYNAMIC)
         # Export provider APIs used only by other side modules (schema methods,
         # OpenCascadeShape::shape(), etc.). Emscripten appends --no-export-dynamic

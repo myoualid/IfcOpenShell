@@ -1,0 +1,103 @@
+name: Publish @aeco-dev/viewer
+
+# Builds ifcviewer-web from the fork's main branch, aeco, packs the wasm
+# next to ifcviewer.js, and publishes @aeco-dev/viewer. Features reach the
+# package by being merged into that branch. The version is chosen here and is
+# not committed back.
+#
+# Authentication: repository secret IFCVIEWER, an npm token that can publish
+# the @aeco-dev scope. The build job does not use it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, for example 0.1.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Pack and run npm publish --dry-run, without uploading"
+        required: false
+        type: boolean
+        default: false
+
+# Each job declares what it needs. The called build workflow only reads the
+# repository; id-token: write, which npm trusted publishing uses, is granted
+# to the publish job alone.
+permissions: {}
+
+concurrency:
+  group: publish-aeco-dev-viewer
+  cancel-in-progress: false
+
+jobs:
+  branch:
+    if: github.repository == 'myoualid/IfcOpenShell'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require the release branch
+        env:
+          RELEASE_BRANCH: aeco
+        run: |
+          if [ "$GITHUB_REF_NAME" != "$RELEASE_BRANCH" ]; then
+            echo "::error::Packages are published from ${RELEASE_BRANCH}, the fork's main branch. Merge the feature there and dispatch this workflow on ${RELEASE_BRANCH}, not ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+
+  build:
+    needs: branch
+    if: github.repository == 'myoualid/IfcOpenShell'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-ifcviewer-web.yml # zizmor: ignore[self-repository] the ./ form is the documented reusable-workflow call
+
+  publish:
+    needs: build
+    if: github.repository == 'myoualid/IfcOpenShell'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download ifcviewer-web
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: ifcviewer-web
+          path: build-web
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Pack @aeco-dev/viewer
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: python3 .github/scripts/pack-aeco-viewer.py
+
+      - name: Publish
+        working-directory: src/ifcviewer-web/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.IFCVIEWER }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::The IFCVIEWER secret is empty. Add the npm token under Settings, Secrets and variables, Actions, secret name IFCVIEWER."
+            exit 1
+          fi
+          echo "::add-mask::$NODE_AUTH_TOKEN"
+          if [ "$DRY_RUN" = "true" ]; then
+            npm publish --dry-run --access public
+          else
+            npm publish --access public
+          fi

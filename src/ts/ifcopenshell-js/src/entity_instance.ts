@@ -58,7 +58,7 @@ export class EntityInstance extends IfcOpenshellInstance {
   get(nameOrIndex: string | number): AttributeValueType {
     if (typeof nameOrIndex === 'string') {
       // Inverse attributes are served through the same accessor, as getattr() does in Python.
-      if (this.inverseAttributes().includes(nameOrIndex)) {
+      if (inverseNameSet(this).has(nameOrIndex)) {
         return this.inverse(nameOrIndex) as unknown as AttributeValueType;
       }
       return this.getArgumentByName(nameOrIndex) as AttributeValueType;
@@ -192,7 +192,7 @@ export class EntityInstance extends IfcOpenshellInstance {
   }
 
   set(nameOrIndex: string | number, value: AttributeValueType): void {
-    if (typeof nameOrIndex === 'string' && this.inverseAttributes().includes(nameOrIndex)) {
+    if (typeof nameOrIndex === 'string' && inverseNameSet(this).has(nameOrIndex)) {
       throw new IfcOpenShellError(`Cannot set inverse attribute ${nameOrIndex}`);
     }
     this.setArgument(typeof nameOrIndex === 'number' ? nameOrIndex : this.getArgumentIndex(nameOrIndex), value);
@@ -232,6 +232,14 @@ function noAttribute(entity: EntityInstance, name: string): IfcOpenShellError {
 /** One generated subclass per schema-qualified IFC class, carrying its attribute accessors. */
 const instanceClasses = new Map<string, typeof EntityInstance>();
 
+/** Per-class set of inverse attribute names, stored on each generated prototype. */
+const inverseNames = Symbol('inverseNames');
+
+function inverseNameSet(entity: EntityInstance): Set<string> {
+  const cached = (entity as unknown as { [inverseNames]?: Set<string> })[inverseNames];
+  return cached ?? new Set(entity.getInverseAttributeNames());
+}
+
 /**
  * One wrapper per native instance and file, so that entities compare with `===` and work
  * as `Set` members and `Map` keys, like Python entity equality and hashing.
@@ -269,6 +277,7 @@ export function adoptInstance(handle: IfcOpenshellInstance): EntityInstance {
     // Chrome labels objects by the compiled class name, ignoring the `name` override above.
     Object.defineProperty(InstanceClass.prototype, Symbol.toStringTag, { value: handle.className(false) });
     defineAttributeAccessors(InstanceClass.prototype, handle);
+    Object.defineProperty(InstanceClass.prototype, inverseNames, { value: new Set(handle.getInverseAttributeNames()) });
     instanceClasses.set(key, InstanceClass);
   }
   const entity = new InstanceClass(handle);

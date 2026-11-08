@@ -1,0 +1,24 @@
+{
+  "name": "@aeco-dev/viewer",
+  "version": "0.1.0",
+  "description": "WebGPU IfcViewer for the browser, built from the AECO fork of IfcOpenShell so it can ship ahead of upstream.",
+  "license": "LGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myoualid/IfcOpenShell.git",
+    "directory": "src/ifcviewer-web/npm"
+  },
+  "files": [
+    "dist",
+    "COPYING",
+    "COPYING.LESSER",
+    "README.md"
+  ],
+  "exports": {
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

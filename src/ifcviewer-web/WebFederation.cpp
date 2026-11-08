@@ -50,9 +50,8 @@ void WebFederation::clearModelTransformation(int source_id) {
     if (it == models_.end() || !it->second.has_transformation) return;
     it->second.has_transformation = false;
     it->second.transformation     = ModelTransformation{};
-    if (it->second.session_model_id != 0) {
-        core_.setModelTransformation(it->second.session_model_id,
-                                     Eigen::Matrix4d::Identity());
+    for (std::uint32_t session_model_id : it->second.session_model_ids) {
+        core_.setModelTransformation(session_model_id, Eigen::Matrix4d::Identity());
     }
 }
 
@@ -67,12 +66,43 @@ std::string WebFederation::modelName(int source_id) const {
 
 std::uint32_t WebFederation::sessionModelId(int source_id) const {
     auto it = models_.find(source_id);
-    return it == models_.end() ? 0u : it->second.session_model_id;
+    if (it == models_.end() || it->second.session_model_ids.empty()) return 0u;
+    return it->second.session_model_ids.front();
+}
+
+std::vector<std::uint32_t> WebFederation::sessionModelIds(int source_id) const {
+    auto it = models_.find(source_id);
+    return it == models_.end() ? std::vector<std::uint32_t>{} : it->second.session_model_ids;
+}
+
+void WebFederation::beginStream(int source_id) {
+    models_[source_id].streaming = true;
+}
+
+void WebFederation::bindPart(int source_id, std::uint32_t session_model_id) {
+    ModelState& state = models_[source_id];
+    const bool first_part = state.session_model_ids.empty();
+    state.session_model_ids.push_back(session_model_id);
+    core_.setModelFederationSource(session_model_id, source_id);
+
+    // Frame and guess only on the first part of the first source.
+    if (first_part) {
+        if (!false_origin_explicit_ && !guessed_false_origin_) {
+            guessFalseOriginFrom(session_model_id);
+        }
+        if (!core_.initialViewApplied()) {
+            core_.viewAll();
+            core_.markInitialViewApplied();
+        }
+    }
+    if (state.has_transformation) applyModelTransformation(source_id);
 }
 
 void WebFederation::onModelLoaded(int source_id, std::uint32_t session_model_id) {
-    ModelState& state     = models_[source_id];
-    state.session_model_id = session_model_id;
+    ModelState& state = models_[source_id];
+    if (state.session_model_ids.empty()) state.session_model_ids.push_back(session_model_id);
+    else state.session_model_ids.front() = session_model_id;
+    core_.setModelFederationSource(session_model_id, source_id);
 
     // Guess before applying the transform: the guess reads the model's raw
     // geometry position, and the transform is composed against the origin the
@@ -81,12 +111,20 @@ void WebFederation::onModelLoaded(int source_id, std::uint32_t session_model_id)
     if (!false_origin_explicit_ && !guessed_false_origin_) {
         guessFalseOriginFrom(session_model_id);
     }
+    if (!core_.initialViewApplied()) {
+        core_.viewAll();
+        core_.markInitialViewApplied();
+    }
     if (state.has_transformation) applyModelTransformation(source_id);
 }
 
 void WebFederation::onModelLoadedWithoutSource(std::uint32_t session_model_id) {
     if (!false_origin_explicit_ && !guessed_false_origin_) {
         guessFalseOriginFrom(session_model_id);
+    }
+    if (!core_.initialViewApplied()) {
+        core_.viewAll();
+        core_.markInitialViewApplied();
     }
 }
 
@@ -106,20 +144,20 @@ void WebFederation::applyFalseOrigin() {
 void WebFederation::applyModelTransformation(int source_id) {
     auto it = models_.find(source_id);
     if (it == models_.end() || !it->second.has_transformation) return;
-    const std::uint32_t session_model_id = it->second.session_model_id;
-    if (session_model_id == 0) return;   // staged; applied from onModelLoaded
+    if (it->second.session_model_ids.empty()) return;   // staged; applied from onModelLoaded
 
     // ModelTransformation::a may be authored in the model's pre-CoordinateOperation
     // frame, so composing needs the model's units and CoordinateOperation. Both
     // come from the .ifcview, which is what makes this work with no IFC present.
-    ModelGeoref georef;
-    if (!core_.modelGeoref(session_model_id, georef)) return;
-
-    core_.setModelTransformation(
-        session_model_id,
-        composeModelTransformation(it->second.transformation, config_,
-                                   georef.units,
-                                   georef.coordinate_operation_meters));
+    for (std::uint32_t session_model_id : it->second.session_model_ids) {
+        ModelGeoref georef;
+        if (!core_.modelGeoref(session_model_id, georef)) continue;
+        core_.setModelTransformation(
+            session_model_id,
+            composeModelTransformation(it->second.transformation, config_,
+                                       georef.units,
+                                       georef.coordinate_operation_meters));
+    }
 }
 
 void WebFederation::guessFalseOriginFrom(std::uint32_t session_model_id) {
@@ -140,9 +178,10 @@ void WebFederation::guessFalseOriginFrom(std::uint32_t session_model_id) {
     guessed_false_origin_ = true;
     applyFalseOrigin();
 
-    // applyCachedModel's auto-viewAll framed the camera against the pre-shift
-    // position; the recompose above moved every instance, so re-frame.
+    // applyCachedModel no longer viewAlls on web before this guess, so this
+    // is the first camera frame — already in post-shift coordinates.
     core_.viewAll();
+    core_.markInitialViewApplied();
 
     Log::info().nospace()
         << "web federation: guessed false origin ("
