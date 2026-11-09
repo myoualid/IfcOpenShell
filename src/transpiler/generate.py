@@ -231,6 +231,19 @@ def main():
         lines += [f'export * as {u} from "./{u}.js";' for u in usecases if f"api/{package}/{u}" in modules]
         (OUTPUT / "api" / package / "index.ts").write_text(HEADER + "\n" + "\n".join(lines) + "\n", encoding="utf-8")
 
+    # ifcopenshell/api: every package as a namespace, as `import ifcopenshell.api` gives ifcopenshell.api.root.
+    packages = sorted({k.split("/")[1] for k in manifest if k.startswith("api/")})
+    lines = [f'export * as {p} from "./{p}/index.js";' for p in packages]
+    (OUTPUT / "api" / "index.ts").write_text(HEADER + "\n" + "\n".join(lines) + "\n", encoding="utf-8")
+    # ifcopenshell/util: every ported module as a namespace, and the hand-written helpers of src/util.
+    modules = sorted(
+        k.split("/")[1]
+        for k in manifest
+        if k.startswith("util/") and manifest[k].get("error") != "not ported" and "export " in (OUTPUT / f"{k}.ts").read_text(encoding="utf-8")
+    )
+    lines = ['export * from "../../util/index.js";'] + [f'export * as {m} from "./{m}.js";' for m in modules]
+    (OUTPUT / "util" / "index.ts").write_text(HEADER + "\n" + "\n".join(lines) + "\n", encoding="utf-8")
+
     (OUTPUT / "transpile.json").write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     for scope in ("util", "api"):
         entries = [e for k, e in manifest.items() if k.startswith(f"{scope}/")]
