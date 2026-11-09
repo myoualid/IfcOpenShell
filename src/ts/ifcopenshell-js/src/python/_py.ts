@@ -181,6 +181,57 @@ export function positionalOptions(names: string[], values: Iterable<unknown>): R
   return Object.fromEntries(items.map((value, i) => [names[i], value]));
 }
 
+/** Python snake_case name as the camelCase option key generated functions take; CONSTANT_CASE and leading underscores are kept. */
+export function camel(name: string): string {
+  const stripped = name.replace(/^_+/, '');
+  if (!stripped || stripped.toUpperCase() === stripped) return name;
+  const [head, ...rest] = stripped.split('_');
+  return name.slice(0, name.length - stripped.length) + head + rest.map(part => part.slice(0, 1).toUpperCase() + part.slice(1)).join('');
+}
+
+/** Options object for `f(**values)`: Python keyword names become camelCase keys; `consumed` were passed positionally. */
+export function kwargs(values: unknown, consumed: string[] = []): Record<string, unknown> {
+  const entries = values instanceof Map ? Array.from(values.entries()) : Object.entries(values as Record<string, unknown>);
+  return Object.fromEntries(entries.filter(([key]) => !consumed.includes(key as string)).map(([key, value]) => [camel(key as string), value]));
+}
+
+/** Python `str.count(sub)` (non-overlapping) and `list.count(value)` / `tuple.count(value)`. */
+export function count(container: unknown, item: unknown): number {
+  if (typeof container === 'string') {
+    const sub = String(item);
+    if (!sub) return container.length + 1;
+    return container.split(sub).length - 1;
+  }
+  let total = 0;
+  for (const value of container as Iterable<unknown>) if (eq(value, item)) total++;
+  return total;
+}
+
+/** A typing.NamedTuple or collections.namedtuple value: an array with named fields, printed as Python does. */
+export function namedtuple(name: string, fields: string[], values: any[]): any {
+  const repr = (value: unknown): string => (
+    value === null || value === undefined ? 'None' : value === true ? 'True' : value === false ? 'False'
+      // Python quotes with ' unless the text has ' and no ".
+      : typeof value === 'string' ? (value.includes("'") && !value.includes('"') ? `"${value.replace(/\\/g, '\\\\')}"` : `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`)
+        : Array.isArray(value) && !Object.hasOwn(value, 'toString') ? `[${value.map(repr).join(', ')}]` : String(value)
+  );
+  Object.assign(values, Object.fromEntries(fields.map((field, i) => [field, values[i]])));
+  Object.defineProperty(values, 'toString', { value: () => `${name}(${fields.map((field, i) => `${field}=${repr(values[i])}`).join(', ')})`, enumerable: false });
+  return values;
+}
+
+/** Python `json.dumps(value)`: `", "` and `": "` separators and ASCII-only strings, as its defaults. */
+export function jsonDumps(value: unknown): string {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return Number.isNaN(value) ? 'NaN' : value === Infinity ? 'Infinity' : value === -Infinity ? '-Infinity' : JSON.stringify(value);
+  if (typeof value === 'string') return JSON.stringify(value).replace(/[\u007f-￿]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  if (value instanceof Map) return `{${Array.from(value, ([k, v]) => `${jsonDumps(String(k))}: ${jsonDumps(v)}`).join(', ')}}`;
+  if (Array.isArray(value)) return `[${value.map(jsonDumps).join(', ')}]`;
+  if (typeof value === 'object') return `{${Object.entries(value).map(([k, v]) => `${jsonDumps(k)}: ${jsonDumps(v)}`).join(', ')}}`;
+  throw new TypeError(`Object of type ${typeof value} is not JSON serializable`);
+}
+
 /** Python `range(start, stop, step)` as an array. */
 export function range(start: number, stop: number, step = 1): number[] {
   if (step === 0) throw new Error('ValueError: range() arg 3 must not be zero');
@@ -554,6 +605,27 @@ export function eq(a: any, b: any): boolean {
   if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((value, i) => eq(value, b[i]));
   return a === b || (a === null && b === undefined) || (a === undefined && b === null);
 }
+
+/** Python `a < b` and friends: `__lt__` etc. when an operand defines it (numpy arrays compare element-wise). */
+function ordering(name: string, reflected: string, op: (a: any, b: any) => boolean) {
+  return (a: any, b: any): any => {
+    const method = dunder(a, name);
+    if (method) {
+      const result = method(b);
+      if (result !== NotImplemented) return result;
+    }
+    const other = dunder(b, reflected);
+    if (other) {
+      const result = other(a);
+      if (result !== NotImplemented) return result;
+    }
+    return op(a, b);
+  };
+}
+export const lt = ordering('__lt__', '__gt__', (a, b) => a < b);
+export const le = ordering('__le__', '__ge__', (a, b) => a <= b);
+export const gt = ordering('__gt__', '__lt__', (a, b) => a > b);
+export const ge = ordering('__ge__', '__le__', (a, b) => a >= b);
 
 /** Python `slice(start, stop, step)`. */
 export class Slice {

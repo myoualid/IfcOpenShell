@@ -155,13 +155,16 @@ export class File extends IfcOpenshellFile {
 
   /**
    * Create an entity with any of its IFC attributes, by schema name, or by position when
-   * given an array, as Python `file.create_entity(ifc_class, *args, **kwargs)`.
+   * given an array, as Python `file.create_entity(ifc_class, *args, **kwargs)`. Positional and named
+   * attributes combine as `{ 0: guid, Name: 'Wall' }` (or `{ ...[guid], Name: 'Wall' }`).
    */
   create(ifcClass: string, attributes: Record<string, AttributeValueType> | AttributeValueType[] = {}, id?: number | null): EntityInstance {
     const entity = (id ? this.createEntityByNameWithId(ifcClass, id) : this.createEntityByName(ifcClass)) as EntityInstance | null;
     if (!entity) throw new IfcOpenShellError(`Failed to create ${ifcClass}`);
     try {
-      const entries = Array.isArray(attributes) ? attributes.map((value, index) => [index, value] as const) : Object.entries(attributes);
+      const entries = Array.isArray(attributes)
+        ? attributes.map((value, index) => [index, value] as const)
+        : Object.entries(attributes).map(([name, value]) => [/^\d+$/.test(name) ? Number(name) : name, value] as const);
       for (const [name, value] of entries) entity.set(name, value);
       return entity;
     } catch (error) {

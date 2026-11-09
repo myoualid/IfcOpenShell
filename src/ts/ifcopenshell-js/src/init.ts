@@ -186,6 +186,10 @@ export function downcasting<T>(value: T): T {
         }
         if (key === 'subtypes') return () => named.subtypes.get(name)!.map(child => downcasting(named.byName.get(child)));
       }
+      if (typeof key === 'string' && DOWNCASTS.includes(key) && typeof base[key] === 'function') {
+        // declaration.as_entity() keeps the declaration's members (isA, name), as the Python subclass does.
+        return () => ((base[key] as () => unknown).call(base) ? downcasting(base) : null);
+      }
       const owner = key in object ? object : base;
       const member = Reflect.get(owner, key, owner);
       return typeof member === 'function' ? (...args: unknown[]) => downcasting(member.apply(owner, args)) : member;

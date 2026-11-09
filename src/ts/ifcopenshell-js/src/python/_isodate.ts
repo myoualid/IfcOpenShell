@@ -42,6 +42,15 @@ class IsoDuration {
     return this.tdelta.microseconds;
   }
 
+  // Like isodate's __getattr__, other timedelta members come from tdelta (years and months are ignored).
+  total_seconds(): number {
+    return this.tdelta.total_seconds();
+  }
+
+  totalSeconds(): number {
+    return this.tdelta.total_seconds();
+  }
+
   totimedelta(...values: unknown[]): timedelta {
     const { start, end } = bindArguments(['start', 'end'], values);
     if (start != null) return (this.__add__(start) as any).__sub__(start);
