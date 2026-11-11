@@ -641,6 +641,10 @@
     // width, height (rounded down to even), samples, overlay, bitrate (default
     // 20 Mb/s), keyInterval (seconds, default 2), onProgress(done, total),
     // signal (an AbortSignal). Resolves to a 'video/mp4' Blob.
+    // When the output is the canvas's own pixel size and samples <= 1, each
+    // frame is taken straight from the drawn canvas (no snapshot readback,
+    // no PNG round trip), so recording runs close to the viewer's frame
+    // rate. Other sizes and multi-sample frames go through the snapshot path.
     async function recordMp4(seq, o) {
       o = o || {};
       if (typeof VideoEncoder === 'undefined') {
@@ -654,6 +658,29 @@
       const width = even(o.width || (o.height ? o.height * cv.width / cv.height : cv.width));
       const height = even(o.height || width * cv.height / cv.width);
       const fo = Object.assign({}, o, { width: width, height: height });
+      const live = canvas && typeof viewer.onFrame === 'function' && !(o.samples > 1)
+                && width === canvas.width && height === canvas.height;
+      let liveCtx = null;
+      if (live) {
+        const lc = typeof OffscreenCanvas !== 'undefined'
+          ? new OffscreenCanvas(width, height)
+          : Object.assign(document.createElement('canvas'), { width: width, height: height });
+        liveCtx = lc.getContext('2d');
+      }
+      // A WebGPU canvas keeps its image only until the frame is presented,
+      // so it is copied inside the frame callback, in the task that drew it.
+      function grabNextFrame(skip) {
+        return new Promise(function (resolve) {
+          let left = skip;
+          const off = viewer.onFrame(function () {
+            if (left-- > 0) return;
+            off();
+            liveCtx.drawImage(canvas, 0, 0);
+            resolve();
+          });
+          if (viewer.requestRedraw) viewer.requestRedraw();
+        });
+      }
 
       const bitrate = o.bitrate || 20e6;
       const codecs = ['avc1.640034', 'avc1.640033', 'avc1.4d0034', 'avc1.42003e', 'avc1.42001f'];
@@ -685,7 +712,21 @@
       for (let i = 0; i < total; i++) {
         if (failure) throw failure;
         if (o.signal && o.signal.aborted) break;
-        const c = await frameCanvas(seq, i / fps, fo, { frame: i, frames: total });
+        let c;
+        if (live) {
+          // Draw the frame on the canvas itself, then copy it as drawn.
+          const st = seq.seek(i / fps);
+          await grabNextFrame(o.settleFrames > 0 ? o.settleFrames - 1 : 0);
+          if (o.overlay) {
+            liveCtx.save();
+            o.overlay(liveCtx, { t: i / fps, shot: st.name, u: st.u, width: width, height: height,
+                                 frame: i, frames: total });
+            liveCtx.restore();
+          }
+          c = liveCtx.canvas;
+        } else {
+          c = await frameCanvas(seq, i / fps, fo, { frame: i, frames: total });
+        }
         const frame = new VideoFrame(c, { timestamp: Math.round(i * 1e6 / fps),
                                           duration: Math.round(1e6 / fps) });
         enc.encode(frame, { keyFrame: i % keyEvery === 0 });
