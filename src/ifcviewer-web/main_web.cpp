@@ -977,6 +977,26 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shadows_c(float* out) {
                          sh.softness, sh.normal_bias };
     std::memcpy(out, v, sizeof(v));
 }
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_sky_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::SkySettings& s = g_app->core.sky();
+    const float v[10] = { s.enabled ? 1.0f : 0.0f,
+                          s.zenith[0], s.zenith[1], s.zenith[2],
+                          s.horizon[0], s.horizon[1], s.horizon[2],
+                          s.nadir[0], s.nadir[1], s.nadir[2] };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_sky_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::SkySettings s;
+    s.enabled = v[0] != 0.0f;
+    for (int i = 0; i < 3; ++i) {
+        s.zenith[i]  = v[1 + i];
+        s.horizon[i] = v[4 + i];
+        s.nadir[i]   = v[7 + i];
+    }
+    g_app->core.setSky(s);
+}
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_ground_c(float* out) {
     if (!g_app || !g_app->ready) return;
     const ViewportCore::GroundSettings& g = g_app->core.ground();

@@ -100,6 +100,10 @@ struct FrameUniforms {
     float shadow_bias[4];      // x = normal offset (world units), y = depth bias
     float ground_params[4];    // x = on (0/1), y = height (z), z = radius, w = opacity
     float ground_center[4];    // xy = centre of the ground disc
+    float inv_view_proj[16];   // clip -> world, for the sky's view rays
+    float sky_zenith[4];       // rgb = linear zenith colour, w = sky on (0/1)
+    float sky_horizon[4];      // rgb = linear horizon colour
+    float sky_nadir[4];        // rgb = linear colour below the horizon
 };
 static_assert(sizeof(FrameUniforms)
                   == 16 * sizeof(float)
@@ -109,7 +113,9 @@ static_assert(sizeof(FrameUniforms)
                    + 4 * sizeof(float)
                    + 4 * 4 * sizeof(float)
                    + 16 * sizeof(float)
-                   + 4 * 4 * sizeof(float),
+                   + 4 * 4 * sizeof(float)
+                   + 16 * sizeof(float)
+                   + 3 * 4 * sizeof(float),
               "FrameUniforms must match WGSL layout");
 
 class ViewportCore {
@@ -456,6 +462,20 @@ public:
     };
     void setGround(const GroundSettings& g);
     const GroundSettings& ground() const { return ground_settings_; }
+
+    // A sky behind the model instead of the flat background colour: a
+    // gradient by the elevation of each view ray, from `nadir` below the
+    // horizon through `horizon` to `zenith` overhead. It follows the camera,
+    // so the horizon stays level as the view tilts. Snapshots asked for a
+    // transparent background leave it out.
+    struct SkySettings {
+        bool  enabled    = false;
+        float zenith[3]  = { 0.42f, 0.62f, 0.86f };  // sRGB
+        float horizon[3] = { 0.86f, 0.90f, 0.94f };
+        float nadir[3]   = { 0.80f, 0.78f, 0.74f };
+    };
+    void setSky(const SkySettings& s);
+    const SkySettings& sky() const { return sky_settings_; }
 
     // Frame the current selection: union the selected objects' world AABBs and
     // fit the camera to them (same 1.30 padding as the desktop "F" hotkey).
@@ -1618,6 +1638,14 @@ private:
     float               shadow_scene_min_[3]     = {};
     float               shadow_scene_max_[3]     = {};
     GroundSettings      ground_settings_;
+    SkySettings         sky_settings_;
+    WGPUPipelineLayout  sky_pipeline_layout_     = nullptr;
+    WGPURenderPipeline  sky_pipeline_            = nullptr;
+    bool buildSkyPipeline();
+    void releaseSkyResources();
+    // Paint the sky first in the main pass (no depth), unless `clear_rgba`
+    // asks for a transparent background.
+    void encodeSky(WGPURenderPassEncoder pass, const float clear_rgba[4]);
     WGPUPipelineLayout  ground_pipeline_layout_  = nullptr;
     WGPURenderPipeline  ground_pipeline_         = nullptr;
     // Draw the shadow-catching ground into the main pass (after the opaque

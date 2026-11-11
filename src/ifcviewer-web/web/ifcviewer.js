@@ -1283,6 +1283,26 @@
         return { azimuth: sun.azimuth, elevation: sun.elevation, direction: direction };
       },
 
+      // A gradient sky behind the model instead of the flat background.
+      // `true` / `false`, or any subset of { enabled, zenith, horizon, ground }
+      // (colours as setBackground takes; `ground` is below the horizon).
+      // Snapshots with `transparent: true` leave it out.
+      getSky: function () {
+        const v = readFloats(Module._ifcv_get_sky_c, 10);
+        return { enabled: v[0] !== 0, zenith: rgbHex(v.slice(1, 4)),
+                 horizon: rgbHex(v.slice(4, 7)), ground: rgbHex(v.slice(7, 10)) };
+      },
+      setSky: function (o) {
+        if (typeof o === 'boolean') o = { enabled: o };
+        o = o || {};
+        const v = readFloats(Module._ifcv_get_sky_c, 10);
+        if (o.enabled !== undefined) v[0] = o.enabled ? 1 : 0;
+        if (o.zenith !== undefined) setRgb(v, 1, o.zenith, 'zenith');
+        if (o.horizon !== undefined) setRgb(v, 4, o.horizon, 'horizon');
+        if (o.ground !== undefined) setRgb(v, 7, o.ground, 'ground');
+        writeFloats(Module._ifcv_set_sky_c, v);
+      },
+
       // A ground that shows only the shadows on it (shadows must be on).
       // `true` / `false`, or any subset of
       //   enabled, height (z in metres; null = the bottom of the scene),

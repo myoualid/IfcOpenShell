@@ -1034,6 +1034,12 @@ struct FrameUniforms {
     ground_params: vec4<f32>,
     // xy = centre of the ground disc.
     ground_center: vec4<f32>,
+    // Clip to world, for the sky's view rays.
+    inv_view_proj: mat4x4<f32>,
+    // Linear sky colours; zenith.w = sky on.
+    sky_zenith:    vec4<f32>,
+    sky_horizon:   vec4<f32>,
+    sky_nadir:     vec4<f32>,
 };
 
 // Returns true if `world` lies on the positive (clipped-away) side of any
@@ -1544,6 +1550,39 @@ fn fs_ground(in: VsOutGround) -> @location(0) vec4<f32> {
     if (a <= 0.0) { discard; }
     return vec4<f32>(0.0, 0.0, 0.0, a);
 }
+
+// --------------------------- Sky -------------------------------------------
+// One full-screen triangle behind everything. Each pixel's view ray picks a
+// colour by its elevation: nadir .. horizon .. zenith, with a soft band at
+// the horizon. Colours arrive linear; the sRGB target encodes them.
+
+struct VsOutSky {
+    @builtin(position) clip_pos: vec4<f32>,
+    @location(0) ndc: vec2<f32>,
+};
+
+@vertex
+fn vs_sky(@builtin(vertex_index) vid: u32) -> VsOutSky {
+    let xy = vec2<f32>(f32((vid << 1u) & 2u), f32(vid & 2u)) * 2.0 - 1.0;
+    var out: VsOutSky;
+    out.clip_pos = vec4<f32>(xy, 0.0, 1.0);
+    out.ndc = xy;
+    return out;
+}
+
+@fragment
+fn fs_sky(in: VsOutSky) -> @location(0) vec4<f32> {
+    let a = u_frame.inv_view_proj * vec4<f32>(in.ndc, 0.0, 1.0);
+    let b = u_frame.inv_view_proj * vec4<f32>(in.ndc, 1.0, 1.0);
+    let d = normalize(b.xyz / b.w - a.xyz / a.w);
+    var c: vec3<f32>;
+    if (d.z >= 0.0) {
+        c = mix(u_frame.sky_horizon.xyz, u_frame.sky_zenith.xyz, sqrt(d.z));
+    } else {
+        c = mix(u_frame.sky_horizon.xyz, u_frame.sky_nadir.xyz, sqrt(min(-d.z * 4.0, 1.0)));
+    }
+    return vec4<f32>(c, 1.0);
+}
 )";
 } // namespace
 
@@ -1730,6 +1769,9 @@ bool ViewportCore::buildPipelines() {
     if (!buildShadowPipeline()) {
         Log::warn() << "wgpu shadow pipeline unavailable; sun shadows stay off";
     }
+    if (!buildSkyPipeline()) {
+        Log::warn() << "wgpu sky pipeline unavailable; the background stays flat";
+    }
 
     // frame_bind_group_ is built lazily once we have a selection_flags_
     // buffer to bind alongside the uniform — ensureSelectionFlagsBuffer
@@ -1855,6 +1897,13 @@ void ViewportCore::uploadSelectionFlagsIfDirty() {
     selection_.markClean();
 }
 
+namespace {
+inline float srgbToLinearScalar(float c) {
+    return (c <= 0.04045f) ? (c * (1.0f / 12.92f))
+                           : std::pow((c + 0.055f) * (1.0f / 1.055f), 2.4f);
+}
+} // namespace
+
 void ViewportCore::updateFrameUniforms() {
     Eigen::Matrix4f view, proj;
     buildViewProj(view, proj);
@@ -1923,6 +1972,18 @@ void ViewportCore::updateFrameUniforms() {
     u.shadow_bias[0] = shadow_settings_.normal_bias > 0.0f ? shadow_settings_.normal_bias
                                                            : 2.0f * shadow_texel_world_;
     u.shadow_bias[1] = shadow_depth_bias_;
+    {
+        Eigen::Matrix4f inv;
+        if (!tryInvert4f(view_proj, inv)) inv = Eigen::Matrix4f::Identity();
+        std::memcpy(u.inv_view_proj, inv.data(), sizeof(u.inv_view_proj));
+        const SkySettings& sk = sky_settings_;
+        for (int i = 0; i < 3; ++i) {
+            u.sky_zenith[i]  = srgbToLinearScalar(sk.zenith[i]);
+            u.sky_horizon[i] = srgbToLinearScalar(sk.horizon[i]);
+            u.sky_nadir[i]   = srgbToLinearScalar(sk.nadir[i]);
+        }
+        u.sky_zenith[3] = sk.enabled && sky_pipeline_ ? 1.0f : 0.0f;
+    }
     {
         const float* mn = shadow_scene_min_;
         const float* mx = shadow_scene_max_;
@@ -2612,6 +2673,7 @@ void ViewportCore::shutdown() {
     tile_renderer_.destroy();
     if (main_shader_module_)   { wgpuShaderModuleRelease(main_shader_module_);    main_shader_module_ = nullptr; }
     releaseShadowResources();
+    releaseSkyResources();
     if (pipeline_layout_)      { wgpuPipelineLayoutRelease(pipeline_layout_);     pipeline_layout_ = nullptr; }
     if (model_bgl_)            { wgpuBindGroupLayoutRelease(model_bgl_);          model_bgl_ = nullptr; }
     if (frame_bgl_)            { wgpuBindGroupLayoutRelease(frame_bgl_);          frame_bgl_ = nullptr; }
@@ -8477,6 +8539,9 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &pass_desc);
 
     const int dpr_int = std::max(1, int(host_->dpr()));
+
+    // The sky, behind everything else.
+    encodeSky(pass, clear_rgba);
 
     // Ground grid under scene geometry (depth-tested, no depth write).
     {
