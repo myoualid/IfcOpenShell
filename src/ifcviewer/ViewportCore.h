@@ -477,6 +477,16 @@ public:
     void setSky(const SkySettings& s);
     const SkySettings& sky() const { return sky_settings_; }
 
+    // Order-independent transparency (weighted blended, McGuire & Bavoil
+    // 2013). Off: translucent surfaces blend in draw order, so overlapping
+    // layers (ghosted elements, X-ray) can show the wrong one in front. On:
+    // every translucent fragment is accumulated with a depth weight and
+    // resolved once, so the result no longer depends on order. Their depth
+    // is written afterwards, so edges and the selection outline still see
+    // them.
+    void setOrderIndependentTransparency(bool on);
+    bool orderIndependentTransparency() const { return oit_enabled_; }
+
     // Frame the current selection: union the selected objects' world AABBs and
     // fit the camera to them (same 1.30 padding as the desktop "F" hotkey).
     // No-op with an empty selection or no resolvable AABBs; returns whether it
@@ -1639,6 +1649,38 @@ private:
     float               shadow_scene_max_[3]     = {};
     GroundSettings      ground_settings_;
     SkySettings         sky_settings_;
+
+    // Order-independent transparency (ViewportOit.cpp).
+    bool                oit_enabled_             = false;
+    WGPUTexture         oit_accum_msaa_          = nullptr;
+    WGPUTextureView     oit_accum_msaa_view_     = nullptr;
+    WGPUTexture         oit_accum_               = nullptr;
+    WGPUTextureView     oit_accum_view_          = nullptr;
+    WGPUTexture         oit_reveal_msaa_         = nullptr;
+    WGPUTextureView     oit_reveal_msaa_view_    = nullptr;
+    WGPUTexture         oit_reveal_              = nullptr;
+    WGPUTextureView     oit_reveal_view_         = nullptr;
+    int                 oit_w_ = 0;
+    int                 oit_h_ = 0;
+    WGPURenderPipeline  oit_pipeline_            = nullptr;
+    WGPURenderPipeline  oit_depth_pipeline_      = nullptr;
+    WGPUShaderModule    oit_composite_module_    = nullptr;
+    WGPUBindGroupLayout oit_composite_bgl_       = nullptr;
+    WGPUPipelineLayout  oit_composite_layout_    = nullptr;
+    WGPURenderPipeline  oit_composite_pipeline_  = nullptr;
+    WGPUBindGroup       oit_composite_group_     = nullptr;
+    bool buildOitPipelines();
+    void releaseOitResources();
+    void ensureOitTextures(int w, int h);
+    void releaseOitTextures();
+    // True when OIT is on and some visible instance is translucent.
+    bool oitWanted() const;
+    // Accumulate every translucent draw (its own pass, after the main
+    // pass's opaque half).
+    void encodeOitAccumulate(WGPUCommandEncoder enc);
+    // In the reopened main pass: blend the resolved accumulation over the
+    // opaque image, then write the translucent depth.
+    void encodeOitResolve(WGPURenderPassEncoder pass);
     WGPUPipelineLayout  sky_pipeline_layout_     = nullptr;
     WGPURenderPipeline  sky_pipeline_            = nullptr;
     bool buildSkyPipeline();

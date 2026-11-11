@@ -1279,8 +1279,9 @@ fn toneMap(x: vec3<f32>, op: u32) -> vec3<f32> {
     return clamp(x, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-@fragment
-fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
+// The lit surface colour (as written to the sRGB target) and its alpha.
+// fs_main returns it; fs_oit accumulates it.
+fn shadeSurface(in: VsOut, front_facing: bool) -> vec4<f32> {
     if (is_section_clipped(in.world_pos)) { discard; }
 
     var n = flatNormal(in.world_pos, front_facing);
@@ -1370,6 +1371,38 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
     // reads more opaque, as it does in life.
     let alpha_out = min(in.color.a + (1.0 - in.color.a) * fres, u_frame.xray_alpha_cap);
     return vec4<f32>(select(srgbToLinear(color), color, encoded_out), alpha_out);
+}
+
+@fragment
+fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
+    return shadeSurface(in, front_facing);
+}
+
+// Weighted blended OIT (McGuire & Bavoil 2013, eq. 7 with distances in
+// metres): premultiplied colour and alpha, weighted to favour near layers,
+// summed into `accum`; `reveal` multiplies down by (1 - alpha).
+struct OitOut {
+    @location(0) accum:  vec4<f32>,
+    @location(1) reveal: f32,
+};
+
+@fragment
+fn fs_oit(in: VsOut, @builtin(front_facing) front_facing: bool) -> OitOut {
+    let c = shadeSurface(in, front_facing);
+    let d = length(u_frame.eye.xyz - in.world_pos);
+    let w = clamp(c.a * 10.0 / (1e-5 + pow(d / 5.0, 2.0) + pow(d / 200.0, 6.0)), 1e-2, 3e3);
+    var out: OitOut;
+    out.accum  = vec4<f32>(c.rgb * c.a, c.a) * w;
+    out.reveal = c.a;
+    return out;
+}
+
+// Depth of the translucent surfaces, written after the OIT resolve so the
+// edge and outline passes still see them. No colour.
+@fragment
+fn fs_depth_only(in: VsOut) -> @location(0) vec4<f32> {
+    if (is_section_clipped(in.world_pos)) { discard; }
+    return vec4<f32>(0.0);
 }
 
 // Selection silhouette mask. Same vertex pulling as vs_main, but the only
@@ -1771,6 +1804,9 @@ bool ViewportCore::buildPipelines() {
     }
     if (!buildSkyPipeline()) {
         Log::warn() << "wgpu sky pipeline unavailable; the background stays flat";
+    }
+    if (!buildOitPipelines()) {
+        Log::warn() << "wgpu OIT pipelines unavailable; transparency blends in draw order";
     }
 
     // frame_bind_group_ is built lazily once we have a selection_flags_
@@ -2674,6 +2710,7 @@ void ViewportCore::shutdown() {
     if (main_shader_module_)   { wgpuShaderModuleRelease(main_shader_module_);    main_shader_module_ = nullptr; }
     releaseShadowResources();
     releaseSkyResources();
+    releaseOitResources();
     if (pipeline_layout_)      { wgpuPipelineLayoutRelease(pipeline_layout_);     pipeline_layout_ = nullptr; }
     if (model_bgl_)            { wgpuBindGroupLayoutRelease(model_bgl_);          model_bgl_ = nullptr; }
     if (frame_bgl_)            { wgpuBindGroupLayoutRelease(frame_bgl_);          frame_bgl_ = nullptr; }
@@ -8509,9 +8546,14 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
                               const float clear_rgba[4],
                               int viewport_w_px, int viewport_h_px,
                               bool interactive) {
+    // With OIT the main pass stops after the opaque half, the translucent
+    // layers accumulate in their own pass, and the main pass reopens to
+    // resolve them; only that second half resolves to `view`.
+    const bool oit = oitWanted();
+
     WGPURenderPassColorAttachment color = {};
     color.view          = msaa_color_view_;
-    color.resolveTarget = view;
+    color.resolveTarget = oit ? nullptr : view;
     color.loadOp        = WGPULoadOp_Clear;
     color.storeOp       = WGPUStoreOp_Store;
     color.clearValue    = { clear_rgba[0], clear_rgba[1], clear_rgba[2], clear_rgba[3] };
@@ -8590,6 +8632,16 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
         // hide it, and before glass, which blends over it.
         encodeGround(pass);
 
+        if (oit) {
+            wgpuRenderPassEncoderEnd(pass);
+            wgpuRenderPassEncoderRelease(pass);
+            encodeOitAccumulate(enc);
+            color.loadOp        = WGPULoadOp_Load;
+            color.resolveTarget = view;
+            depth.depthLoadOp   = WGPULoadOp_Load;
+            pass = wgpuCommandEncoderBeginRenderPass(enc, &pass_desc);
+            encodeOitResolve(pass);
+        } else {
         wgpuRenderPassEncoderSetPipeline(pass, main_pipeline_transparent_);
         wgpuRenderPassEncoderSetBindGroup(pass, 0, frame_bind_group_, 0, nullptr);
         for (const auto& [session_model_id, m] : models_gpu_) {
@@ -8604,6 +8656,7 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
                                           transparent_verts, 1,
                                           c.opaque_visible_vertices, 0);
             }
+        }
         }
     }
 

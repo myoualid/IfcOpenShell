@@ -977,6 +977,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shadows_c(float* out) {
                          sh.softness, sh.normal_bias };
     std::memcpy(out, v, sizeof(v));
 }
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_oit_c(int on) {
+    if (g_app && g_app->ready) g_app->core.setOrderIndependentTransparency(on != 0);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_oit_c() {
+    return (g_app && g_app->ready && g_app->core.orderIndependentTransparency()) ? 1 : 0;
+}
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_sky_c(float* out) {
     if (!g_app || !g_app->ready) return;
     const ViewportCore::SkySettings& s = g_app->core.sky();

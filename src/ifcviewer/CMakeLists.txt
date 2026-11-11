@@ -160,6 +160,7 @@ set(IFCVIEWER_CORE_SOURCES
     ViewportPost.cpp
     ViewportShadow.cpp
     ViewportSky.cpp
+    ViewportOit.cpp
     ViewportSnapshot.cpp
     WgpuDynamicOffsets.cpp
 )

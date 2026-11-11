@@ -1283,6 +1283,12 @@
         return { azimuth: sun.azimuth, elevation: sun.elevation, direction: direction };
       },
 
+      // Order-independent transparency: overlapping translucent layers
+      // (ghosted elements, X-ray, glass behind glass) blend the same whatever
+      // order they are drawn in. Off by default.
+      setOrderIndependentTransparency: function (on) { Module._ifcv_set_oit_c(on ? 1 : 0); },
+      orderIndependentTransparency: function () { return Module._ifcv_get_oit_c() !== 0; },
+
       // A gradient sky behind the model instead of the flat background.
       // `true` / `false`, or any subset of { enabled, zenith, horizon, ground }
       // (colours as setBackground takes; `ground` is below the horizon).
