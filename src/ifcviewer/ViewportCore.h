@@ -94,6 +94,7 @@ struct FrameUniforms {
     float shading[4];       // x = SurfaceStyle, y = linear (0/1), z = exposure, w = ToneMap
     float base_color[4];    // xyz = Technical / Clay surface colour (sRGB), w = smooth normals (0/1)
     float light_params[4];  // x = key, y = fill, z = ambient intensity
+    float eye[4];           // xyz = camera position (world), w unused
     float light_view_proj[16]; // world -> shadow map clip space (depth 0..1)
     float shadow_params[4];    // x = on (0/1), y = strength, z = 1 / map size, w = softness (texels)
     float shadow_bias[4];      // x = normal offset (world units), y = depth bias
@@ -106,7 +107,7 @@ static_assert(sizeof(FrameUniforms)
                    + 4 * sizeof(int)
                    + kMaxSectionPlanes * 4 * sizeof(float)
                    + 4 * sizeof(float)
-                   + 3 * 4 * sizeof(float)
+                   + 4 * 4 * sizeof(float)
                    + 16 * sizeof(float)
                    + 4 * 4 * sizeof(float),
               "FrameUniforms must match WGSL layout");
@@ -1161,6 +1162,15 @@ public:
     // colouring a whole model is one upload, not one per object.
     void setObjectsColor(const std::vector<std::uint32_t>& object_ids, std::uint32_t rgba8);
     void clearObjectColors();   // drop every override in every model
+
+    // Surface finish per object, packed into one word: byte 0 specular
+    // strength, byte 1 gloss (0 broad .. 255 tight highlight), byte 2 sky
+    // reflection at grazing angles (Fresnel), 0..255 each. 0 is matte, the
+    // default. Glass wants a high reflection, which also makes it read more
+    // opaque at grazing angles; polished stone or metal a tight highlight.
+    // Same upload path as setObjectsColor.
+    void setObjectsMaterial(const std::vector<std::uint32_t>& object_ids, std::uint32_t material);
+    void clearObjectMaterials();
     // Global X-ray: translucent everything. Flips the frame uniform's alpha cap;
     // the cull classifier routes every instance through the transparent pass.
     void toggleXray();

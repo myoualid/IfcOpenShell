@@ -86,13 +86,14 @@ static_assert(sizeof(MeshInfo) == 56, "MeshInfo must be 56 bytes");
 //   uint object_id
 //   uint color_override_rgba8   -- 0 = use baked vertex color, else override
 //   uint mesh_id                -- index into per-model MeshGpu[]
-//   uint _pad1                  -- align to 16 for std430
+//   uint material               -- 0 = matte, else packed surface finish
+//                                  (see ViewportCore::setObjectsMaterial)
 struct alignas(16) InstanceGpu {
     float    transform[16];
     uint32_t object_id            = 0;
     uint32_t color_override_rgba8 = 0;
     uint32_t mesh_id              = 0;   // index into per-model MeshGpu[]
-    uint32_t _pad1                = 0;
+    uint32_t material             = 0;
 };
 static_assert(sizeof(InstanceGpu) == 80, "InstanceGpu must be 80 bytes");
 
@@ -118,6 +119,7 @@ struct InstanceInfo {
     uint32_t object_id                = 0;
     uint32_t color_override_rgba8     = 0;
     uint32_t session_model_id                 = 0;
+    uint32_t material                 = 0;  // packed surface finish, 0 = matte
     double   placement_transformation[16]{};
     float    transform[16]{};
     float    world_aabb_min[3]{};

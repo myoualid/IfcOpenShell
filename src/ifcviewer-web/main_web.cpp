@@ -1077,6 +1077,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_color_c(const std::uint32_t* ids, 
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_clear_colors_c() {
     if (g_app && g_app->ready) g_app->core.clearObjectColors();
 }
+// Packed surface finish; see ViewportCore::setObjectsMaterial.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_material_c(const std::uint32_t* ids, int n,
+                                                         std::uint32_t material) {
+    if (!g_app || !g_app->ready) return;
+    g_app->core.setObjectsMaterial(idsFrom(ids, n), material);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_clear_materials_c() {
+    if (g_app && g_app->ready) g_app->core.clearObjectMaterials();
+}
 
 // ---- Federation ---------------------------------------------------------
 //

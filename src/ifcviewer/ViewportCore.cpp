@@ -145,7 +145,7 @@ std::vector<InstanceGpu> instanceGpuRecords(const std::vector<InstanceInfo>& ins
         dst.object_id            = inst.object_id;
         dst.color_override_rgba8 = inst.color_override_rgba8;
         dst.mesh_id              = inst.mesh_id;
-        dst._pad1                = 0;
+        dst.material             = inst.material;
     }
     return gpu;
 }
@@ -981,7 +981,8 @@ struct InstanceRecord {
     object_id: u32,
     color_override: u32,
     mesh_id: u32,
-    _pad1: u32,
+    // Surface finish: byte 0 specular, 1 gloss, 2 sky reflection. 0 = matte.
+    material: u32,
 };
 
 struct MeshQuant {
@@ -1021,6 +1022,8 @@ struct FrameUniforms {
     base_color:   vec4<f32>,
     // x = key, y = fill, z = ambient intensity.
     light_params: vec4<f32>,
+    // xyz = camera position, world space.
+    eye:          vec4<f32>,
     // World to sun shadow-map clip space (depth 0..1).
     light_view_proj: mat4x4<f32>,
     // x = on, y = strength, z = 1 / map size, w = softness (texels).
@@ -1122,6 +1125,7 @@ struct VsOut {
     @location(4) @interpolate(flat) has_override: u32,
     // Baked vertex normal in world space (not normalised).
     @location(5) normal: vec3<f32>,
+    @location(6) @interpolate(flat) material: u32,
 };
 
 // Normal of the fragment's triangle, facing the viewer.
@@ -1216,6 +1220,7 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
     var out: VsOut;
     out.has_override = has_override;
     out.normal    = (inst.transform * vec4<f32>(n_local, 0.0)).xyz;
+    out.material  = inst.material;
     out.clip_pos  = u_frame.view_proj * world4;
     out.color     = color;
     out.world_pos = world4.xyz;
@@ -1297,6 +1302,28 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
     var albedo = in.color.xyz;
     if (style != 0u && in.has_override == 0u) { albedo = u_frame.base_color.xyz; }
 
+    // Surface finish. `fres` is the share of the sky reflected (Schlick, so
+    // it climbs at grazing angles); `spec` a Blinn-Phong highlight of the key
+    // light, already shadowed and cosine-weighted through `key`.
+    var fres = 0.0;
+    var spec = 0.0;
+    var env  = vec3<f32>(0.0);
+    if (in.material != 0u && style != 1u) {
+        let m_spec  = f32(in.material & 0xFFu) / 255.0;
+        let m_gloss = f32((in.material >> 8u) & 0xFFu) / 255.0;
+        let m_refl  = f32((in.material >> 16u) & 0xFFu) / 255.0;
+        let V = normalize(u_frame.eye.xyz - in.world_pos);
+        let cos_v = max(dot(n, V), 0.0);
+        // Face-on reflectance well above glass's physical 4%: with no
+        // environment behind the panes, that is what makes them read as glass.
+        fres = m_refl * mix(0.2, 1.0, pow(1.0 - cos_v, 5.0));
+        let R = reflect(-V, n);
+        env = mix(u_frame.ground_color.xyz, u_frame.sky_color.xyz, smoothstep(-0.25, 0.25, R.z));
+        let H = normalize(u_frame.light_dir.xyz + V);
+        let shin = exp2(1.0 + m_gloss * 10.0);
+        spec = m_spec * pow(max(dot(n, H), 0.0), shin) * (shin + 8.0) / 25.0 * key;
+    }
+
     var color: vec3<f32>;
     if (style == 1u) {
         // Technical: near-flat, just enough key light to tell faces apart.
@@ -1306,12 +1333,13 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
         // The result is display-referred linear; the sRGB target encodes it.
         let a_lin   = srgbToLinear(albedo);
         let amb_lin = srgbToLinear(ambient);
-        let hdr = a_lin * (amb_lin * lp.z + vec3<f32>(key * lp.x + fill * lp.y))
-                * u_frame.shading.z;
-        color = toneMap(hdr, u32(u_frame.shading.w + 0.5));
+        var hdr = a_lin * (amb_lin * lp.z + vec3<f32>(key * lp.x + fill * lp.y));
+        hdr = mix(hdr, srgbToLinear(env) * lp.z, fres) + vec3<f32>(spec * lp.x);
+        color = toneMap(hdr * u_frame.shading.z, u32(u_frame.shading.w + 0.5));
     } else {
         // Legacy: the GL viewer's gamma-space formula (defaults reproduce it).
         color = albedo * (ambient * lp.z + key * lp.x + fill * lp.y);
+        color = mix(color, env * lp.z, fres) + vec3<f32>(spec * lp.x);
     }
     let encoded_out = u_frame.shading.y > 0.5 && style != 1u;
 
@@ -1332,7 +1360,9 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
     // `xray_alpha_cap` (default 1.0 = no effect; X-ray sets it to ~0.3) so a
     // global translucency override lands without touching any per-instance
     // state.
-    let alpha_out = min(in.color.a, u_frame.xray_alpha_cap);
+    // A reflective surface reflects more at grazing angles: glass seen edge-on
+    // reads more opaque, as it does in life.
+    let alpha_out = min(in.color.a + (1.0 - in.color.a) * fres, u_frame.xray_alpha_cap);
     return vec4<f32>(select(srgbToLinear(color), color, encoded_out), alpha_out);
 }
 
@@ -1859,6 +1889,11 @@ void ViewportCore::updateFrameUniforms() {
     u.light_params[0] = sh.key_intensity;
     u.light_params[1] = sh.fill_intensity;
     u.light_params[2] = sh.ambient_intensity;
+    {
+        const Eigen::Matrix3f R = view.block<3, 3>(0, 0);
+        const Eigen::Vector3f eye = -R.transpose() * view.block<3, 1>(0, 3);
+        u.eye[0] = eye.x(); u.eye[1] = eye.y(); u.eye[2] = eye.z(); u.eye[3] = 1.0f;
+    }
 
     // Pack active section planes. `is_section_clipped` (WGSL) reads
     // u.clip_count and u.clip_planes[0..clip_count) and discards
@@ -6980,6 +7015,36 @@ void ViewportCore::setObjectsColor(const std::vector<std::uint32_t>& object_ids,
             if (inst.color_override_rgba8 == rgba8) continue;
             if (wanted.find(inst.object_id) == wanted.end()) continue;
             inst.color_override_rgba8 = rgba8;
+            touched = true;
+        }
+        if (touched) uploadInstanceRecords(m);
+    }
+    host_->requestFrame();
+}
+
+void ViewportCore::setObjectsMaterial(const std::vector<std::uint32_t>& object_ids,
+                                      std::uint32_t material) {
+    if (object_ids.empty()) return;
+    const std::unordered_set<std::uint32_t> wanted(object_ids.begin(), object_ids.end());
+    for (auto& [session_model_id, m] : models_gpu_) {
+        bool touched = false;
+        for (InstanceInfo& inst : m.instances) {
+            if (inst.material == material) continue;
+            if (wanted.find(inst.object_id) == wanted.end()) continue;
+            inst.material = material;
+            touched = true;
+        }
+        if (touched) uploadInstanceRecords(m);
+    }
+    host_->requestFrame();
+}
+
+void ViewportCore::clearObjectMaterials() {
+    for (auto& [session_model_id, m] : models_gpu_) {
+        bool touched = false;
+        for (InstanceInfo& inst : m.instances) {
+            if (inst.material == 0u) continue;
+            inst.material = 0u;
             touched = true;
         }
         if (touched) uploadInstanceRecords(m);

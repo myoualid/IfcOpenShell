@@ -1543,6 +1543,32 @@
       // Drop every override in the scene at once.
       clearColors: function () { Module._ifcv_clear_colors_c(); },
 
+      // Surface finish, each 0..1: { specular, gloss, reflect }.
+      //   specular  strength of the key light's highlight
+      //   gloss     0 broad .. 1 tight highlight
+      //   reflect   sky reflection at grazing angles (glass ~0.9)
+      // Or a preset name: 'matte', 'glass', 'satin', 'polished', 'metal'.
+      // null / 'matte' restores the default.
+      setMaterial: function (x, m) {
+        const PRESETS = {
+          matte:    null,
+          satin:    { specular: 0.25, gloss: 0.35, reflect: 0.0 },
+          polished: { specular: 0.6,  gloss: 0.75, reflect: 0.35 },
+          metal:    { specular: 0.9,  gloss: 0.6,  reflect: 0.6 },
+          glass:    { specular: 0.9,  gloss: 0.9,  reflect: 0.9 },
+        };
+        if (typeof m === 'string') {
+          if (!(m in PRESETS)) throw new Error('unknown material: ' + m);
+          m = PRESETS[m];
+        }
+        const b = function (v) { return Math.round(Math.max(0, Math.min(1, +v || 0)) * 255); };
+        const packed = m ? ((b(m.specular) | (b(m.gloss) << 8) | (b(m.reflect) << 16)) >>> 0) : 0;
+        withIdArray(resolveIds(x), function (ptr, n) {
+          Module._ifcv_set_material_c(ptr, n, packed);
+        });
+      },
+      clearMaterials: function () { Module._ifcv_clear_materials_c(); },
+
       // ---- Scene -----------------------------------------------------------
 
       // Drops every model. The element table goes with them, so GlobalIds stop
