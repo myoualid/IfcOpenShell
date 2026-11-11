@@ -968,6 +968,23 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_ao_c(const float* v) {
     a.bias      = v[3];
     g_app->core.setAmbientOcclusion(a);
 }
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shadows_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::ShadowSettings& sh = g_app->core.shadows();
+    const float v[5] = { sh.enabled ? 1.0f : 0.0f, float(sh.resolution), sh.strength,
+                         sh.softness, sh.normal_bias };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_shadows_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::ShadowSettings sh;
+    sh.enabled     = v[0] != 0.0f;
+    sh.resolution  = int(v[1]);
+    sh.strength    = v[2];
+    sh.softness    = v[3];
+    sh.normal_bias = v[4];
+    g_app->core.setShadows(sh);
+}
 
 // Offscreen snapshot at width × height device pixels. use_view_background 0
 // clears with (r, g, b, a) instead (sRGB in [0..1]; a = 0 is transparent).

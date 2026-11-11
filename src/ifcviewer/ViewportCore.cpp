@@ -70,6 +70,11 @@ void releaseModelBuffers(ModelGpuData& m) {
         if (c.visible_draws_buffer) { wgpuBufferRelease(c.visible_draws_buffer);   c.visible_draws_buffer = nullptr; }
         if (c.prefix_sums_buffer)   { wgpuBufferRelease(c.prefix_sums_buffer);     c.prefix_sums_buffer = nullptr; }
         if (c.per_chunk_uniform)    { wgpuBufferRelease(c.per_chunk_uniform);      c.per_chunk_uniform = nullptr; }
+        if (c.shadow_draws_buffer)  { wgpuBufferRelease(c.shadow_draws_buffer);    c.shadow_draws_buffer = nullptr; }
+        if (c.shadow_prefix_buffer) { wgpuBufferRelease(c.shadow_prefix_buffer);   c.shadow_prefix_buffer = nullptr; }
+        if (c.shadow_uniform)       { wgpuBufferRelease(c.shadow_uniform);         c.shadow_uniform = nullptr; }
+        c.shadow_draws_capacity = 0;
+        c.shadow_vertex_count   = 0;
     }
     if (m.mesh_storage)     { wgpuBufferRelease(m.mesh_storage);     m.mesh_storage = nullptr; }
     if (m.instance_storage) { wgpuBufferRelease(m.instance_storage); m.instance_storage = nullptr; }
@@ -84,6 +89,7 @@ void releaseModelBuffers(ModelGpuData& m) {
 void releaseWgpuModelGpuData(ModelGpuData& m, BufferPool& pool) {
     for (auto& c : m.chunks) {
         if (c.bind_group)           { wgpuBindGroupRelease(c.bind_group);          c.bind_group = nullptr; }
+        if (c.shadow_bind_group)    { wgpuBindGroupRelease(c.shadow_bind_group);   c.shadow_bind_group = nullptr; }
         if (c.vertex_slice.valid()) {
             pool.free(c.vertex_slice);
             c.vertex_slice = {};
@@ -1015,6 +1021,12 @@ struct FrameUniforms {
     base_color:   vec4<f32>,
     // x = key, y = fill, z = ambient intensity.
     light_params: vec4<f32>,
+    // World to sun shadow-map clip space (depth 0..1).
+    light_view_proj: mat4x4<f32>,
+    // x = on, y = strength, z = 1 / map size, w = softness (texels).
+    shadow_params: vec4<f32>,
+    // x = normal offset (world units), y = depth bias.
+    shadow_bias:   vec4<f32>,
 };
 
 // Returns true if `world` lies on the positive (clipped-away) side of any
@@ -1058,6 +1070,33 @@ struct PerModel {
 // Only the box-pick pipeline writes it; the layout entry is FRAGMENT-visible
 // only, because WebGPU forbids a read_write storage buffer in the vertex stage.
 @group(0) @binding(2) var<storage, read_write> hit_flags: array<atomic<u32>>;
+
+// Sun shadow map (a 1x1 placeholder while shadows are off) and its
+// comparison sampler. Bilinear comparison gives each tap a smooth edge.
+@group(0) @binding(3) var shadow_map: texture_depth_2d;
+@group(0) @binding(4) var shadow_sampler: sampler_comparison;
+
+// Fraction of the key light that reaches `world`: 1 lit, 1 - strength fully
+// shadowed. Sixteen bilinear comparison taps over a square `softness` texels
+// wide; the point is first pushed off the surface along `n` so a face does
+// not shadow itself.
+fn shadowFactor(world: vec3<f32>, n: vec3<f32>) -> f32 {
+    let sp = u_frame.shadow_params;
+    if (sp.x < 0.5) { return 1.0; }
+    let p = u_frame.light_view_proj * vec4<f32>(world + n * u_frame.shadow_bias.x, 1.0);
+    let uv = vec2<f32>(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || p.z > 1.0) { return 1.0; }
+    let ref_z = p.z - u_frame.shadow_bias.y;
+    let step = sp.z * sp.w / 1.5;
+    var lit = 0.0;
+    for (var y = 0; y < 4; y = y + 1) {
+        for (var x = 0; x < 4; x = x + 1) {
+            let o = (vec2<f32>(f32(x), f32(y)) - vec2<f32>(1.5)) * step;
+            lit = lit + textureSampleCompareLevel(shadow_map, shadow_sampler, uv + o, ref_z);
+        }
+    }
+    return 1.0 - sp.y * (1.0 - lit / 16.0);
+}
 
 @group(1) @binding(0) var<storage, read> vertices:      array<u32>;
 @group(1) @binding(1) var<storage, read> meshes:        array<MeshQuant>;
@@ -1229,7 +1268,8 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
     let hemi_t  = 0.5 + 0.5 * n.z;
     let ambient = mix(u_frame.ground_color.xyz, u_frame.sky_color.xyz, hemi_t);
 
-    let key  = max(dot(n, u_frame.light_dir.xyz), 0.0);
+    var key  = max(dot(n, u_frame.light_dir.xyz), 0.0);
+    if (key > 0.0) { key = key * shadowFactor(in.world_pos, n); }
     let fill = max(dot(n, u_frame.fill_dir.xyz),  0.0);
     let lp   = u_frame.light_params;
 
@@ -1370,12 +1410,55 @@ fn fs_boxpick(in: VsOutPick) {
     if (word >= arrayLength(&hit_flags)) { return; }
     atomicOr(&hit_flags[word], 1u << (in.object_id & 31u));
 }
+
+// --------------------------- Shadow pipeline -------------------------------
+// Depth only, from the sun. Same vertex pulling; the draw list holds every
+// visible opaque instance (ViewportShadow.cpp), not the camera's cull.
+
+struct VsOutShadow {
+    @builtin(position) clip_pos: vec4<f32>,
+    @location(0) world_pos: vec3<f32>,
+};
+
+@vertex
+fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
+    var out: VsOutShadow;
+    if (vid >= u_model.total_vertex_count) {
+        out.clip_pos  = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        out.world_pos = vec3<f32>(0.0, 0.0, 0.0);
+        return out;
+    }
+    let draw_idx = find_draw(vid);
+    let local_v  = vid - prefix_sums[draw_idx];
+    let item     = visible_draws[draw_idx];
+    let mesh_local_index = indices[item.ebo_first_u32 + local_v];
+    let v_global = item.base_vertex + mesh_local_index;
+    let inst = instances[item.instance_idx];
+    let mq   = meshes[item.mesh_id];
+    let w0 = vertices[v_global * 3u + 0u];
+    let w1 = vertices[v_global * 3u + 1u];
+    let pos_norm = vec3<f32>(
+        f32(w0 & 0xFFFFu)          / 65535.0,
+        f32((w0 >> 16u) & 0xFFFFu) / 65535.0,
+        f32(w1 & 0xFFFFu)          / 65535.0,
+    );
+    let world4 = inst.transform * vec4<f32>(mix(mq.aabb_min.xyz, mq.aabb_max.xyz, pos_norm), 1.0);
+    out.clip_pos  = u_frame.light_view_proj * world4;
+    out.world_pos = world4.xyz;
+    return out;
+}
+
+// A section plane removes the caster as well as the surface.
+@fragment
+fn fs_shadow(in: VsOutShadow) {
+    if (is_section_clipped(in.world_pos)) { discard; }
+}
 )";
 } // namespace
 
 bool ViewportCore::buildPipelines() {
     // ---- Bind group layouts ----------------------------------------------
-    WGPUBindGroupLayoutEntry frame_entries[3] = {};
+    WGPUBindGroupLayoutEntry frame_entries[5] = {};
     frame_entries[0].binding = 0;
     frame_entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     frame_entries[0].buffer.type = WGPUBufferBindingType_Uniform;
@@ -1388,9 +1471,17 @@ bool ViewportCore::buildPipelines() {
     frame_entries[2].binding = 2;
     frame_entries[2].visibility = WGPUShaderStage_Fragment;
     frame_entries[2].buffer.type = WGPUBufferBindingType_Storage;
+    // Sun shadow map + comparison sampler (ViewportShadow.cpp).
+    frame_entries[3].binding = 3;
+    frame_entries[3].visibility = WGPUShaderStage_Fragment;
+    frame_entries[3].texture.sampleType    = WGPUTextureSampleType_Depth;
+    frame_entries[3].texture.viewDimension = WGPUTextureViewDimension_2D;
+    frame_entries[4].binding = 4;
+    frame_entries[4].visibility = WGPUShaderStage_Fragment;
+    frame_entries[4].sampler.type = WGPUSamplerBindingType_Comparison;
 
     WGPUBindGroupLayoutDescriptor frame_bgl_desc = {};
-    frame_bgl_desc.entryCount = 3;
+    frame_bgl_desc.entryCount = 5;
     frame_bgl_desc.entries    = frame_entries;
     frame_bgl_desc.label      = svFromCStr("ifcviewer-wgpu.frame_bgl");
     frame_bgl_ = wgpuDeviceCreateBindGroupLayout(device_, &frame_bgl_desc);
@@ -1543,6 +1634,12 @@ bool ViewportCore::buildPipelines() {
     fb_desc.label = svFromCStr("ifcviewer-wgpu.frame_uniform");
     frame_uniform_buffer_ = wgpuDeviceCreateBuffer(device_, &fb_desc);
 
+    // Sun shadows. The frame bind group samples the map, so the placeholder
+    // must exist before it is built; a failed pipeline only costs shadows.
+    if (!buildShadowPipeline()) {
+        Log::warn() << "wgpu shadow pipeline unavailable; sun shadows stay off";
+    }
+
     // frame_bind_group_ is built lazily once we have a selection_flags_
     // buffer to bind alongside the uniform — ensureSelectionFlagsBuffer
     // handles both the first creation and any subsequent resize.
@@ -1615,11 +1712,27 @@ void ViewportCore::ensureSelectionFlagsBuffer() {
     }
 
     // Rebuild the frame bind group against the (possibly new) buffer.
+    buildFrameBindGroup();
+
+    // Force a re-upload of the flags into the (possibly new) buffer.
+    selection_flags_scratch_.assign(selection_flags_capacity_, 0);
+    selection_.fillFlagsArray(selection_flags_scratch_, selection_flags_capacity_);
+    wgpuQueueWriteBuffer(queue_, selection_flags_buffer_, 0,
+                         selection_flags_scratch_.data(),
+                         selection_flags_scratch_.size() * sizeof(uint32_t));
+    selection_.markClean();
+}
+
+void ViewportCore::buildFrameBindGroup() {
     if (frame_bind_group_) {
         wgpuBindGroupRelease(frame_bind_group_);
         frame_bind_group_ = nullptr;
     }
-    WGPUBindGroupEntry fbg_entries[3] = {};
+    if (!frame_uniform_buffer_ || !selection_flags_buffer_ || !hit_flags_buffer_
+        || !shadow_view_ || !shadow_sampler_) {
+        return;
+    }
+    WGPUBindGroupEntry fbg_entries[5] = {};
     fbg_entries[0].binding = 0;
     fbg_entries[0].buffer  = frame_uniform_buffer_;
     fbg_entries[0].size    = sizeof(FrameUniforms);
@@ -1629,20 +1742,16 @@ void ViewportCore::ensureSelectionFlagsBuffer() {
     fbg_entries[2].binding = 2;
     fbg_entries[2].buffer  = hit_flags_buffer_;
     fbg_entries[2].size    = WGPU_WHOLE_SIZE;
+    fbg_entries[3].binding     = 3;
+    fbg_entries[3].textureView = shadow_view_;
+    fbg_entries[4].binding = 4;
+    fbg_entries[4].sampler = shadow_sampler_;
     WGPUBindGroupDescriptor fbg_desc = {};
     fbg_desc.layout     = frame_bgl_;
-    fbg_desc.entryCount = 3;
+    fbg_desc.entryCount = 5;
     fbg_desc.entries    = fbg_entries;
     fbg_desc.label      = svFromCStr("ifcviewer-wgpu.frame_bind_group");
     frame_bind_group_ = wgpuDeviceCreateBindGroup(device_, &fbg_desc);
-
-    // Force a re-upload of the flags into the (possibly new) buffer.
-    selection_flags_scratch_.assign(selection_flags_capacity_, 0);
-    selection_.fillFlagsArray(selection_flags_scratch_, selection_flags_capacity_);
-    wgpuQueueWriteBuffer(queue_, selection_flags_buffer_, 0,
-                         selection_flags_scratch_.data(),
-                         selection_flags_scratch_.size() * sizeof(uint32_t));
-    selection_.markClean();
 }
 
 void ViewportCore::uploadSelectionFlagsIfDirty() {
@@ -1703,6 +1812,20 @@ void ViewportCore::updateFrameUniforms() {
     }
     u.xray_alpha_cap = xray_alpha_cap_;
     u._pad_xray[0] = u._pad_xray[1] = u._pad_xray[2] = 0.0f;
+
+    // Sun shadows: refit the light to the scene when it changed, so the map
+    // the shader samples and the matrix it samples with always agree.
+    updateShadowState();
+    std::memcpy(u.light_view_proj, shadow_light_vp_, sizeof(u.light_view_proj));
+    const bool shadows_on = shadow_settings_.enabled && shadow_pipeline_
+                         && shadow_size_ > 1 && shadow_texel_world_ > 0.0f;
+    u.shadow_params[0] = shadows_on ? 1.0f : 0.0f;
+    u.shadow_params[1] = std::clamp(shadow_settings_.strength, 0.0f, 1.0f);
+    u.shadow_params[2] = shadow_size_ > 0 ? 1.0f / float(shadow_size_) : 0.0f;
+    u.shadow_params[3] = std::max(shadow_settings_.softness, 0.0f);
+    u.shadow_bias[0] = shadow_settings_.normal_bias > 0.0f ? shadow_settings_.normal_bias
+                                                           : 2.0f * shadow_texel_world_;
+    u.shadow_bias[1] = shadow_depth_bias_;
 
     last_frame_uniforms_ = u;
     wgpuQueueWriteBuffer(queue_, frame_uniform_buffer_, 0, &u, sizeof(u));
@@ -2378,6 +2501,7 @@ void ViewportCore::shutdown() {
     grid_helper_.destroy();
     tile_renderer_.destroy();
     if (main_shader_module_)   { wgpuShaderModuleRelease(main_shader_module_);    main_shader_module_ = nullptr; }
+    releaseShadowResources();
     if (pipeline_layout_)      { wgpuPipelineLayoutRelease(pipeline_layout_);     pipeline_layout_ = nullptr; }
     if (model_bgl_)            { wgpuBindGroupLayoutRelease(model_bgl_);          model_bgl_ = nullptr; }
     if (frame_bgl_)            { wgpuBindGroupLayoutRelease(frame_bgl_);          frame_bgl_ = nullptr; }
@@ -8205,6 +8329,10 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
     pass_desc.colorAttachmentCount = 1;
     pass_desc.colorAttachments     = &color;
     pass_desc.depthStencilAttachment = depth_view_ ? &depth : nullptr;
+
+    // The sun's shadow map, when the scene or the light changed. Its own
+    // pass, ahead of the main one that samples it.
+    encodeShadowPassIfDirty(enc);
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &pass_desc);
 

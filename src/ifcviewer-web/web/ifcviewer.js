@@ -1248,6 +1248,30 @@
         writeFloats(Module._ifcv_set_ao_c, v);
       },
 
+      // Sun shadows from the key light (setShading keyDir). `true` / `false`,
+      // or any subset of
+      //   enabled, resolution (shadow-map texels per side, 512..8192),
+      //   strength (0 none .. 1 the key light fully blocked),
+      //   softness (filter radius in texels), normalBias (metres; 0 = auto).
+      // The map covers every loaded model and is redrawn only when the scene
+      // or the light changes, so navigation costs nothing extra.
+      getShadows: function () {
+        const v = readFloats(Module._ifcv_get_shadows_c, 5);
+        return { enabled: v[0] !== 0, resolution: v[1], strength: v[2], softness: v[3],
+                 normalBias: v[4] };
+      },
+      setShadows: function (o) {
+        if (typeof o === 'boolean') o = { enabled: o };
+        o = o || {};
+        const v = readFloats(Module._ifcv_get_shadows_c, 5);
+        if (o.enabled !== undefined) v[0] = o.enabled ? 1 : 0;
+        if (o.resolution !== undefined) v[1] = +o.resolution;
+        if (o.strength !== undefined) v[2] = +o.strength;
+        if (o.softness !== undefined) v[3] = +o.softness;
+        if (o.normalBias !== undefined) v[4] = +o.normalBias;
+        writeFloats(Module._ifcv_set_shadows_c, v);
+      },
+
       // ---- Snapshots -------------------------------------------------------
 
       // Render the current view offscreen and resolve to an image Blob. The

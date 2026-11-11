@@ -93,6 +93,9 @@ struct FrameUniforms {
     float shading[4];       // x = SurfaceStyle, y = linear (0/1), z = exposure, w = ToneMap
     float base_color[4];    // xyz = Technical / Clay surface colour (sRGB)
     float light_params[4];  // x = key, y = fill, z = ambient intensity
+    float light_view_proj[16]; // world -> shadow map clip space (depth 0..1)
+    float shadow_params[4];    // x = on (0/1), y = strength, z = 1 / map size, w = softness (texels)
+    float shadow_bias[4];      // x = normal offset (world units), y = depth bias
 };
 static_assert(sizeof(FrameUniforms)
                   == 16 * sizeof(float)
@@ -100,7 +103,9 @@ static_assert(sizeof(FrameUniforms)
                    + 4 * sizeof(int)
                    + kMaxSectionPlanes * 4 * sizeof(float)
                    + 4 * sizeof(float)
-                   + 3 * 4 * sizeof(float),
+                   + 3 * 4 * sizeof(float)
+                   + 16 * sizeof(float)
+                   + 2 * 4 * sizeof(float),
               "FrameUniforms must match WGSL layout");
 
 class ViewportCore {
@@ -412,6 +417,24 @@ public:
     const EdgeSettings& edges() const { return edge_settings_; }
     void setAmbientOcclusion(const AoSettings& a);
     const AoSettings& ambientOcclusion() const { return ao_settings_; }
+
+    // ---- Sun shadows (ViewportShadow.cpp) -----------------------------------
+    //
+    // One shadow map from the key light (ShadingSettings::key_dir), fitted to
+    // the bounds of every loaded model. Every visible opaque instance casts,
+    // whether the camera sees it or not; transparent ones (glass, ghosted
+    // elements) do not. The map depends only on the scene and the light, so
+    // it is drawn again only when one of them changes, never because the
+    // camera moved. Section planes cut the casters too.
+    struct ShadowSettings {
+        bool  enabled    = false;
+        int   resolution = 4096;   // texels per side, clamped to [512, 8192]
+        float strength   = 0.85f;  // 0 no shadow .. 1 the key light is fully blocked
+        float softness   = 1.5f;   // filter radius, in shadow-map texels
+        float normal_bias = 0.0f;  // world units; <= 0 picks two texels' width
+    };
+    void setShadows(const ShadowSettings& s);
+    const ShadowSettings& shadows() const { return shadow_settings_; }
 
     // Frame the current selection: union the selected objects' world AABBs and
     // fit the camera to them (same 1.30 padding as the desktop "F" hotkey).
@@ -1546,6 +1569,34 @@ private:
     int                 ao_h_ = 0;
     bool buildPostPipelines();
     void releasePostResources();
+
+    // Sun shadow map (ViewportShadow.cpp).
+    ShadowSettings      shadow_settings_;
+    WGPUTexture         shadow_texture_          = nullptr;
+    WGPUTextureView     shadow_view_             = nullptr;
+    int                 shadow_size_             = 0;
+    WGPUSampler         shadow_sampler_          = nullptr;
+    WGPUBindGroupLayout shadow_frame_bgl_        = nullptr;
+    WGPUPipelineLayout  shadow_pipeline_layout_  = nullptr;
+    WGPURenderPipeline  shadow_pipeline_         = nullptr;
+    WGPUBindGroup       shadow_frame_bind_group_ = nullptr;
+    bool                shadow_dirty_            = true;
+    std::uint64_t       shadow_epoch_            = ~std::uint64_t(0);
+    float               shadow_light_vp_[16]     = {};
+    float               shadow_texel_world_      = 0.0f;
+    float               shadow_depth_bias_       = 0.0f;
+    std::vector<float>  shadow_key_;   // inputs the last map was drawn for
+    bool buildShadowPipeline();
+    void releaseShadowResources();
+    // (Re)create the map at `size` texels; 1 gives the placeholder the frame
+    // bind group samples while shadows are off.
+    void ensureShadowTexture(int size);
+    // Refit the light's orthographic frustum to the scene and mark the map
+    // dirty when the scene, the light or the settings changed since the last
+    // map. Called from updateFrameUniforms.
+    void updateShadowState();
+    // Draw the map when the scene or the light changed since the last one.
+    void encodeShadowPassIfDirty(WGPUCommandEncoder enc);
     void ensureAoTextures(int w, int h);
     void releaseAoTextures();
     // The G-buffer is drawn when feature edges or AO need it.
@@ -1656,6 +1707,9 @@ private:
     // from selection_ when it changes.
     WGPUBuffer    frame_uniform_buffer_     = nullptr;
     WGPUBindGroup frame_bind_group_         = nullptr;
+    // Builds frame_bind_group_ from the uniform, selection, hit-flag and
+    // shadow-map resources; called whenever one of them is replaced.
+    void buildFrameBindGroup();
     WGPUBuffer    selection_flags_buffer_   = nullptr;
     uint32_t      selection_flags_capacity_ = 0;  // u32 entries
     std::vector<uint32_t> selection_flags_scratch_;

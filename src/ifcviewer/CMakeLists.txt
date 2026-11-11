@@ -158,6 +158,7 @@ set(IFCVIEWER_CORE_SOURCES
     SectionGizmoRenderer.cpp
     ViewportCore.cpp
     ViewportPost.cpp
+    ViewportShadow.cpp
     ViewportSnapshot.cpp
     WgpuDynamicOffsets.cpp
 )
