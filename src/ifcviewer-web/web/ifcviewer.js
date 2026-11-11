@@ -1169,8 +1169,10 @@
       //   keyDir, fillDir  [x, y, z] toward each light, world space (+Z up)
       //   key, fill, ambient  intensities
       //   sky, ground   hemisphere ambient colours
+      //   smoothNormals true: light with the baked vertex normals, so curved
+      //                 surfaces read smooth (lines and AO keep true faces)
       getShading: function () {
-        const v = readFloats(Module._ifcv_get_shading_c, 22);
+        const v = readFloats(Module._ifcv_get_shading_c, 23);
         return {
           surface: SURFACES[v[0]] || 'color',
           baseColor: rgbHex(v.slice(1, 4)),
@@ -1182,11 +1184,12 @@
           key: v[13], fill: v[14], ambient: v[15],
           sky: rgbHex(v.slice(16, 19)),
           ground: rgbHex(v.slice(19, 22)),
+          smoothNormals: v[22] !== 0,
         };
       },
       setShading: function (o) {
         o = o || {};
-        const v = readFloats(Module._ifcv_get_shading_c, 22);
+        const v = readFloats(Module._ifcv_get_shading_c, 23);
         if (o.surface !== undefined) v[0] = enumIndex(SURFACES, o.surface, 'surface');
         if (o.baseColor !== undefined) setRgb(v, 1, o.baseColor, 'baseColor');
         if (o.linear !== undefined) v[4] = o.linear ? 1 : 0;
@@ -1199,6 +1202,7 @@
         if (o.ambient !== undefined) v[15] = +o.ambient;
         if (o.sky !== undefined) setRgb(v, 16, o.sky, 'sky');
         if (o.ground !== undefined) setRgb(v, 19, o.ground, 'ground');
+        if (o.smoothNormals !== undefined) v[22] = o.smoothNormals ? 1 : 0;
         writeFloats(Module._ifcv_set_shading_c, v);
       },
 

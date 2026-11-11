@@ -92,7 +92,7 @@ struct FrameUniforms {
     float xray_alpha_cap;   // X-ray mode: fragment alpha clamped to min(in.color.a, cap)
     float _pad_xray[3];     // pad to 16-byte alignment so the struct stays vec4-aligned
     float shading[4];       // x = SurfaceStyle, y = linear (0/1), z = exposure, w = ToneMap
-    float base_color[4];    // xyz = Technical / Clay surface colour (sRGB)
+    float base_color[4];    // xyz = Technical / Clay surface colour (sRGB), w = smooth normals (0/1)
     float light_params[4];  // x = key, y = fill, z = ambient intensity
     float light_view_proj[16]; // world -> shadow map clip space (depth 0..1)
     float shadow_params[4];    // x = on (0/1), y = strength, z = 1 / map size, w = softness (texels)
@@ -389,6 +389,10 @@ public:
         float ambient_intensity = 1.0f;
         float sky_color[3]    = { 0.55f, 0.60f, 0.70f };  // sRGB hemisphere ambient
         float ground_color[3] = { 0.35f, 0.32f, 0.28f };
+        // Light with the baked vertex normals instead of each triangle's own,
+        // so curved surfaces (furniture, round columns, pipes) read smooth.
+        // Lines and ambient occlusion keep the true faces.
+        bool  smooth_normals = false;
     };
     struct EdgeSettings {
         bool     enabled = true;

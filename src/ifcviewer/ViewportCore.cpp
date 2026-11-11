@@ -1017,7 +1017,7 @@ struct FrameUniforms {
     // x = surface style (0 model colours, 1 technical, 2 clay), y = linear
     // lighting (0/1), z = exposure, w = tone map (0 none, 1 ACES, 2 AgX).
     shading:      vec4<f32>,
-    // Technical / clay surface colour, sRGB.
+    // Technical / clay surface colour, sRGB; w = smooth normals (0/1).
     base_color:   vec4<f32>,
     // x = key, y = fill, z = ambient intensity.
     light_params: vec4<f32>,
@@ -1120,6 +1120,8 @@ struct VsOut {
     // 1 when the instance carries a setColor override, which technical and
     // clay surfaces keep instead of their flat colour.
     @location(4) @interpolate(flat) has_override: u32,
+    // Baked vertex normal in world space (not normalised).
+    @location(5) normal: vec3<f32>,
 };
 
 // Normal of the fragment's triangle, facing the viewer.
@@ -1209,8 +1211,11 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
         if (ca > 0.0) { color = vec4<f32>(cr, cg, cb, ca); has_override = 1u; }
     }
 
+    let n_local = octDecode(vec2<f32>(f32(extractI8(w1, 2u)), f32(extractI8(w1, 3u))) / 127.0);
+
     var out: VsOut;
     out.has_override = has_override;
+    out.normal    = (inst.transform * vec4<f32>(n_local, 0.0)).xyz;
     out.clip_pos  = u_frame.view_proj * world4;
     out.color     = color;
     out.world_pos = world4.xyz;
@@ -1267,7 +1272,14 @@ fn toneMap(x: vec3<f32>, op: u32) -> vec3<f32> {
 fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
     if (is_section_clipped(in.world_pos)) { discard; }
 
-    let n = flatNormal(in.world_pos, front_facing);
+    var n = flatNormal(in.world_pos, front_facing);
+    // Smooth normals: the interpolated vertex normal, turned to the viewer's
+    // side of the triangle (mirrored instances and back faces flip it).
+    let nl = length(in.normal);
+    if (u_frame.base_color.w > 0.5 && nl > 1e-4) {
+        let s = in.normal / nl;
+        n = select(-s, s, dot(s, n) >= 0.0);
+    }
 
     // World +Z is up (BIM convention). Hemisphere ambient: faces pointing
     // up read sky, faces pointing down read ground, lerp by n.z.
@@ -1839,6 +1851,7 @@ void ViewportCore::updateFrameUniforms() {
         u.ground_color[i] = sh.ground_color[i];
         u.base_color[i]   = sh.base_color[i];
     }
+    u.base_color[3] = sh.smooth_normals ? 1.0f : 0.0f;
     u.shading[0] = float(int(sh.surface));
     u.shading[1] = sh.linear ? 1.0f : 0.0f;
     u.shading[2] = sh.exposure;

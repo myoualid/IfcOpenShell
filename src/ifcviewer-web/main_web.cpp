@@ -902,7 +902,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_render_mode_c() {
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shading_c(float* out) {
     if (!g_app || !g_app->ready) return;
     const ViewportCore::ShadingSettings& s = g_app->core.shading();
-    const float v[22] = {
+    const float v[23] = {
         float(int(s.surface)), s.base_color[0], s.base_color[1], s.base_color[2],
         s.linear ? 1.0f : 0.0f, s.exposure, float(int(s.tone_map)),
         s.key_dir[0], s.key_dir[1], s.key_dir[2],
@@ -910,6 +910,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shading_c(float* out) {
         s.key_intensity, s.fill_intensity, s.ambient_intensity,
         s.sky_color[0], s.sky_color[1], s.sky_color[2],
         s.ground_color[0], s.ground_color[1], s.ground_color[2],
+        s.smooth_normals ? 1.0f : 0.0f,
     };
     std::memcpy(out, v, sizeof(v));
 }
@@ -930,6 +931,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_shading_c(const float* v) {
     s.key_intensity     = v[13];
     s.fill_intensity    = v[14];
     s.ambient_intensity = v[15];
+    s.smooth_normals    = v[22] != 0.0f;
     g_app->core.setShading(s);
 }
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_edges_c(float* out) {
