@@ -8915,6 +8915,7 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
     if (interactive) {
         // Section-plane gizmo — shared renderer, drawn for desktop + web from here.
         // (The desktop's OverlayRenderer no longer draws it, to avoid doubling.)
+        if (section_gizmo_visible_)
         section_gizmo_.encode(pass, vp_this_frame, section_planes_,
                               viewport_w_px, viewport_h_px, dpr_int, section_selected_index_);
 
@@ -9456,6 +9457,7 @@ bool ViewportCore::addSectionPlaneAtSurface(const Eigen::Vector3f& point,
     p.d             = -n.dot(point);
     p.visual_radius = (visual_radius > 0.0f) ? visual_radius : 1.0f;
     section_planes_.push_back(p);
+    section_gizmo_visible_ = true;
     // The freshly added plane becomes the selected one.
     section_selected_index_ = int(section_planes_.size()) - 1;
     Log::info()
@@ -9484,6 +9486,25 @@ void ViewportCore::removeSectionPlane(int index) {
         --section_selected_index_;
     }
     Log::info() << "[wgpu section] removed plane " << index;
+    host_->requestFrame();
+}
+
+void ViewportCore::setSectionPlanes(const std::vector<SectionPlane>& planes, bool show_gizmo) {
+    section_planes_.clear();
+    for (const SectionPlane& in : planes) {
+        if (int(section_planes_.size()) >= kMaxSectionPlanes) break;
+        if (in.n.squaredNorm() < 1e-12f) continue;
+        SectionPlane p = in;
+        const float len = p.n.norm();
+        p.n /= len;
+        p.d /= len;
+        p.origin = -p.d * p.n;
+        if (p.visual_radius <= 0.0f) p.visual_radius = 1.0f;
+        section_planes_.push_back(p);
+    }
+    section_selected_index_ = -1;
+    section_gizmo_visible_  = show_gizmo;
+    line_accum_count_ = 0;
     host_->requestFrame();
 }
 

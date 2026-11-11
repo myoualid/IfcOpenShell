@@ -1617,6 +1617,55 @@
       },
       clearOffsets: function () { Module._ifcv_clear_offsets_c(); },
 
+      // ---- Scripted section planes ----------------------------------------------
+
+      // Replace the section planes (up to six). Each is { normal, point } or
+      // { normal, offset }: it cuts away the side `normal` points to, through
+      // `point` (or where dot(normal, p) + offset = 0). Pass [] to clear.
+      // Options: { gizmo } shows the planes' arrows (default false).
+      setSectionPlanes: function (planes, options) {
+        planes = (planes || []).slice(0, 6);
+        const v = new Float32Array(Math.max(planes.length, 1) * 4);
+        planes.forEach(function (p, i) {
+          const n = p.normal;
+          const d = p.point !== undefined
+            ? -(n[0] * p.point[0] + n[1] * p.point[1] + n[2] * p.point[2])
+            : +(p.offset || 0);
+          v.set([+n[0], +n[1], +n[2], d], i * 4);
+        });
+        const ptr = Module._malloc(v.byteLength);
+        try {
+          Module.HEAPF32.set(v, ptr >>> 2);
+          Module._ifcv_set_section_planes_c(ptr, planes.length, options && options.gizmo ? 1 : 0);
+        } finally {
+          Module._free(ptr);
+        }
+      },
+      getSectionPlanes: function () {
+        const ptr = Module._malloc(24 * 4);
+        try {
+          const n = Module._ifcv_get_section_planes_c(ptr);
+          const v = Module.HEAPF32.subarray(ptr >>> 2, (ptr >>> 2) + n * 4);
+          const out = [];
+          for (let i = 0; i < n; i++) {
+            out.push({ normal: Array.from(v.subarray(i * 4, i * 4 + 3)), offset: v[i * 4 + 3] });
+          }
+          return out;
+        } finally {
+          Module._free(ptr);
+        }
+      },
+      // Keep only what lies inside the box [min, max] (world, metres): six
+      // planes. Animate the box to sweep a cutaway through the model.
+      setSectionBox: function (min, max, options) {
+        if (!min || !max) { api.setSectionPlanes([], options); return; }
+        api.setSectionPlanes([
+          { normal: [ 1, 0, 0], point: max }, { normal: [-1, 0, 0], point: min },
+          { normal: [ 0, 1, 0], point: max }, { normal: [ 0, -1, 0], point: min },
+          { normal: [ 0, 0, 1], point: max }, { normal: [ 0, 0, -1], point: min },
+        ], options);
+      },
+
       // ---- 4D schedule -------------------------------------------------------
 
       // Put objects on a timeline. `tasks` is a list of

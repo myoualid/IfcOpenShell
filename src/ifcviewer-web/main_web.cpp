@@ -1304,6 +1304,32 @@ extern "C" EMSCRIPTEN_KEEPALIVE void toggle_section_c() {
 extern "C" EMSCRIPTEN_KEEPALIVE void clear_section_c() {
     if (g_app && g_app->ready) { g_app->core.clearSectionPlanes(); g_app->host.requestFrame(); }
 }
+// `count` planes of four floats (nx, ny, nz, d): each cuts away where
+// dot(n, p) + d > 0. See ViewportCore::setSectionPlanes.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_section_planes_c(const float* v, int count,
+                                                               int show_gizmo) {
+    if (!g_app || !g_app->ready) return;
+    std::vector<SectionPlane> planes(std::size_t(std::max(count, 0)));
+    for (int i = 0; i < count; ++i) {
+        planes[std::size_t(i)].n = Eigen::Vector3f(v[i * 4], v[i * 4 + 1], v[i * 4 + 2]);
+        planes[std::size_t(i)].d = v[i * 4 + 3];
+    }
+    g_app->core.setSectionPlanes(planes, show_gizmo != 0);
+    g_app->host.requestFrame();
+}
+// Up to six planes as (nx, ny, nz, d) into `out`; returns the count.
+extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_section_planes_c(float* out) {
+    if (!g_app || !g_app->ready) return 0;
+    const auto& planes = g_app->core.sectionPlanes();
+    const int n = std::min<int>(int(planes.size()), kMaxSectionPlanes);
+    for (int i = 0; i < n; ++i) {
+        out[i * 4]     = planes[std::size_t(i)].n.x();
+        out[i * 4 + 1] = planes[std::size_t(i)].n.y();
+        out[i * 4 + 2] = planes[std::size_t(i)].n.z();
+        out[i * 4 + 3] = planes[std::size_t(i)].d;
+    }
+    return n;
+}
 extern "C" EMSCRIPTEN_KEEPALIVE int section_is_active_c() {
     return (g_app && g_app->ready && g_app->section_tool_active) ? 1 : 0;
 }

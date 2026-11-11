@@ -912,6 +912,15 @@ public:
 
     // Number of active section planes (0..kMaxSectionPlanes).
     int sectionPlaneCount() const { return int(section_planes_.size()); }
+    const std::vector<SectionPlane>& sectionPlanes() const { return section_planes_; }
+
+    // Replace every section plane at once (up to kMaxSectionPlanes), each
+    // cutting away the side its normal points to. For scripted cutaways: a
+    // section box is six planes with outward normals, and moving them every
+    // frame animates the cut. `show_gizmo` false hides the planes' arrows,
+    // which a presentation does not want; the interactive section tool turns
+    // them back on.
+    void setSectionPlanes(const std::vector<SectionPlane>& planes, bool show_gizmo);
 
     // The selected section plane (drawn highlighted; the target of a delete), or
     // -1 for none. Index is kept valid as planes are added/removed/cleared.
@@ -1917,6 +1926,7 @@ private:
     // removeSectionPlane (still Qt-bound — they wire into the input
     // path). Reading happens here.
     std::vector<SectionPlane> section_planes_;
+    bool                      section_gizmo_visible_ = true;
     // Section-gizmo drag state (shared): which plane, its press-time origin, and
     // the press point (logical px) so update can slide it along the normal.
     bool            section_drag_active_       = false;
