@@ -104,6 +104,7 @@ struct FrameUniforms {
     float sky_zenith[4];       // rgb = linear zenith colour, w = sky on (0/1)
     float sky_horizon[4];      // rgb = linear horizon colour
     float sky_nadir[4];        // rgb = linear colour below the horizon
+    float schedule[4];         // x = time, y = on (0/1), z = ghost alpha, w = drop height
 };
 static_assert(sizeof(FrameUniforms)
                   == 16 * sizeof(float)
@@ -115,7 +116,7 @@ static_assert(sizeof(FrameUniforms)
                    + 16 * sizeof(float)
                    + 4 * 4 * sizeof(float)
                    + 16 * sizeof(float)
-                   + 3 * 4 * sizeof(float),
+                   + 4 * 4 * sizeof(float),
               "FrameUniforms must match WGSL layout");
 
 class ViewportCore {
@@ -1212,6 +1213,40 @@ public:
     void setObjectsOffset(const std::vector<std::uint32_t>& object_ids,
                           float dx, float dy, float dz);
     void clearObjectOffsets();
+
+    // ---- 4D construction schedule -------------------------------------------
+    //
+    // Each scheduled object has a start and a finish (any time unit; days in
+    // practice) and a kind. One time value then puts every object in a phase:
+    //
+    //   kind        before start        start .. finish     after finish
+    //   Construct   hidden (or ghost)   active              built (normal)
+    //   Demolish    normal              active              hidden
+    //   Temporary   hidden              active              hidden
+    //
+    // Active objects take `color` (rgba8, alpha = tint strength; 0 keeps the
+    // model colour). With a ghost alpha above 0, construction not yet started
+    // shows as a translucent ghost instead of nothing. The phase is worked
+    // out on the GPU from the time uniform, so scrubbing the time is one
+    // uniform write; the cull is redone only when an object crosses a start
+    // or a finish. Unscheduled objects are not affected.
+    enum class ScheduleKind : std::uint8_t { None = 0, Construct = 1, Demolish = 2, Temporary = 3 };
+    struct ScheduleEntry {
+        std::uint32_t object_id = 0;
+        float         start     = 0.0f;
+        float         finish    = 0.0f;
+        ScheduleKind  kind      = ScheduleKind::Construct;
+        std::uint32_t color     = 0;   // rgba8 like setObjectsColor
+    };
+    void setSchedule(const std::vector<ScheduleEntry>& entries);
+    void clearSchedule();
+    void setScheduleTime(float t);
+    float scheduleTime() const { return schedule_time_; }
+    struct ScheduleOptions {
+        float ghost_alpha = 0.0f;   // 0 = hide construction not yet started
+    };
+    void setScheduleOptions(const ScheduleOptions& o);
+    const ScheduleOptions& scheduleOptions() const { return schedule_options_; }
     // Global X-ray: translucent everything. Flips the frame uniform's alpha cap;
     // the cull classifier routes every instance through the transparent pass.
     void toggleXray();
@@ -1835,8 +1870,25 @@ private:
     // Per-object animation state, indexed by object id like the selection
     // flags and sized with them. Must match the WGSL ObjectState.
     struct ObjectStateGpu {
-        float offset[4];   // xyz = world offset (metres)
+        float         offset[4];   // xyz = world offset (metres)
+        float         times[4];    // x = start, y = finish, z/w = object bounds in z
+        std::uint32_t info[4];     // x = schedule kind, y = active colour (rgba8)
     };
+    static_assert(sizeof(ObjectStateGpu) == 48, "ObjectStateGpu must match the WGSL ObjectState");
+
+    // Schedule phase per object id, as the cull needs it: the GPU works out
+    // the same phase from the same time.
+    enum : std::uint8_t { kPhaseNormal = 0, kPhaseHidden = 1, kPhaseGhost = 2, kPhaseActive = 3 };
+    std::vector<std::uint8_t> schedule_phase_;
+    bool                      schedule_on_   = false;
+    float                     schedule_time_ = 0.0f;
+    ScheduleOptions           schedule_options_;
+    std::uint8_t schedulePhaseOf(const ObjectStateGpu& s) const;
+    // Recompute schedule_phase_; true when any object changed phase.
+    bool updateSchedulePhases();
+    std::uint8_t schedulePhase(std::uint32_t object_id) const {
+        return object_id < schedule_phase_.size() ? schedule_phase_[object_id] : kPhaseNormal;
+    }
     WGPUBuffer                  object_state_buffer_ = nullptr;
     std::vector<ObjectStateGpu> object_state_;
     bool                        object_state_dirty_  = false;

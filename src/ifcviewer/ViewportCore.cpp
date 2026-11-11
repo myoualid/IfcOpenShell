@@ -1040,6 +1040,8 @@ struct FrameUniforms {
     sky_zenith:    vec4<f32>,
     sky_horizon:   vec4<f32>,
     sky_nadir:     vec4<f32>,
+    // 4D schedule: x = time, y = on, z = ghost alpha, w = drop height.
+    schedule:      vec4<f32>,
 };
 
 // Returns true if `world` lies on the positive (clipped-away) side of any
@@ -1087,8 +1089,31 @@ struct PerModel {
 // Per-object animation state, indexed by object id (setObjectsOffset).
 struct ObjectState {
     offset: vec4<f32>,
+    // 4D schedule: x = start, y = finish, z/w = the object's bounds in z.
+    times:  vec4<f32>,
+    // x = kind (0 none, 1 construct, 2 demolish, 3 temporary),
+    // y = active colour (rgba8, alpha = tint strength).
+    info:   vec4<u32>,
 };
 @group(0) @binding(5) var<storage, read> object_state: array<ObjectState>;
+
+// Schedule phase at the current time: 0 normal, 1 hidden, 2 ghost, 3 active.
+// Mirrors ViewportCore::schedulePhaseOf, which the cull uses.
+fn schedulePhase(object_id: u32) -> u32 {
+    if (u_frame.schedule.y < 0.5 || object_id >= arrayLength(&object_state)) { return 0u; }
+    let s = object_state[object_id];
+    let kind = s.info.x & 0xFu;
+    if (kind == 0u) { return 0u; }
+    let t = u_frame.schedule.x;
+    if (t < s.times.x) {
+        if (kind == 1u) { return select(1u, 2u, u_frame.schedule.z > 0.0); }
+        if (kind == 3u) { return 1u; }
+        return 0u;
+    }
+    if (t < s.times.y) { return 3u; }
+    if (kind == 1u) { return 0u; }
+    return 1u;
+}
 
 // World position after the object's animation offset.
 fn animatedWorld(object_id: u32, world: vec3<f32>) -> vec3<f32> {
@@ -1321,6 +1346,16 @@ fn shadeSurface(in: VsOut, front_facing: bool) -> vec4<f32> {
     var albedo = in.color.xyz;
     if (style != 0u && in.has_override == 0u) { albedo = u_frame.base_color.xyz; }
 
+    // 4D schedule: active work takes its task colour (alpha = strength).
+    let phase = schedulePhase(in.object_id);
+    if (phase == 1u) { discard; }
+    if (phase == 3u) {
+        let c = object_state[in.object_id].info.y;
+        let tint = vec4<f32>(f32(c & 0xFFu), f32((c >> 8u) & 0xFFu),
+                             f32((c >> 16u) & 0xFFu), f32((c >> 24u) & 0xFFu)) / 255.0;
+        albedo = mix(albedo, tint.rgb, tint.a);
+    }
+
     // Surface finish. `fres` is the share of the sky reflected (Schlick, so
     // it climbs at grazing angles); `spec` a Blinn-Phong highlight of the key
     // light, already shadowed and cosine-weighted through `key`.
@@ -1381,7 +1416,9 @@ fn shadeSurface(in: VsOut, front_facing: bool) -> vec4<f32> {
     // state.
     // A reflective surface reflects more at grazing angles: glass seen edge-on
     // reads more opaque, as it does in life.
-    let alpha_out = min(in.color.a + (1.0 - in.color.a) * fres, u_frame.xray_alpha_cap);
+    var alpha_out = min(in.color.a + (1.0 - in.color.a) * fres, u_frame.xray_alpha_cap);
+    // Construction not yet started, shown as a ghost.
+    if (phase == 2u) { alpha_out = min(alpha_out, u_frame.schedule.z); }
     return vec4<f32>(select(srgbToLinear(color), color, encoded_out), alpha_out);
 }
 
@@ -1902,6 +1939,7 @@ void ViewportCore::ensureSelectionFlagsBuffer() {
             object_state_buffer_ = nullptr;
         }
         object_state_.resize(new_cap, ObjectStateGpu{});
+        schedule_phase_.resize(new_cap, kPhaseNormal);
         WGPUBufferDescriptor ob = {};
         ob.size  = uint64_t(new_cap) * sizeof(ObjectStateGpu);
         ob.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
@@ -2075,6 +2113,10 @@ void ViewportCore::updateFrameUniforms() {
         }
         u.sky_zenith[3] = sk.enabled && sky_pipeline_ ? 1.0f : 0.0f;
     }
+    u.schedule[0] = schedule_time_;
+    u.schedule[1] = schedule_on_ ? 1.0f : 0.0f;
+    u.schedule[2] = std::clamp(schedule_options_.ghost_alpha, 0.0f, 1.0f);
+    u.schedule[3] = 0.0f;
     {
         const float* mn = shadow_scene_min_;
         const float* mx = shadow_scene_max_;
@@ -3753,6 +3795,8 @@ std::uint32_t ViewportCore::cullModelCpuCompute(
         const ModelGpuData::CullInstance& inst = m.cull_instances[i];
         if (inst.mesh_id >= m.meshes.size()) return;
         if (visibility_.isHidden(inst.object_id)) return;
+        const std::uint8_t phase = schedulePhase(inst.object_id);
+        if (phase == kPhaseHidden) return;
         // Per-instance frustum still needed: a partially-covered subtree
         // descended this far means *some* leaves are visible, but not
         // necessarily this one.
@@ -3847,7 +3891,7 @@ std::uint32_t ViewportCore::cullModelCpuCompute(
         // (or the mesh's baked has-alpha flag) decides.
         const bool xray_active     = (xray_alpha_cap_ < 1.0f);
         const bool override_active = (inst.color_override_rgba8 != 0u);
-        const bool is_transparent  = xray_active
+        const bool is_transparent  = xray_active || phase == kPhaseGhost
             ? true
             : (override_active
                ? (((inst.color_override_rgba8 >> 24) & 0xFFu) < 255u)
@@ -7217,6 +7261,74 @@ void ViewportCore::clearObjectOffsets() {
     for (ObjectStateGpu& s : object_state_) s.offset[0] = s.offset[1] = s.offset[2] = 0.0f;
     object_state_dirty_ = true;
     shadow_dirty_ = true;
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
+std::uint8_t ViewportCore::schedulePhaseOf(const ObjectStateGpu& s) const {
+    const std::uint32_t kind = s.info[0] & 0xFu;
+    if (!schedule_on_ || kind == 0u) return kPhaseNormal;
+    const float t = schedule_time_;
+    if (t < s.times[0]) {
+        if (kind == 1u) return schedule_options_.ghost_alpha > 0.0f ? kPhaseGhost : kPhaseHidden;
+        if (kind == 3u) return kPhaseHidden;
+        return kPhaseNormal;
+    }
+    if (t < s.times[1]) return kPhaseActive;
+    return kind == 1u ? kPhaseNormal : kPhaseHidden;
+}
+
+bool ViewportCore::updateSchedulePhases() {
+    bool changed = false;
+    const std::size_t n = std::min(object_state_.size(), schedule_phase_.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::uint8_t p = schedulePhaseOf(object_state_[i]);
+        if (p != schedule_phase_[i]) { schedule_phase_[i] = p; changed = true; }
+    }
+    return changed;
+}
+
+void ViewportCore::setSchedule(const std::vector<ScheduleEntry>& entries) {
+    for (ObjectStateGpu& s : object_state_) {
+        std::memset(s.times, 0, sizeof(s.times));
+        std::memset(s.info, 0, sizeof(s.info));
+    }
+    for (const ScheduleEntry& e : entries) {
+        if (e.object_id >= object_state_.size()) continue;
+        ObjectStateGpu& s = object_state_[e.object_id];
+        float mn[3] = { 0, 0, 0 }, mx[3] = { 0, 0, 0 };
+        computeObjectAabb(e.object_id, mn, mx);
+        s.times[0] = e.start;
+        s.times[1] = std::max(e.finish, e.start);
+        s.times[2] = mn[2];
+        s.times[3] = mx[2];
+        s.info[0]  = std::uint32_t(e.kind);
+        s.info[1]  = e.color;
+    }
+    schedule_on_ = !entries.empty();
+    object_state_dirty_ = true;
+    updateSchedulePhases();
+    markCullInputsChanged();
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
+void ViewportCore::clearSchedule() {
+    setSchedule({});
+}
+
+void ViewportCore::setScheduleTime(float t) {
+    if (t == schedule_time_) return;
+    schedule_time_ = t;
+    if (!schedule_on_) return;
+    if (updateSchedulePhases()) markCullInputsChanged();
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
+void ViewportCore::setScheduleOptions(const ScheduleOptions& o) {
+    schedule_options_ = o;
+    if (schedule_on_ && updateSchedulePhases()) markCullInputsChanged();
     line_accum_count_ = 0;
     host_->requestFrame();
 }

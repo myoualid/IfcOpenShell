@@ -959,6 +959,17 @@
     };
 
     // Float-array round trips for the render settings (see main_web.cpp).
+    // Schedule times in days: Dates and date strings become days since the
+    // Unix epoch; numbers are taken as days already. setSchedule subtracts the
+    // earliest start so the wasm side keeps float precision.
+    let scheduleOrigin = 0;
+    function scheduleDay(t) {
+      if (typeof t === 'number') return t;
+      const ms = (t instanceof Date ? t : new Date(t)).getTime();
+      if (!isFinite(ms)) throw new Error('bad schedule date: ' + t);
+      return ms / 86400000;
+    }
+
     function readFloats(fn, n) {
       const ptr = Module._malloc(n * 4);
       try {
@@ -1605,6 +1616,64 @@
         });
       },
       clearOffsets: function () { Module._ifcv_clear_offsets_c(); },
+
+      // ---- 4D schedule -------------------------------------------------------
+
+      // Put objects on a timeline. `tasks` is a list of
+      //   { ids, start, finish, kind, color }
+      // ids: object ids or GlobalIds (as setColor takes). start / finish: Dates,
+      // date strings or plain numbers (days). kind: 'construct' (default),
+      // 'demolish' or 'temporary'. color: the tint while the task runs, as
+      // setColor takes; its alpha is the tint strength; null keeps the model
+      // colour. Defaults per kind: amber, red, grey.
+      // Then setScheduleTime(t) shows the building at t:
+      //   construct  hidden (or ghosted) before, tinted during, built after
+      //   demolish   normal before, tinted during, gone after
+      //   temporary  there only while it runs
+      // Options: { ghost } = the alpha of construction not yet started
+      // (0 hides it). Returns { start, finish } of the whole schedule.
+      setSchedule: function (tasks, options) {
+        const KINDS = { construct: 1, demolish: 2, temporary: 3 };
+        const DEFAULT_COLOR = { 1: '#E0A33AE6', 2: '#C0392BE6', 3: '#7F8C8DE6' };
+        let lo = Infinity, hi = -Infinity;
+        const recs = [];
+        (tasks || []).forEach(function (t) {
+          const kind = KINDS[t.kind || 'construct'];
+          if (!kind) throw new Error('unknown schedule kind: ' + t.kind);
+          const s = scheduleDay(t.start), f = scheduleDay(t.finish);
+          lo = Math.min(lo, s); hi = Math.max(hi, f);
+          const color = t.color === null ? 0 : packColor(t.color || DEFAULT_COLOR[kind]);
+          resolveIds(t.ids).forEach(function (id) { recs.push([id, s, f, kind, color]); });
+        });
+        scheduleOrigin = isFinite(lo) ? lo : 0;
+        const buf = new ArrayBuffer(recs.length * 20);
+        const u32 = new Uint32Array(buf), f32 = new Float32Array(buf);
+        recs.forEach(function (r, i) {
+          u32[i * 5] = r[0] >>> 0;
+          f32[i * 5 + 1] = r[1] - scheduleOrigin;
+          f32[i * 5 + 2] = r[2] - scheduleOrigin;
+          u32[i * 5 + 3] = r[3];
+          u32[i * 5 + 4] = r[4] >>> 0;
+        });
+        const ptr = Module._malloc(Math.max(buf.byteLength, 4));
+        try {
+          Module.HEAPU8.set(new Uint8Array(buf), ptr);
+          Module._ifcv_set_schedule_c(ptr, recs.length);
+        } finally {
+          Module._free(ptr);
+        }
+        if (options && options.ghost !== undefined) Module._ifcv_set_schedule_options_c(+options.ghost);
+        return { start: lo, finish: hi };
+      },
+      clearSchedule: function () { Module._ifcv_set_schedule_c(0, 0); },
+      // Show the schedule at `t` (a Date, a date string or days, as setSchedule
+      // took them). Cheap enough to call every frame.
+      setScheduleTime: function (t) {
+        Module._ifcv_set_schedule_time_c(scheduleDay(t) - scheduleOrigin);
+      },
+      setScheduleOptions: function (o) {
+        if (o && o.ghost !== undefined) Module._ifcv_set_schedule_options_c(+o.ghost);
+      },
 
       // ---- Scene -----------------------------------------------------------
 

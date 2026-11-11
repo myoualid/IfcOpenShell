@@ -330,6 +330,9 @@ void ViewportCore::encodeShadowPassIfDirty(WGPUCommandEncoder enc) {
             for (std::uint32_t i : c.instance_ids) {
                 const auto& ci = m.cull_instances[i];
                 if (ci.mesh_id >= m.meshes.size() || visibility_.isHidden(ci.object_id)) continue;
+                // Hidden and ghosted schedule phases cast nothing.
+                const std::uint8_t phase = schedulePhase(ci.object_id);
+                if (phase == kPhaseHidden || phase == kPhaseGhost) continue;
                 const bool transparent = ci.color_override_rgba8 != 0u
                     ? ((ci.color_override_rgba8 >> 24) & 0xFFu) < 255u
                     : (ci.mesh_id < m.mesh_has_alpha.size() && m.mesh_has_alpha[ci.mesh_id] != 0);
