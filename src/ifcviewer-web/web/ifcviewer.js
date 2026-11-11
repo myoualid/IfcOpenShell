@@ -1620,30 +1620,36 @@
       // ---- 4D schedule -------------------------------------------------------
 
       // Put objects on a timeline. `tasks` is a list of
-      //   { ids, start, finish, kind, color }
+      //   { ids, start, finish, kind, color, effect }
       // ids: object ids or GlobalIds (as setColor takes). start / finish: Dates,
       // date strings or plain numbers (days). kind: 'construct' (default),
       // 'demolish' or 'temporary'. color: the tint while the task runs, as
       // setColor takes; its alpha is the tint strength; null keeps the model
-      // colour. Defaults per kind: amber, red, grey.
+      // colour. Defaults per kind: amber, red, grey. effect: 'none' (default),
+      // 'grow' (rises from its base while the task runs; a demolition sinks
+      // from the top) or 'drop' (lowered into place from dropHeight above).
       // Then setScheduleTime(t) shows the building at t:
       //   construct  hidden (or ghosted) before, tinted during, built after
       //   demolish   normal before, tinted during, gone after
       //   temporary  there only while it runs
-      // Options: { ghost } = the alpha of construction not yet started
-      // (0 hides it). Returns { start, finish } of the whole schedule.
+      // Options: { ghost, dropHeight }: the alpha of construction not yet
+      // started (0 hides it) and how high a 'drop' starts, in metres.
+      // Returns { start, finish } of the whole schedule.
       setSchedule: function (tasks, options) {
         const KINDS = { construct: 1, demolish: 2, temporary: 3 };
+        const EFFECTS = { none: 0, grow: 1, drop: 2 };
         const DEFAULT_COLOR = { 1: '#E0A33AE6', 2: '#C0392BE6', 3: '#7F8C8DE6' };
         let lo = Infinity, hi = -Infinity;
         const recs = [];
         (tasks || []).forEach(function (t) {
           const kind = KINDS[t.kind || 'construct'];
           if (!kind) throw new Error('unknown schedule kind: ' + t.kind);
+          const effect = EFFECTS[t.effect || 'none'];
+          if (effect === undefined) throw new Error('unknown schedule effect: ' + t.effect);
           const s = scheduleDay(t.start), f = scheduleDay(t.finish);
           lo = Math.min(lo, s); hi = Math.max(hi, f);
           const color = t.color === null ? 0 : packColor(t.color || DEFAULT_COLOR[kind]);
-          resolveIds(t.ids).forEach(function (id) { recs.push([id, s, f, kind, color]); });
+          resolveIds(t.ids).forEach(function (id) { recs.push([id, s, f, kind | (effect << 4), color]); });
         });
         scheduleOrigin = isFinite(lo) ? lo : 0;
         const buf = new ArrayBuffer(recs.length * 20);
@@ -1662,7 +1668,7 @@
         } finally {
           Module._free(ptr);
         }
-        if (options && options.ghost !== undefined) Module._ifcv_set_schedule_options_c(+options.ghost);
+        if (options) api.setScheduleOptions(options);
         return { start: lo, finish: hi };
       },
       clearSchedule: function () { Module._ifcv_set_schedule_c(0, 0); },
@@ -1672,7 +1678,9 @@
         Module._ifcv_set_schedule_time_c(scheduleDay(t) - scheduleOrigin);
       },
       setScheduleOptions: function (o) {
-        if (o && o.ghost !== undefined) Module._ifcv_set_schedule_options_c(+o.ghost);
+        o = o || {};
+        Module._ifcv_set_schedule_options_c(o.ghost !== undefined ? +o.ghost : -1,
+                                            o.dropHeight !== undefined ? +o.dropHeight : -1);
       },
 
       // ---- Scene -----------------------------------------------------------

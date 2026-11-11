@@ -1230,13 +1230,19 @@ public:
     // out on the GPU from the time uniform, so scrubbing the time is one
     // uniform write; the cull is redone only when an object crosses a start
     // or a finish. Unscheduled objects are not affected.
+    //
+    // While active, an object can also move: Grow reveals it from its base
+    // up as the task runs (a demolition shrinks from the top down); Drop
+    // lowers it into place from `drop_height` above, easing in.
     enum class ScheduleKind : std::uint8_t { None = 0, Construct = 1, Demolish = 2, Temporary = 3 };
+    enum class ScheduleEffect : std::uint8_t { None = 0, Grow = 1, Drop = 2 };
     struct ScheduleEntry {
         std::uint32_t object_id = 0;
         float         start     = 0.0f;
         float         finish    = 0.0f;
         ScheduleKind  kind      = ScheduleKind::Construct;
         std::uint32_t color     = 0;   // rgba8 like setObjectsColor
+        ScheduleEffect effect   = ScheduleEffect::None;
     };
     void setSchedule(const std::vector<ScheduleEntry>& entries);
     void clearSchedule();
@@ -1244,6 +1250,7 @@ public:
     float scheduleTime() const { return schedule_time_; }
     struct ScheduleOptions {
         float ghost_alpha = 0.0f;   // 0 = hide construction not yet started
+        float drop_height = 6.0f;   // metres a Drop starts above its place
     };
     void setScheduleOptions(const ScheduleOptions& o);
     const ScheduleOptions& scheduleOptions() const { return schedule_options_; }
@@ -1872,7 +1879,7 @@ private:
     struct ObjectStateGpu {
         float         offset[4];   // xyz = world offset (metres)
         float         times[4];    // x = start, y = finish, z/w = object bounds in z
-        std::uint32_t info[4];     // x = schedule kind, y = active colour (rgba8)
+        std::uint32_t info[4];     // x = kind | effect << 4, y = active colour (rgba8)
     };
     static_assert(sizeof(ObjectStateGpu) == 48, "ObjectStateGpu must match the WGSL ObjectState");
 
@@ -1881,6 +1888,7 @@ private:
     enum : std::uint8_t { kPhaseNormal = 0, kPhaseHidden = 1, kPhaseGhost = 2, kPhaseActive = 3 };
     std::vector<std::uint8_t> schedule_phase_;
     bool                      schedule_on_   = false;
+    bool                      schedule_moves_ = false;   // some entry grows or drops
     float                     schedule_time_ = 0.0f;
     ScheduleOptions           schedule_options_;
     std::uint8_t schedulePhaseOf(const ObjectStateGpu& s) const;

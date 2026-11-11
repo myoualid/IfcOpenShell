@@ -1091,7 +1091,8 @@ struct ObjectState {
     offset: vec4<f32>,
     // 4D schedule: x = start, y = finish, z/w = the object's bounds in z.
     times:  vec4<f32>,
-    // x = kind (0 none, 1 construct, 2 demolish, 3 temporary),
+    // x = kind (bits 0-3: 0 none, 1 construct, 2 demolish, 3 temporary)
+    //     | effect << 4 (0 none, 1 grow, 2 drop),
     // y = active colour (rgba8, alpha = tint strength).
     info:   vec4<u32>,
 };
@@ -1115,10 +1116,35 @@ fn schedulePhase(object_id: u32) -> u32 {
     return 1u;
 }
 
-// World position after the object's animation offset.
+// How far an active task has run, 0 .. 1.
+fn scheduleProgress(s: ObjectState) -> f32 {
+    return clamp((u_frame.schedule.x - s.times.x) / max(s.times.y - s.times.x, 1e-6), 0.0, 1.0);
+}
+
+// World position after the object's animation offset and, for an active
+// Drop task, its descent (ease-out from schedule.w above its place).
 fn animatedWorld(object_id: u32, world: vec3<f32>) -> vec3<f32> {
     if (object_id >= arrayLength(&object_state)) { return world; }
-    return world + object_state[object_id].offset.xyz;
+    let s = object_state[object_id];
+    var p = world + s.offset.xyz;
+    if (((s.info.x >> 4u) & 0xFu) == 2u && schedulePhase(object_id) == 3u) {
+        let r = 1.0 - scheduleProgress(s);
+        p.z = p.z + u_frame.schedule.w * r * r;
+    }
+    return p;
+}
+
+// An active Grow task shows only the part of the object below its rising
+// (construction) or falling (demolition) cut height.
+fn scheduleClipped(object_id: u32, world: vec3<f32>) -> bool {
+    if (object_id >= arrayLength(&object_state)) { return false; }
+    let s = object_state[object_id];
+    if (((s.info.x >> 4u) & 0xFu) != 1u || schedulePhase(object_id) != 3u) { return false; }
+    let u = scheduleProgress(s);
+    let z = world.z - s.offset.z;
+    let h = s.times.w - s.times.z;
+    if ((s.info.x & 0xFu) == 2u) { return z > s.times.w - u * h; }
+    return z > s.times.z + u * h;
 }
 
 // Sun shadow map (a 1x1 placeholder while shadows are off) and its
@@ -1320,6 +1346,7 @@ fn toneMap(x: vec3<f32>, op: u32) -> vec3<f32> {
 // fs_main returns it; fs_oit accumulates it.
 fn shadeSurface(in: VsOut, front_facing: bool) -> vec4<f32> {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
 
     var n = flatNormal(in.world_pos, front_facing);
     // Smooth normals: the interpolated vertex normal, turned to the viewer's
@@ -1451,6 +1478,7 @@ fn fs_oit(in: VsOut, @builtin(front_facing) front_facing: bool) -> OitOut {
 @fragment
 fn fs_depth_only(in: VsOut) -> @location(0) vec4<f32> {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
     return vec4<f32>(0.0);
 }
 
@@ -1462,6 +1490,7 @@ fn fs_depth_only(in: VsOut) -> @location(0) vec4<f32> {
 @fragment
 fn fs_mask(in: VsOut) -> @location(0) f32 {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
     if (in.object_id >= arrayLength(&sel_flags)) { discard; }
     if ((sel_flags[in.object_id] & 1u) == 0u) { discard; }
     return 1.0;
@@ -1526,6 +1555,7 @@ fn vs_pick(@builtin(vertex_index) vid: u32) -> VsOutPick {
 @fragment
 fn fs_pick(in: VsOutPick, @builtin(front_facing) front_facing: bool) -> FsOutPick {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
     var out: FsOutPick;
     out.object_id = in.object_id;
     // Pack signed normal into RGBA16F (unsigned-ish half range) as ×0.5+0.5.
@@ -1554,6 +1584,7 @@ fn fs_boxpick(in: VsOutPick) {
 struct VsOutShadow {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) world_pos: vec3<f32>,
+    @location(1) @interpolate(flat) object_id: u32,
 };
 
 @vertex
@@ -1562,6 +1593,7 @@ fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
     if (vid >= u_model.total_vertex_count) {
         out.clip_pos  = vec4<f32>(0.0, 0.0, 0.0, 0.0);
         out.world_pos = vec3<f32>(0.0, 0.0, 0.0);
+        out.object_id = 0u;
         return out;
     }
     let draw_idx = find_draw(vid);
@@ -1582,6 +1614,7 @@ fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
         (inst.transform * vec4<f32>(mix(mq.aabb_min.xyz, mq.aabb_max.xyz, pos_norm), 1.0)).xyz), 1.0);
     out.clip_pos  = u_frame.light_view_proj * world4;
     out.world_pos = world4.xyz;
+    out.object_id = inst.object_id;
     return out;
 }
 
@@ -1589,6 +1622,7 @@ fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
 @fragment
 fn fs_shadow(in: VsOutShadow) {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
 }
 
 // --------------------------- Shadow-catching ground ------------------------
@@ -2116,7 +2150,7 @@ void ViewportCore::updateFrameUniforms() {
     u.schedule[0] = schedule_time_;
     u.schedule[1] = schedule_on_ ? 1.0f : 0.0f;
     u.schedule[2] = std::clamp(schedule_options_.ghost_alpha, 0.0f, 1.0f);
-    u.schedule[3] = 0.0f;
+    u.schedule[3] = schedule_options_.drop_height;
     {
         const float* mn = shadow_scene_min_;
         const float* mx = shadow_scene_max_;
@@ -7289,6 +7323,7 @@ bool ViewportCore::updateSchedulePhases() {
 }
 
 void ViewportCore::setSchedule(const std::vector<ScheduleEntry>& entries) {
+    schedule_moves_ = false;
     for (ObjectStateGpu& s : object_state_) {
         std::memset(s.times, 0, sizeof(s.times));
         std::memset(s.info, 0, sizeof(s.info));
@@ -7302,10 +7337,12 @@ void ViewportCore::setSchedule(const std::vector<ScheduleEntry>& entries) {
         s.times[1] = std::max(e.finish, e.start);
         s.times[2] = mn[2];
         s.times[3] = mx[2];
-        s.info[0]  = std::uint32_t(e.kind);
+        s.info[0]  = std::uint32_t(e.kind) | (std::uint32_t(e.effect) << 4);
         s.info[1]  = e.color;
+        if (e.effect != ScheduleEffect::None) schedule_moves_ = true;
     }
     schedule_on_ = !entries.empty();
+    shadow_dirty_ = true;
     object_state_dirty_ = true;
     updateSchedulePhases();
     markCullInputsChanged();
@@ -7322,12 +7359,16 @@ void ViewportCore::setScheduleTime(float t) {
     schedule_time_ = t;
     if (!schedule_on_) return;
     if (updateSchedulePhases()) markCullInputsChanged();
+    // Growing and dropping objects change shape with time, and so do their
+    // shadows.
+    if (schedule_moves_) shadow_dirty_ = true;
     line_accum_count_ = 0;
     host_->requestFrame();
 }
 
 void ViewportCore::setScheduleOptions(const ScheduleOptions& o) {
     schedule_options_ = o;
+    shadow_dirty_ = true;
     if (schedule_on_ && updateSchedulePhases()) markCullInputsChanged();
     line_accum_count_ = 0;
     host_->requestFrame();

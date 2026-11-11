@@ -1122,7 +1122,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_clear_offsets_c() {
     if (g_app && g_app->ready) g_app->core.clearObjectOffsets();
 }
 // 4D schedule: `count` records of five 32-bit words each:
-//   object id (u32), start (f32), finish (f32), kind (u32), colour (rgba8 u32).
+//   object id (u32), start (f32), finish (f32), kind | effect << 4 (u32),
+//   colour (rgba8 u32).
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_schedule_c(const std::uint32_t* words, int count) {
     if (!g_app || !g_app->ready) return;
     std::vector<ViewportCore::ScheduleEntry> entries(std::size_t(std::max(count, 0)));
@@ -1132,18 +1133,21 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_schedule_c(const std::uint32_t* wo
         e.object_id = w[0];
         std::memcpy(&e.start, &w[1], 4);
         std::memcpy(&e.finish, &w[2], 4);
-        e.kind  = ViewportCore::ScheduleKind(std::min<std::uint32_t>(w[3], 3u));
-        e.color = w[4];
+        e.kind   = ViewportCore::ScheduleKind(std::min<std::uint32_t>(w[3] & 0xFu, 3u));
+        e.effect = ViewportCore::ScheduleEffect(std::min<std::uint32_t>((w[3] >> 4) & 0xFu, 2u));
+        e.color  = w[4];
     }
     g_app->core.setSchedule(entries);
 }
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_schedule_time_c(float t) {
     if (g_app && g_app->ready) g_app->core.setScheduleTime(t);
 }
-extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_schedule_options_c(float ghost_alpha) {
+// A negative value keeps that option as it is.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_schedule_options_c(float ghost_alpha, float drop_height) {
     if (!g_app || !g_app->ready) return;
     ViewportCore::ScheduleOptions o = g_app->core.scheduleOptions();
-    o.ghost_alpha = ghost_alpha;
+    if (ghost_alpha >= 0.0f) o.ghost_alpha = ghost_alpha;
+    if (drop_height >= 0.0f) o.drop_height = drop_height;
     g_app->core.setScheduleOptions(o);
 }
 
