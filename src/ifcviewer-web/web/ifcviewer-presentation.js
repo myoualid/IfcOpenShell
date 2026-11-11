@@ -20,6 +20,10 @@
 //     ]);
 //     await P.play(seq);                                    // live, interruptible
 //     await P.recordFrames(seq, { fps: 30, width: 3840, height: 2160 });  // PNG frames
+//
+//     const build = P.schedule({ tasks }, { ghost: 0.12 });     // 4D construction
+//     await P.play(P.sequence([build.shot({ duration: 12, orbit: 40,
+//       onDate: (d, running) => caption(d.toDateString()) })]));
 //     const webm = await P.recordVideo(seq, { fps: 30 });   // real-time WebM
 //   </script>
 //
@@ -322,6 +326,67 @@
       viewer.setColor(ids, '#' + hex + alpha.toString(16).padStart(2, '0'));
     }
 
+    // ---- 4D construction -------------------------------------------------
+
+    // Load a construction schedule into the viewer and get shots that play it.
+    // data: { tasks: [...] } or the task list itself; each task is
+    //   { name, start, finish, kind, effect, color, ids | guids }
+    // as viewer.setSchedule takes them (start / finish: Dates, date strings
+    // or days). options: { ghost, dropHeight }.
+    // Returns
+    //   start, finish        the schedule's span (days)
+    //   at(t)                show the building at t
+    //   activeAt(t)          the tasks running at t (for captions)
+    //   dateOf(days)         a Date (or the plain number for numeric schedules)
+    //   shot(o)              a sequence shot that runs the schedule from o.from
+    //                        to o.to (default: the whole span) over o.duration
+    //                        seconds; o.onDate(date, tasks) runs every frame,
+    //                        o.camera / o.orbit / o.ease work as in any shot
+    //                        (ease defaults to linear, so time runs evenly).
+    // Like every shot, it is a pure function of time, so recordFrames renders
+    // it frame by frame.
+    function schedule(data, options) {
+      const raw = Array.isArray(data) ? data : (data && data.tasks) || [];
+      const tasks = raw.map(function (t) {
+        return Object.assign({}, t, { ids: t.ids || t.guids || [] });
+      });
+      const numeric = tasks.every(function (t) { return typeof t.start === 'number'; });
+      const toDays = function (t) {
+        if (typeof t === 'number') return t;
+        const ms = (t instanceof Date ? t : new Date(t)).getTime();
+        if (!isFinite(ms)) throw new Error('bad schedule date: ' + t);
+        return ms / 86400000;
+      };
+      const span = viewer.setSchedule(tasks, options);
+      const spans = tasks.map(function (t) { return [toDays(t.start), toDays(t.finish)]; });
+      const api = {
+        tasks: tasks,
+        start: span.start,
+        finish: span.finish,
+        dateOf: function (d) { return numeric ? d : new Date(d * 86400000); },
+        at: function (t) { viewer.setScheduleTime(toDays(t)); },
+        activeAt: function (t) {
+          const d = toDays(t);
+          return tasks.filter(function (task, i) { return d >= spans[i][0] && d < spans[i][1]; });
+        },
+        shot: function (o) {
+          o = o || {};
+          const from = o.from !== undefined ? toDays(o.from) : span.start;
+          const to = o.to !== undefined ? toDays(o.to) : span.finish;
+          const own = o.update;
+          return Object.assign({ name: 'construction', duration: 8, ease: 'linear' }, o, {
+            update: function (v, u, ctx, rawU) {
+              const d = from + (to - from) * u;
+              v.setScheduleTime(d);
+              if (o.onDate) o.onDate(api.dateOf(d), api.activeAt(d));
+              if (own) own(v, u, ctx, rawU);
+            },
+          });
+        },
+      };
+      return api;
+    }
+
     // ---- Capture ---------------------------------------------------------
 
     // Render every frame of a sequence through the snapshot path and hand it
@@ -402,6 +467,7 @@
       turntable: turntable,
       explode: explode,
       tint: tint,
+      schedule: schedule,
       frames: frames,
       recordFrames: recordFrames,
       recordVideo: recordVideo,
