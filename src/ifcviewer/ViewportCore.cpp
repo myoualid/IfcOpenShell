@@ -2010,7 +2010,7 @@ void ViewportCore::buildFrameBindGroup() {
     if (shadow_frame_bgl_) {
         WGPUBindGroupEntry se[2] = {};
         se[0].binding = 0; se[0].buffer = frame_uniform_buffer_; se[0].size = sizeof(FrameUniforms);
-        se[1].binding = 1; se[1].buffer = object_state_buffer_;  se[1].size = WGPU_WHOLE_SIZE;
+        se[1].binding = 5; se[1].buffer = object_state_buffer_;  se[1].size = WGPU_WHOLE_SIZE;
         WGPUBindGroupDescriptor sd = {};
         sd.layout     = shadow_frame_bgl_;
         sd.entryCount = 2;
