@@ -25,6 +25,7 @@
 //     await P.play(P.sequence([build.shot({ duration: 12, orbit: 40,
 //       onDate: (d, running) => caption(d.toDateString()) })]));
 //     const webm = await P.recordVideo(seq, { fps: 30 });   // real-time WebM
+//     const mp4 = await P.recordMp4(seq, { fps: 30, width: 3840, height: 2160, samples: 8 });  // offline H.264
 //   </script>
 //
 // Camera model. The viewer's camera is an orbit camera (target, distance, yaw,
@@ -55,6 +56,82 @@
     inOutQuint: function (t) { return t < 0.5 ? 16 * Math.pow(t, 5) : 1 - Math.pow(-2 * t + 2, 5) / 2; },
     outExpo:    function (t) { return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t); },
   };
+
+  // ---- MP4 muxer ---------------------------------------------------------
+
+  // A minimal ISO-BMFF writer for one H.264 track at a constant frame rate:
+  // ftyp, mdat with every sample in order, then moov. `samples` are
+  // length-prefixed AVC access units ({ data, key }), `avcC` the decoder
+  // configuration record WebCodecs reports.
+  function muxMp4(samples, avcC, width, height, fps) {
+    const u8 = function (v) { return [v & 255]; };
+    const u16 = function (v) { return [(v >>> 8) & 255, v & 255]; };
+    const u32 = function (v) { return [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]; };
+    const zeros = function (n) { return new Array(n).fill(0); };
+    const str = function (t) { return Array.from(t).map(function (c) { return c.charCodeAt(0); }); };
+    const cat = function (parts) {
+      let n = 0;
+      parts.forEach(function (p) { n += p.length; });
+      const out = new Uint8Array(n);
+      let at = 0;
+      parts.forEach(function (p) { out.set(p, at); at += p.length; });
+      return out;
+    };
+    const box = function (type, parts) {
+      const body = cat(parts.map(function (p) { return p instanceof Uint8Array ? p : Uint8Array.from(p); }));
+      return cat([Uint8Array.from(u32(body.length + 8).concat(str(type))), body]);
+    };
+    const full = function (type, version, flags, parts) {
+      return box(type, [[version & 255, (flags >>> 16) & 255, (flags >>> 8) & 255, flags & 255]].concat(parts));
+    };
+    const flat = function (list) { return [].concat.apply([], list); };
+    const matrix = flat([u32(0x10000), u32(0), u32(0), u32(0), u32(0x10000), u32(0),
+                         u32(0), u32(0), u32(0x40000000)]);
+
+    const timescale = Math.round(fps * 1000);
+    const delta = 1000;
+    const n = samples.length;
+    const durMedia = n * delta;
+    const durMovie = Math.round(n * 1000 / fps);
+
+    const ftyp = box('ftyp', [str('isom'), u32(512), str('isom'), str('iso2'), str('avc1'), str('mp41')]);
+    const mdat = box('mdat', [cat(samples.map(function (x) { return x.data; }))]);
+
+    const avc1 = box('avc1', [zeros(6), u16(1), u16(0), u16(0), zeros(12), u16(width), u16(height),
+                              u32(0x00480000), u32(0x00480000), u32(0), u16(1), zeros(32), u16(0x18),
+                              u16(0xffff), box('avcC', [avcC])]);
+    const keys = [];
+    samples.forEach(function (x, i) { if (x.key) keys.push(i + 1); });
+    const stbl = box('stbl', [
+      full('stsd', 0, 0, [u32(1), avc1]),
+      full('stts', 0, 0, [u32(1), u32(n), u32(delta)]),
+      full('stss', 0, 0, [u32(keys.length), flat(keys.map(u32))]),
+      full('stsc', 0, 0, [u32(1), u32(1), u32(n), u32(1)]),
+      full('stsz', 0, 0, [u32(0), u32(n), flat(samples.map(function (x) { return u32(x.data.length); }))]),
+      full('stco', 0, 0, [u32(1), u32(ftyp.length + 8)]),
+    ]);
+    const minf = box('minf', [
+      full('vmhd', 0, 1, [u16(0), zeros(6)]),
+      box('dinf', [full('dref', 0, 0, [u32(1), full('url ', 0, 1, [])])]),
+      stbl,
+    ]);
+    const mdia = box('mdia', [
+      full('mdhd', 0, 0, [u32(0), u32(0), u32(timescale), u32(durMedia), u16(0x55c4), u16(0)]),
+      full('hdlr', 0, 0, [u32(0), str('vide'), zeros(12), str('VideoHandler'), [0]]),
+      minf,
+    ]);
+    const trak = box('trak', [
+      full('tkhd', 0, 3, [u32(0), u32(0), u32(1), u32(0), u32(durMovie), zeros(8), u16(0), u16(0),
+                          u16(0), u16(0), matrix, u32(width * 65536), u32(height * 65536)]),
+      mdia,
+    ]);
+    const moov = box('moov', [
+      full('mvhd', 0, 0, [u32(0), u32(0), u32(1000), u32(durMovie), u32(0x10000), u16(0x100), zeros(10),
+                          matrix, zeros(24), u32(2)]),
+      trak,
+    ]);
+    return cat([ftyp, mdat, moov]);
+  }
 
   function easing(e) {
     if (typeof e === 'function') return e;
@@ -505,6 +582,74 @@
       return dir ? { frames: to - from, fps: fps, dir: dir.name } : blobs;
     }
 
+    // Offline MP4 (H.264) of a sequence, frame by frame through the snapshot
+    // path, so it is deterministic and any size: nothing is dropped however
+    // slow a frame is. Needs WebCodecs (Chromium, Safari 17+). Options: fps,
+    // width, height (rounded down to even), samples, overlay, bitrate (default
+    // 20 Mb/s), keyInterval (seconds, default 2), onProgress(done, total),
+    // signal (an AbortSignal). Resolves to a 'video/mp4' Blob.
+    async function recordMp4(seq, o) {
+      o = o || {};
+      if (typeof VideoEncoder === 'undefined') {
+        throw new Error('recordMp4: WebCodecs VideoEncoder is not available in this browser');
+      }
+      stop();
+      const fps = o.fps || 30;
+      const total = Math.max(1, Math.round(seq.duration * fps) + 1);
+      const cv = canvas || { width: 1920, height: 1080 };
+      const even = function (v) { return Math.max(2, Math.floor(v / 2) * 2); };
+      const width = even(o.width || (o.height ? o.height * cv.width / cv.height : cv.width));
+      const height = even(o.height || width * cv.height / cv.width);
+      const fo = Object.assign({}, o, { width: width, height: height });
+
+      const bitrate = o.bitrate || 20e6;
+      const codecs = ['avc1.640034', 'avc1.640033', 'avc1.4d0034', 'avc1.42003e', 'avc1.42001f'];
+      let config = null;
+      for (const codec of codecs) {
+        const c = { codec: codec, width: width, height: height, bitrate: bitrate, framerate: fps,
+                    avc: { format: 'avc' } };
+        const r = await VideoEncoder.isConfigSupported(c).catch(function () { return null; });
+        if (r && r.supported) { config = c; break; }
+      }
+      if (!config) throw new Error('recordMp4: no H.264 encoder for ' + width + 'x' + height);
+
+      const samples = [];
+      let avcC = null, failure = null;
+      const enc = new VideoEncoder({
+        output: function (chunk, meta) {
+          if (meta && meta.decoderConfig && meta.decoderConfig.description) {
+            avcC = new Uint8Array(meta.decoderConfig.description);
+          }
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data);
+          samples.push({ data: data, key: chunk.type === 'key', ts: chunk.timestamp });
+        },
+        error: function (e) { failure = e; },
+      });
+      enc.configure(config);
+      const keyEvery = Math.max(1, Math.round((o.keyInterval || 2) * fps));
+      seq.reset();
+      for (let i = 0; i < total; i++) {
+        if (failure) throw failure;
+        if (o.signal && o.signal.aborted) break;
+        const c = await frameCanvas(seq, i / fps, fo, { frame: i, frames: total });
+        const frame = new VideoFrame(c, { timestamp: Math.round(i * 1e6 / fps),
+                                          duration: Math.round(1e6 / fps) });
+        enc.encode(frame, { keyFrame: i % keyEvery === 0 });
+        frame.close();
+        while (enc.encodeQueueSize > 2) await new Promise(function (r) { setTimeout(r, 1); });
+        if (o.onProgress) o.onProgress(i + 1, total);
+      }
+      await enc.flush();
+      enc.close();
+      if (failure) throw failure;
+      if (!avcC) throw new Error('recordMp4: the encoder gave no decoder configuration');
+      for (let i = 1; i < samples.length; i++) {
+        if (samples[i].ts <= samples[i - 1].ts) throw new Error('recordMp4: reordered frames are not supported');
+      }
+      return new Blob([muxMp4(samples, avcC, width, height, fps)], { type: 'video/mp4' });
+    }
+
     // Real-time capture of the canvas while the sequence plays. Resolves to a
     // video Blob (WebM by default). Quality follows the canvas size, so size
     // the canvas to the output first (e.g. 1920 × 1080 CSS px at dpr 1).
@@ -551,6 +696,7 @@
       frames: frames,
       recordFrames: recordFrames,
       recordVideo: recordVideo,
+      recordMp4: recordMp4,
       lookFrom: lookFrom,
       frameBox: frameBox,
       interpolate: interpolate,
