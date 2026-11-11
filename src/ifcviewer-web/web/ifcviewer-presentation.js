@@ -389,10 +389,81 @@
 
     // ---- Capture ---------------------------------------------------------
 
+    // One frame of a sequence at time t as a 2D canvas: seek, let it settle,
+    // snapshot (o.width, o.height, o.scale, o.samples, o.timeoutMs), then
+    // o.overlay(ctx, info) draws on top. info: { t, frame, frames, shot, u,
+    // width, height }. Used by recordFrames and recordMp4.
+    async function frameCanvas(seq, t, o, info) {
+      const st = seq.seek(t);
+      await frames(o.settleFrames || 2);
+      const blob = await viewer.snapshot({ width: o.width, height: o.height, scale: o.scale,
+                                           samples: o.samples, timeoutMs: o.timeoutMs || 30000 });
+      const bm = await createImageBitmap(blob);
+      const c = typeof OffscreenCanvas !== 'undefined'
+        ? new OffscreenCanvas(bm.width, bm.height)
+        : Object.assign(document.createElement('canvas'), { width: bm.width, height: bm.height });
+      const ctx = c.getContext('2d');
+      ctx.drawImage(bm, 0, 0);
+      if (bm.close) bm.close();
+      if (o.overlay) {
+        ctx.save();
+        o.overlay(ctx, Object.assign({ t: t, shot: st.name, u: st.u, width: c.width, height: c.height }, info));
+        ctx.restore();
+      }
+      return c;
+    }
+
+    function canvasBlob(c, type, quality) {
+      if (c.convertToBlob) return c.convertToBlob({ type: type, quality: quality });
+      return new Promise(function (r) { c.toBlob(r, type, quality); });
+    }
+
+    // A caption block for overlays: title, subtitle and an optional small
+    // line above them, in a corner of the frame. Sizes follow the frame
+    // height, so the same call reads alike at 1080p and 4K.
+    //   o: { title, subtitle, kicker, corner ('bottom-left' default,
+    //        'bottom-right', 'top-left', 'top-right'), color, background,
+    //        font (a family, default Georgia, serif) }
+    function caption(ctx, o) {
+      o = o || {};
+      const W = ctx.canvas.width, H = ctx.canvas.height;
+      const u = H / 1080;
+      const pad = 28 * u, margin = 48 * u;
+      const family = o.font || 'Georgia, "Times New Roman", serif';
+      const lines = [];
+      if (o.kicker)   lines.push({ text: String(o.kicker).toUpperCase(), size: 18 * u, font: '600 ' + 18 * u + 'px system-ui, sans-serif', gap: 10 * u, alpha: 0.7 });
+      if (o.title)    lines.push({ text: String(o.title), size: 44 * u, font: 44 * u + 'px ' + family, gap: 8 * u, alpha: 1 });
+      if (o.subtitle) lines.push({ text: String(o.subtitle), size: 24 * u, font: 24 * u + 'px system-ui, sans-serif', gap: 0, alpha: 0.8 });
+      if (!lines.length) return;
+      let w = 0, h = 0;
+      lines.forEach(function (l) { ctx.font = l.font; w = Math.max(w, ctx.measureText(l.text).width); h += l.size + l.gap; });
+      const bw = w + 2 * pad, bh = h + 2 * pad;
+      const corner = o.corner || 'bottom-left';
+      const x = corner.indexOf('right') >= 0 ? W - margin - bw : margin;
+      const y = corner.indexOf('top') >= 0 ? margin : H - margin - bh;
+      ctx.fillStyle = o.background || 'rgba(20, 18, 16, 0.55)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x, y, bw, bh, 10 * u); else ctx.rect(x, y, bw, bh);
+      ctx.fill();
+      ctx.fillStyle = o.color || '#ffffff';
+      ctx.textBaseline = 'top';
+      let cy = y + pad;
+      lines.forEach(function (l) {
+        ctx.font = l.font;
+        ctx.globalAlpha = l.alpha;
+        ctx.fillText(l.text, x + pad, cy);
+        cy += l.size + l.gap;
+      });
+      ctx.globalAlpha = 1;
+    }
+
     // Render every frame of a sequence through the snapshot path and hand it
     // over as a PNG (or the given type). Deterministic: frame n is seek(n/fps).
     // o.dir: a FileSystemDirectoryHandle (asked for with showDirectoryPicker
     // when omitted and available); otherwise the blobs are returned.
+    // o.samples: anti-aliasing renders per frame (see viewer.snapshot).
+    // o.overlay(ctx, info): draws captions, dates or legends onto each frame
+    // (see frameCanvas and caption).
     async function recordFrames(seq, o) {
       o = o || {};
       stop();
@@ -410,10 +481,17 @@
       seq.reset();
       for (let i = from; i < to; i++) {
         if (o.signal && o.signal.aborted) break;
-        seq.seek(i / fps);
-        await frames(o.settleFrames || 2);
-        const blob = await viewer.snapshot({ width: o.width, height: o.height, scale: o.scale, type: type,
-                                             quality: o.quality, timeoutMs: o.timeoutMs || 30000 });
+        let blob;
+        if (o.overlay) {
+          const c = await frameCanvas(seq, i / fps, o, { frame: i, frames: total });
+          blob = await canvasBlob(c, type, o.quality);
+        } else {
+          seq.seek(i / fps);
+          await frames(o.settleFrames || 2);
+          blob = await viewer.snapshot({ width: o.width, height: o.height, scale: o.scale, type: type,
+                                         quality: o.quality, samples: o.samples,
+                                         timeoutMs: o.timeoutMs || 30000 });
+        }
         if (dir) {
           const fh = await dir.getFileHandle(prefix + String(i).padStart(5, '0') + ext, { create: true });
           const w = await fh.createWritable();
@@ -468,6 +546,8 @@
       explode: explode,
       tint: tint,
       schedule: schedule,
+      caption: caption,
+      frameCanvas: frameCanvas,
       frames: frames,
       recordFrames: recordFrames,
       recordVideo: recordVideo,
