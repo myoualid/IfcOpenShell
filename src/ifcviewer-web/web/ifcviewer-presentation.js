@@ -379,6 +379,59 @@
       return function () { cancelAnimationFrame(raf); };
     }
 
+    // ---- Camera paths ----------------------------------------------------
+
+    // A shot that flies a smooth curve through several cameras instead of a
+    // straight eased move: a Catmull-Rom spline through each key's target,
+    // yaw (the short way round), pitch, field of view and log frame size,
+    // so the speed carries through the keys without stopping. Keys are full
+    // cameras (getCamera(), P.lookFrom, P.frameBox); a key's `at` (0..1)
+    // places it in the shot, otherwise they are evenly spaced. `o` is any
+    // shot option (duration, ease (default inOutSine), enter, update, ...).
+    // The shot ends on the last key, so the next shot starts there.
+    function path(keys, o) {
+      o = o || {};
+      if (!keys || keys.length < 2) throw new Error('path: needs at least two cameras');
+      const k = [];
+      keys.forEach(function (c, i) { k.push(merge(i ? k[i - 1] : c, c)); });
+      for (let i = 1; i < k.length; i++) k[i].yaw = k[i - 1].yaw + wrap180(k[i].yaw - k[i - 1].yaw);
+      const n = k.length;
+      const at = keys.map(function (c, i) { return c.at !== undefined ? +c.at : i / (n - 1); });
+      const pts = k.map(function (c) {
+        return [c.target[0], c.target[1], c.target[2], Math.log(halfHeight(c)), c.yaw, c.pitch, c.fov];
+      });
+      const cr = function (p0, p1, p2, p3, t) {
+        const t2 = t * t, t3 = t2 * t;
+        return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t3);
+      };
+      function cameraAt(u) {
+        u = clamp01(u);
+        let i = 0;
+        while (i < n - 2 && u > at[i + 1]) i++;
+        const span = at[i + 1] - at[i];
+        const t = span > 0 ? clamp01((u - at[i]) / span) : 1;
+        const a = pts[Math.max(i - 1, 0)], b = pts[i], c = pts[i + 1], d = pts[Math.min(i + 2, n - 1)];
+        const v = b.map(function (_, j) { return cr(a[j], b[j], c[j], d[j], t); });
+        const fov = Math.max(1, Math.min(120, v[6]));
+        return {
+          target: [v[0], v[1], v[2]],
+          fov: fov,
+          distance: Math.exp(v[3]) / Math.tan(fov * 0.5 * D2R),
+          yaw: v[4],
+          pitch: Math.max(-89.9, Math.min(89.9, v[5])),
+        };
+      }
+      const own = o.update;
+      return Object.assign({ name: 'path', duration: 8, ease: 'inOutSine' }, o, {
+        camera: k[n - 1],
+        cameraAt: cameraAt,
+        update: function (v, u, ctx, raw) {
+          apply(cameraAt(u));
+          if (own) own(v, u, ctx, raw);
+        },
+      });
+    }
+
     // ---- Scene helpers (call from enter/update) --------------------------
 
     // Lift federated models apart: model i moves up by i × gap × u (federation
@@ -687,6 +740,7 @@
       play: play,
       stop: stop,
       flyTo: flyTo,
+      path: path,
       turntable: turntable,
       explode: explode,
       tint: tint,
