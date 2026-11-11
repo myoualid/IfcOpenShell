@@ -94,16 +94,21 @@ bool ViewportCore::buildShadowPipeline() {
     // is drawn.
     ensureShadowTexture(1);
 
-    // The shadow pass only reads the frame uniform, and must not bind the map
-    // it renders into, so it has its own one-entry frame layout.
-    WGPUBindGroupLayoutEntry e = {};
-    e.binding    = 0;
-    e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-    e.buffer.type = WGPUBufferBindingType_Uniform;
-    e.buffer.minBindingSize = sizeof(FrameUniforms);
+    // The shadow pass reads the frame uniform and the per-object animation
+    // state, and must not bind the map it renders into, so it has its own
+    // frame layout. Its bind group is built with the main one
+    // (buildFrameBindGroup), since both follow the object-state buffer.
+    WGPUBindGroupLayoutEntry e[2] = {};
+    e[0].binding    = 0;
+    e[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    e[0].buffer.type = WGPUBufferBindingType_Uniform;
+    e[0].buffer.minBindingSize = sizeof(FrameUniforms);
+    e[1].binding    = 1;
+    e[1].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    e[1].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
     WGPUBindGroupLayoutDescriptor bgl = {};
-    bgl.entryCount = 1;
-    bgl.entries    = &e;
+    bgl.entryCount = 2;
+    bgl.entries    = e;
     bgl.label      = shadowLabel("ifcviewer-wgpu.shadow_frame_bgl");
     shadow_frame_bgl_ = wgpuDeviceCreateBindGroupLayout(device_, &bgl);
 
@@ -113,17 +118,6 @@ bool ViewportCore::buildShadowPipeline() {
     pl.bindGroupLayouts     = layouts;
     pl.label                = shadowLabel("ifcviewer-wgpu.shadow_pipeline_layout");
     shadow_pipeline_layout_ = wgpuDeviceCreatePipelineLayout(device_, &pl);
-
-    WGPUBindGroupEntry be = {};
-    be.binding = 0;
-    be.buffer  = frame_uniform_buffer_;
-    be.size    = sizeof(FrameUniforms);
-    WGPUBindGroupDescriptor bgd = {};
-    bgd.layout     = shadow_frame_bgl_;
-    bgd.entryCount = 1;
-    bgd.entries    = &be;
-    bgd.label      = shadowLabel("ifcviewer-wgpu.shadow_frame_bind_group");
-    shadow_frame_bind_group_ = wgpuDeviceCreateBindGroup(device_, &bgd);
 
     WGPUFragmentState frag = {};
     frag.module      = main_shader_module_;
@@ -312,7 +306,7 @@ void ViewportCore::updateShadowState() {
 
 void ViewportCore::encodeShadowPassIfDirty(WGPUCommandEncoder enc) {
     if (!shadow_settings_.enabled || !shadow_pipeline_ || !shadow_dirty_
-        || shadow_size_ <= 1) {
+        || shadow_size_ <= 1 || !shadow_frame_bind_group_) {
         return;
     }
     shadow_dirty_ = false;

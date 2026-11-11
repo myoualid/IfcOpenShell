@@ -1201,6 +1201,17 @@ public:
     // Same upload path as setObjectsColor.
     void setObjectsMaterial(const std::vector<std::uint32_t>& object_ids, std::uint32_t material);
     void clearObjectMaterials();
+
+    // Move objects by a world offset (metres) without touching their
+    // placement: an animation aid (an element lowered into place, a storey
+    // lifted apart). Held per object id in a GPU buffer the vertex shaders
+    // add, so moving thousands of objects every frame costs one buffer
+    // write, not an instance re-upload. Culling, picking and the shadow fit
+    // still use the unmoved bounds, so keep offsets modest or frame the
+    // moved result yourself.
+    void setObjectsOffset(const std::vector<std::uint32_t>& object_ids,
+                          float dx, float dy, float dz);
+    void clearObjectOffsets();
     // Global X-ray: translucent everything. Flips the frame uniform's alpha cap;
     // the cull classifier routes every instance through the transparent pass.
     void toggleXray();
@@ -1820,6 +1831,16 @@ private:
     void buildFrameBindGroup();
     WGPUBuffer    selection_flags_buffer_   = nullptr;
     uint32_t      selection_flags_capacity_ = 0;  // u32 entries
+
+    // Per-object animation state, indexed by object id like the selection
+    // flags and sized with them. Must match the WGSL ObjectState.
+    struct ObjectStateGpu {
+        float offset[4];   // xyz = world offset (metres)
+    };
+    WGPUBuffer                  object_state_buffer_ = nullptr;
+    std::vector<ObjectStateGpu> object_state_;
+    bool                        object_state_dirty_  = false;
+    void flushObjectState();
     std::vector<uint32_t> selection_flags_scratch_;
 
     // X-ray marquee hit bits: one bit per object_id, written by fs_boxpick and

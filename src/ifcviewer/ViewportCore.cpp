@@ -1084,6 +1084,18 @@ struct PerModel {
 // only, because WebGPU forbids a read_write storage buffer in the vertex stage.
 @group(0) @binding(2) var<storage, read_write> hit_flags: array<atomic<u32>>;
 
+// Per-object animation state, indexed by object id (setObjectsOffset).
+struct ObjectState {
+    offset: vec4<f32>,
+};
+@group(0) @binding(5) var<storage, read> object_state: array<ObjectState>;
+
+// World position after the object's animation offset.
+fn animatedWorld(object_id: u32, world: vec3<f32>) -> vec3<f32> {
+    if (object_id >= arrayLength(&object_state)) { return world; }
+    return world + object_state[object_id].offset.xyz;
+}
+
 // Sun shadow map (a 1x1 placeholder while shadows are off) and its
 // comparison sampler. Bilinear comparison gives each tap a smooth edge.
 @group(0) @binding(3) var shadow_map: texture_depth_2d;
@@ -1209,7 +1221,7 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
     let b = f32((w2 >> 16u) & 0xFFu) / 255.0;
     let a = f32((w2 >> 24u) & 0xFFu) / 255.0;
 
-    let world4 = inst.transform * vec4<f32>(pos_local, 1.0);
+    let world4 = vec4<f32>(animatedWorld(inst.object_id, (inst.transform * vec4<f32>(pos_local, 1.0)).xyz), 1.0);
 
     var color = vec4<f32>(r, g, b, a);
     var has_override = 0u;
@@ -1466,7 +1478,7 @@ fn vs_pick(@builtin(vertex_index) vid: u32) -> VsOutPick {
         f32(w1 & 0xFFFFu)          / 65535.0,
     );
     let pos_local = mix(mq.aabb_min.xyz, mq.aabb_max.xyz, pos_norm);
-    let world4    = inst.transform * vec4<f32>(pos_local, 1.0);
+    let world4    = vec4<f32>(animatedWorld(inst.object_id, (inst.transform * vec4<f32>(pos_local, 1.0)).xyz), 1.0);
 
     out.clip_pos  = u_frame.view_proj * world4;
     out.object_id = inst.object_id;
@@ -1529,7 +1541,8 @@ fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
         f32((w0 >> 16u) & 0xFFFFu) / 65535.0,
         f32(w1 & 0xFFFFu)          / 65535.0,
     );
-    let world4 = inst.transform * vec4<f32>(mix(mq.aabb_min.xyz, mq.aabb_max.xyz, pos_norm), 1.0);
+    let world4 = vec4<f32>(animatedWorld(inst.object_id,
+        (inst.transform * vec4<f32>(mix(mq.aabb_min.xyz, mq.aabb_max.xyz, pos_norm), 1.0)).xyz), 1.0);
     out.clip_pos  = u_frame.light_view_proj * world4;
     out.world_pos = world4.xyz;
     return out;
@@ -1621,7 +1634,7 @@ fn fs_sky(in: VsOutSky) -> @location(0) vec4<f32> {
 
 bool ViewportCore::buildPipelines() {
     // ---- Bind group layouts ----------------------------------------------
-    WGPUBindGroupLayoutEntry frame_entries[5] = {};
+    WGPUBindGroupLayoutEntry frame_entries[6] = {};
     frame_entries[0].binding = 0;
     frame_entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     frame_entries[0].buffer.type = WGPUBufferBindingType_Uniform;
@@ -1642,9 +1655,13 @@ bool ViewportCore::buildPipelines() {
     frame_entries[4].binding = 4;
     frame_entries[4].visibility = WGPUShaderStage_Fragment;
     frame_entries[4].sampler.type = WGPUSamplerBindingType_Comparison;
+    // Per-object animation state (offsets), read by every vertex stage.
+    frame_entries[5].binding = 5;
+    frame_entries[5].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    frame_entries[5].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
 
     WGPUBindGroupLayoutDescriptor frame_bgl_desc = {};
-    frame_bgl_desc.entryCount = 5;
+    frame_bgl_desc.entryCount = 6;
     frame_bgl_desc.entries    = frame_entries;
     frame_bgl_desc.label      = svFromCStr("ifcviewer-wgpu.frame_bgl");
     frame_bgl_ = wgpuDeviceCreateBindGroupLayout(device_, &frame_bgl_desc);
@@ -1878,6 +1895,19 @@ void ViewportCore::ensureSelectionFlagsBuffer() {
                  | WGPUBufferUsage_CopySrc;
         hb.label = svFromCStr("ifcviewer-wgpu.xray_hit_flags");
         hit_flags_buffer_ = wgpuDeviceCreateBuffer(device_, &hb);
+
+        // Per-object animation state, same capacity; contents carried over.
+        if (object_state_buffer_) {
+            wgpuBufferRelease(object_state_buffer_);
+            object_state_buffer_ = nullptr;
+        }
+        object_state_.resize(new_cap, ObjectStateGpu{});
+        WGPUBufferDescriptor ob = {};
+        ob.size  = uint64_t(new_cap) * sizeof(ObjectStateGpu);
+        ob.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+        ob.label = svFromCStr("ifcviewer-wgpu.object_state");
+        object_state_buffer_ = wgpuDeviceCreateBuffer(device_, &ob);
+        object_state_dirty_  = true;
     }
 
     // Rebuild the frame bind group against the (possibly new) buffer.
@@ -1897,11 +1927,26 @@ void ViewportCore::buildFrameBindGroup() {
         wgpuBindGroupRelease(frame_bind_group_);
         frame_bind_group_ = nullptr;
     }
+    if (shadow_frame_bind_group_) {
+        wgpuBindGroupRelease(shadow_frame_bind_group_);
+        shadow_frame_bind_group_ = nullptr;
+    }
     if (!frame_uniform_buffer_ || !selection_flags_buffer_ || !hit_flags_buffer_
-        || !shadow_view_ || !shadow_sampler_) {
+        || !shadow_view_ || !shadow_sampler_ || !object_state_buffer_) {
         return;
     }
-    WGPUBindGroupEntry fbg_entries[5] = {};
+    if (shadow_frame_bgl_) {
+        WGPUBindGroupEntry se[2] = {};
+        se[0].binding = 0; se[0].buffer = frame_uniform_buffer_; se[0].size = sizeof(FrameUniforms);
+        se[1].binding = 1; se[1].buffer = object_state_buffer_;  se[1].size = WGPU_WHOLE_SIZE;
+        WGPUBindGroupDescriptor sd = {};
+        sd.layout     = shadow_frame_bgl_;
+        sd.entryCount = 2;
+        sd.entries    = se;
+        sd.label      = svFromCStr("ifcviewer-wgpu.shadow_frame_bind_group");
+        shadow_frame_bind_group_ = wgpuDeviceCreateBindGroup(device_, &sd);
+    }
+    WGPUBindGroupEntry fbg_entries[6] = {};
     fbg_entries[0].binding = 0;
     fbg_entries[0].buffer  = frame_uniform_buffer_;
     fbg_entries[0].size    = sizeof(FrameUniforms);
@@ -1915,12 +1960,22 @@ void ViewportCore::buildFrameBindGroup() {
     fbg_entries[3].textureView = shadow_view_;
     fbg_entries[4].binding = 4;
     fbg_entries[4].sampler = shadow_sampler_;
+    fbg_entries[5].binding = 5;
+    fbg_entries[5].buffer  = object_state_buffer_;
+    fbg_entries[5].size    = WGPU_WHOLE_SIZE;
     WGPUBindGroupDescriptor fbg_desc = {};
     fbg_desc.layout     = frame_bgl_;
-    fbg_desc.entryCount = 5;
+    fbg_desc.entryCount = 6;
     fbg_desc.entries    = fbg_entries;
     fbg_desc.label      = svFromCStr("ifcviewer-wgpu.frame_bind_group");
     frame_bind_group_ = wgpuDeviceCreateBindGroup(device_, &fbg_desc);
+}
+
+void ViewportCore::flushObjectState() {
+    if (!object_state_dirty_ || !object_state_buffer_ || object_state_.empty()) return;
+    wgpuQueueWriteBuffer(queue_, object_state_buffer_, 0, object_state_.data(),
+                         object_state_.size() * sizeof(ObjectStateGpu));
+    object_state_dirty_ = false;
 }
 
 void ViewportCore::uploadSelectionFlagsIfDirty() {
@@ -2036,6 +2091,7 @@ void ViewportCore::updateFrameUniforms() {
 
     last_frame_uniforms_ = u;
     wgpuQueueWriteBuffer(queue_, frame_uniform_buffer_, 0, &u, sizeof(u));
+    flushObjectState();
 }
 
 // ===========================================================================
@@ -2696,6 +2752,7 @@ void ViewportCore::shutdown() {
 
     if (frame_bind_group_)        { wgpuBindGroupRelease(frame_bind_group_);          frame_bind_group_ = nullptr; }
     if (frame_uniform_buffer_)    { wgpuBufferRelease(frame_uniform_buffer_);         frame_uniform_buffer_ = nullptr; }
+    if (object_state_buffer_)  { wgpuBufferRelease(object_state_buffer_); object_state_buffer_ = nullptr; }
     if (selection_flags_buffer_)  { wgpuBufferRelease(selection_flags_buffer_);       selection_flags_buffer_ = nullptr; }
     selection_flags_capacity_ = 0;
     if (hit_flags_buffer_)        { wgpuBufferRelease(hit_flags_buffer_);             hit_flags_buffer_ = nullptr; }
@@ -7135,6 +7192,32 @@ void ViewportCore::setObjectsMaterial(const std::vector<std::uint32_t>& object_i
         }
         if (touched) uploadInstanceRecords(m);
     }
+    host_->requestFrame();
+}
+
+void ViewportCore::setObjectsOffset(const std::vector<std::uint32_t>& object_ids,
+                                    float dx, float dy, float dz) {
+    bool changed = false;
+    for (std::uint32_t id : object_ids) {
+        if (id >= object_state_.size()) continue;
+        float* o = object_state_[id].offset;
+        if (o[0] == dx && o[1] == dy && o[2] == dz) continue;
+        o[0] = dx; o[1] = dy; o[2] = dz;
+        changed = true;
+    }
+    if (!changed) return;
+    object_state_dirty_ = true;
+    // The shadow map holds the old positions; the cull does not depend on it.
+    shadow_dirty_ = true;
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
+void ViewportCore::clearObjectOffsets() {
+    for (ObjectStateGpu& s : object_state_) s.offset[0] = s.offset[1] = s.offset[2] = 0.0f;
+    object_state_dirty_ = true;
+    shadow_dirty_ = true;
+    line_accum_count_ = 0;
     host_->requestFrame();
 }
 

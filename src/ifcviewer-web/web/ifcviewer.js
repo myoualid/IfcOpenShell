@@ -1595,6 +1595,17 @@
       },
       clearMaterials: function () { Module._ifcv_clear_materials_c(); },
 
+      // Move objects by a world offset [dx, dy, dz] in metres (null = back in
+      // place) without changing their placement. Cheap enough to call every
+      // frame for many objects. Culling and picking keep the unmoved bounds.
+      setOffset: function (x, offset) {
+        const o = offset || [0, 0, 0];
+        withIdArray(resolveIds(x), function (ptr, n) {
+          Module._ifcv_set_offset_c(ptr, n, +o[0] || 0, +o[1] || 0, +o[2] || 0);
+        });
+      },
+      clearOffsets: function () { Module._ifcv_clear_offsets_c(); },
+
       // ---- Scene -----------------------------------------------------------
 
       // Drops every model. The element table goes with them, so GlobalIds stop

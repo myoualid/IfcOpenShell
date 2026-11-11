@@ -1112,6 +1112,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_material_c(const std::uint32_t* id
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_clear_materials_c() {
     if (g_app && g_app->ready) g_app->core.clearObjectMaterials();
 }
+// World offset in metres; see ViewportCore::setObjectsOffset.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_offset_c(const std::uint32_t* ids, int n,
+                                                       float dx, float dy, float dz) {
+    if (!g_app || !g_app->ready) return;
+    g_app->core.setObjectsOffset(idsFrom(ids, n), dx, dy, dz);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_clear_offsets_c() {
+    if (g_app && g_app->ready) g_app->core.clearObjectOffsets();
+}
 
 // ---- Federation ---------------------------------------------------------
 //
