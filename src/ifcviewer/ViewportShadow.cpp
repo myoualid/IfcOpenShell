@@ -103,7 +103,7 @@ bool ViewportCore::buildShadowPipeline() {
     e[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     e[0].buffer.type = WGPUBufferBindingType_Uniform;
     e[0].buffer.minBindingSize = sizeof(FrameUniforms);
-    e[1].binding    = 1;
+    e[1].binding    = 5;   // object_state, as the main frame layout numbers it
     e[1].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     e[1].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
     WGPUBindGroupLayoutDescriptor bgl = {};
