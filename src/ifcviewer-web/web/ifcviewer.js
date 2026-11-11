@@ -1077,6 +1077,7 @@
             pitch:    f[5],   // degrees above the XY plane, clamped to ±89.9
             eye:      [f[6], f[7], f[8]],
             ortho:    Module._projection_is_ortho_c() !== 0,
+            fov:      Module._ifcv_get_fov_c(),  // vertical, degrees
           };
         } finally {
           Module._free(ptr);
@@ -1094,7 +1095,28 @@
           c.distance !== undefined ? c.distance : cur.distance,
           c.yaw      !== undefined ? c.yaw      : cur.yaw,
           c.pitch    !== undefined ? c.pitch    : cur.pitch);
+        if (c.fov !== undefined) Module._ifcv_set_fov_c(+c.fov);
         if (c.ortho !== undefined) Module._ifcv_set_ortho_c(c.ortho ? 1 : 0);
+      },
+
+      // Vertical field of view in degrees (default 45, clamped to 1..120). A
+      // long lens (small fov, large distance) reads almost orthographic, so
+      // animating fov and distance together moves smoothly between an
+      // axonometric overview and an eye-level perspective.
+      getFov: function () { return Module._ifcv_get_fov_c(); },
+      setFov: function (deg) { Module._ifcv_set_fov_c(+deg); },
+
+      // The canvas the viewer draws into (for captureStream and overlays).
+      canvas: function () { return opts.canvas; },
+
+      // Run cb(viewer) once per animation frame, after the frame is drawn.
+      // Returns a function that removes the listener.
+      onFrame: function (cb) {
+        frameListeners.push(cb);
+        return function () {
+          const i = frameListeners.indexOf(cb);
+          if (i >= 0) frameListeners.splice(i, 1);
+        };
       },
 
       // ---- Background ------------------------------------------------------
