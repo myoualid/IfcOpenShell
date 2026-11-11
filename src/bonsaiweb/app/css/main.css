@@ -1334,3 +1334,337 @@ body {
 		display: none;
 	}
 }
+
+
+/* Schedule sheets (bim.sequence): a toolbar, a summary line, and a tree
+   grid whose header stays put while the rows scroll. In the bottom dock
+   every element down to the sheet is pinned to the dock height, as for the
+   terminal, so only the rows scroll. */
+#WorkspaceBottom:has(.bonsai-sheet) {
+	overflow: hidden;
+}
+
+#WorkspaceBottom *:has(.bonsai-sheet):not(.collapsed, .collapsed > .PanelContent) {
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.bonsai-sheet {
+	container-type: inline-size;
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+	font-size: var(--dui-font-size-sm);
+}
+
+.bonsai-sheet-toolbar {
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--dui-space-2);
+	padding: var(--dui-space-2) var(--dui-space-2) var(--dui-space-1);
+}
+
+.bonsai-sheet-toolbar .InputDropdown {
+	max-width: 18rem;
+	min-width: 9rem;
+}
+
+.bonsai-sheet-toolbar .InputSearch {
+	flex: 1 1 10rem;
+	max-width: 20rem;
+	min-width: 7rem;
+}
+
+.bonsai-sheet-toolbar .Operator {
+	border-radius: var(--dui-radius);
+	color: var(--dui-color-text-muted);
+	cursor: pointer;
+	padding: 2px;
+}
+
+.bonsai-sheet-toolbar .Operator:hover {
+	color: var(--dui-color-text);
+}
+
+.bonsai-sheet-toolbar .Operator.is-active {
+	background: var(--dui-color-accent-soft);
+	color: var(--dui-color-accent);
+}
+
+.bonsai-sheet-info {
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--dui-space-1) var(--dui-space-4);
+	padding: 0 var(--dui-space-3) var(--dui-space-2);
+}
+
+.bonsai-sheet-summary {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+}
+
+.bonsai-sheet-status {
+	color: var(--dui-color-accent);
+	font-size: var(--dui-font-size-xs);
+}
+
+.bonsai-sheet-grid {
+	border-top: 1px solid var(--dui-color-border);
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	min-height: 0;
+	position: relative;
+}
+
+.bonsai-sheet-body {
+	flex: 1 1 0;
+	min-height: 0;
+	outline: none;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+.bonsai-sheet-body:focus-visible {
+	box-shadow: inset 0 0 0 1px var(--dui-color-focus, var(--dui-color-accent));
+}
+
+.bonsai-sheet-row {
+	align-items: center;
+	border-bottom: 1px solid var(--dui-color-separator, var(--dui-color-border));
+	box-sizing: border-box;
+	cursor: default;
+	display: grid;
+	grid-template-columns: var(--sheet-columns);
+	min-height: 1.75rem;
+}
+
+.bonsai-sheet-body .bonsai-sheet-row:hover {
+	background: var(--dui-color-surface-hover);
+}
+
+.bonsai-sheet-row.is-linked {
+	background: var(--dui-color-accent-soft);
+}
+
+.bonsai-sheet-body .bonsai-sheet-row.is-active {
+	background: var(--dui-color-surface-selected);
+	box-shadow: inset 2px 0 0 var(--dui-color-accent);
+}
+
+.bonsai-sheet-header {
+	background: var(--dui-color-surface-raised);
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+	font-weight: 600;
+	min-height: 1.6rem;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+/* gui.css sizes every span; cells and labels follow their row instead. */
+.bonsai-sheet-cell,
+.bonsai-sheet-label,
+.SequenceGantt-tick,
+.SequenceTasks-name {
+	font-size: inherit;
+}
+
+.bonsai-sheet-cell {
+	box-sizing: border-box;
+	min-width: 0;
+	overflow: hidden;
+	padding: 0 var(--dui-space-2);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bonsai-sheet-cell.is-code {
+	color: var(--dui-color-text-muted);
+	font-family: var(--dui-font-mono);
+	font-size: var(--dui-font-size-xs);
+}
+
+.bonsai-sheet-cell.is-name {
+	align-items: center;
+	display: flex;
+	gap: 2px;
+	padding-left: calc(var(--dui-space-1) + var(--depth, 0) * 1rem);
+}
+
+.bonsai-sheet-row.is-summary .bonsai-sheet-label {
+	font-weight: 600;
+}
+
+.bonsai-sheet-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.bonsai-sheet-toggle {
+	color: var(--dui-color-text-muted);
+	cursor: pointer;
+	flex: 0 0 1.1rem;
+	font-size: 1.1rem;
+	text-align: center;
+	user-select: none;
+}
+
+.bonsai-sheet-toggle:hover {
+	color: var(--dui-color-text);
+}
+
+.bonsai-sheet-cell.is-date,
+.bonsai-sheet-cell.is-duration,
+.bonsai-sheet-cell.is-number {
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+
+.bonsai-sheet-cell.is-derived {
+	color: var(--dui-color-text-muted);
+	font-style: italic;
+}
+
+.bonsai-sheet-empty {
+	color: var(--dui-color-text-muted);
+	padding: var(--dui-space-4);
+	text-align: center;
+}
+
+.bonsai-sheet-empty[hidden] {
+	display: none;
+}
+
+/* Gantt: code, task, start, finish, duration, then the timeline. */
+.SequenceGantt {
+	--sheet-columns: 6.5rem minmax(11rem, 1.5fr) 5.25rem 5.25rem 3.5rem minmax(14rem, 3fr);
+}
+
+.SequenceGantt-track {
+	align-self: stretch;
+	border-left: 1px solid var(--dui-color-border);
+	overflow: visible;
+	padding: 0;
+	position: relative;
+}
+
+.SequenceGantt.has-today .bonsai-sheet-body .SequenceGantt-track::after {
+	border-left: 1px dashed var(--dui-color-danger);
+	bottom: 0;
+	content: '';
+	left: var(--today);
+	opacity: 0.7;
+	position: absolute;
+	top: 0;
+}
+
+.SequenceGantt-tick {
+	border-left: 1px solid var(--dui-color-border);
+	bottom: 0;
+	padding-left: 3px;
+	position: absolute;
+	text-transform: none;
+	top: 0;
+	white-space: nowrap;
+	line-height: 1.6rem;
+	font-weight: 400;
+}
+
+.SequenceGantt-bar {
+	background: var(--dui-color-accent);
+	border-radius: 3px;
+	height: 0.8rem;
+	overflow: hidden;
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+}
+
+.SequenceGantt-row.is-critical .SequenceGantt-bar {
+	background: var(--dui-color-danger);
+}
+
+.SequenceGantt-bar.is-summary {
+	background: var(--dui-color-text-muted);
+	border-radius: 1px;
+	height: 0.35rem;
+}
+
+.SequenceGantt-progress {
+	background: rgba(0, 0, 0, 0.3);
+	bottom: 0;
+	left: 0;
+	position: absolute;
+	top: 0;
+}
+
+.SequenceGantt-milestone {
+	background: var(--dui-color-warning);
+	height: 0.7rem;
+	position: absolute;
+	top: 50%;
+	transform: translate(-50%, -50%) rotate(45deg);
+	width: 0.7rem;
+}
+
+.SequenceGantt-flag {
+	color: var(--dui-color-warning);
+	flex: 0 0 auto;
+	font-size: 0.95rem;
+}
+
+.SequenceGantt-row.is-unassigned .bonsai-sheet-label {
+	color: var(--dui-color-text-muted);
+}
+
+@container (max-width: 44rem) {
+	.SequenceGantt {
+		--sheet-columns: minmax(9rem, 1.4fr) 5.25rem minmax(10rem, 2fr);
+	}
+
+	.SequenceGantt .is-code,
+	.SequenceGantt .is-finish,
+	.SequenceGantt .is-duration {
+		display: none;
+	}
+}
+
+/* Element tasks (right): the tasks that build or use the picked element. */
+.SequenceTasks-title {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+}
+
+.SequenceTasks-list {
+	gap: 2px;
+}
+
+.SequenceTasks-item {
+	border-radius: var(--dui-radius);
+	cursor: pointer;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: var(--dui-space-1) var(--dui-space-2);
+}
+
+.SequenceTasks-item:hover,
+.SequenceTasks-item:focus-visible {
+	background: var(--dui-color-surface-hover);
+	outline: none;
+}
+
+.SequenceTasks-schedule,
+.SequenceTasks-empty {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+}

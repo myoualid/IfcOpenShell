@@ -24,7 +24,7 @@ src/
     <id>/operators.js   operator classes for one module
     <id>/ui.js          panel classes for one module
     viewer/events.js    viewer picks, selection changes and model loads → signals
-  tool/                 Ifc, Loader, Federation, Element, Pset, Scene, Terminal, Viewer
+  tool/                 Ifc, Loader, Federation, Element, Pset, Scene, Sequence, Terminal, Viewer
   pipeline/             convert worker, zip, .ifcview sidecar writer
   util/log.js           timestamped logger
 vendor/                 gitignored local copies; the page loads its dependencies from jsDelivr
@@ -142,6 +142,7 @@ Operators and panels receive that object, and panels may hang their own state on
 | `Ifc` | The model list, view versus edit, the live file, the entity for a pick. |
 | `Element` | Scalar attributes and display names. |
 | `Pset` | Property sets and quantity sets, with type inheritance, formatted for a table cell. |
+| `Sequence` | Work schedules, task rows with derived dates, and the products a task builds or uses. Calls `ifcopenshell/util/sequence` from the local ifcopenshell build. |
 | `Terminal` | In-memory JavaScript REPL sessions. |
 
 `Element` and `Pset` need an edit-mode entity. In view mode the properties panel uses the strings on the viewer pick instead.
@@ -185,6 +186,7 @@ A panel class has a static `id` (the module id) and a static `spec` (group, posi
 | `properties` | None. The panel follows the selection. | Right: attributes, relationships, psets, qtos |
 | `viewer` | Camera, navigation, visibility, colour, federation | None. The ribbon and other modules call these. |
 | `code.terminal` | Show, new session, clear, close session | Bottom: a JavaScript REPL |
+| `bim.sequence` | Panel toggles, schedules, tasks, tasks for a pick, select a task's products | Bottom: a Gantt of one work schedule. Right: the tasks that build or use the picked element |
 
 Addons are modules that live outside the package. `configuration.app.Addons` lists them as `{ id, operators, ui, ribbon }`. `src/addons.js` registers their operators from `new Bonsai`, and `Shell` merges their ribbon into its configuration and mounts their panels after the built-in ones. See [api-structure.md](api-structure.md#addons).
 
