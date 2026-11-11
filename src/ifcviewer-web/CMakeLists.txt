@@ -156,6 +156,8 @@ set_property(TARGET IfcViewerWeb APPEND
 #   /index.html         links to all three
 set(IFCVIEWERWEB_STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/web/ifcviewer.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/web/ifcviewer-presentation.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/web/presentation.html"
     "${CMAKE_CURRENT_SOURCE_DIR}/web/IfcViewerWeb.html"
     "${CMAKE_CURRENT_SOURCE_DIR}/web/embedded.html"
     "${CMAKE_CURRENT_SOURCE_DIR}/web/scripting.html"
