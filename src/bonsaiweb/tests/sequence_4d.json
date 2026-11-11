@@ -1,0 +1,149 @@
+{
+	"schedules": [
+		{
+			"id": 15,
+			"name": "Construction",
+			"roots": [
+				17
+			],
+			"tasks": [
+				{
+					"id": 17,
+					"name": "Construction",
+					"identification": "C",
+					"nested": [
+						19,
+						26,
+						28,
+						30
+					],
+					"start": "2024-01-08T08:00:00",
+					"finish": "2024-02-12T09:00:00",
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": [
+						"0gg8idUo16XBDHYF7M08B7",
+						"13JK5N$1D2eRwTdlf8UT4N",
+						"2H6i3hDFP3DxwfpS8Y3v_U"
+					]
+				},
+				{
+					"id": 19,
+					"name": "Shell",
+					"identification": "C.1",
+					"nested": [
+						21,
+						24
+					],
+					"start": "2024-01-08T08:00:00",
+					"finish": "2024-01-26T17:00:00",
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": [
+						"0gg8idUo16XBDHYF7M08B7",
+						"13JK5N$1D2eRwTdlf8UT4N"
+					]
+				},
+				{
+					"id": 21,
+					"name": "Excavation",
+					"identification": "C.1.1",
+					"nested": [],
+					"start": "2024-01-08T08:00:00",
+					"finish": "2024-01-12T17:00:00",
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": []
+				},
+				{
+					"id": 24,
+					"name": "Walls",
+					"identification": "C.1.2",
+					"nested": [],
+					"start": "2024-01-15T08:00:00",
+					"finish": "2024-01-26T17:00:00",
+					"outputs": [
+						"0gg8idUo16XBDHYF7M08B7",
+						"13JK5N$1D2eRwTdlf8UT4N"
+					],
+					"inputs": [],
+					"deepOutputs": [
+						"0gg8idUo16XBDHYF7M08B7",
+						"13JK5N$1D2eRwTdlf8UT4N"
+					]
+				},
+				{
+					"id": 26,
+					"name": "Roof",
+					"identification": "C.2",
+					"nested": [],
+					"start": "2024-01-29T08:00:00",
+					"finish": "2024-02-09T17:00:00",
+					"outputs": [
+						"2H6i3hDFP3DxwfpS8Y3v_U"
+					],
+					"inputs": [
+						"0gg8idUo16XBDHYF7M08B7"
+					],
+					"deepOutputs": [
+						"2H6i3hDFP3DxwfpS8Y3v_U"
+					]
+				},
+				{
+					"id": 28,
+					"name": "Handover",
+					"identification": "C.3",
+					"nested": [],
+					"start": "2024-02-12T09:00:00",
+					"finish": "2024-02-12T09:00:00",
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": []
+				},
+				{
+					"id": 30,
+					"name": "Snagging",
+					"identification": "C.4",
+					"nested": [],
+					"start": null,
+					"finish": null,
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": []
+				}
+			]
+		},
+		{
+			"id": 35,
+			"name": "Fit-out",
+			"roots": [],
+			"tasks": []
+		}
+	],
+	"products": {
+		"0gg8idUo16XBDHYF7M08B7": {
+			"inputs": [
+				26
+			],
+			"outputs": [
+				24
+			]
+		},
+		"13JK5N$1D2eRwTdlf8UT4N": {
+			"inputs": [],
+			"outputs": [
+				24
+			]
+		},
+		"2H6i3hDFP3DxwfpS8Y3v_U": {
+			"inputs": [],
+			"outputs": [
+				26
+			]
+		},
+		"0adFkG8Mj1meYFMAoLrSyl": {
+			"inputs": [],
+			"outputs": []
+		}
+	}
+}
