@@ -40,6 +40,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -96,6 +97,8 @@ struct FrameUniforms {
     float light_view_proj[16]; // world -> shadow map clip space (depth 0..1)
     float shadow_params[4];    // x = on (0/1), y = strength, z = 1 / map size, w = softness (texels)
     float shadow_bias[4];      // x = normal offset (world units), y = depth bias
+    float ground_params[4];    // x = on (0/1), y = height (z), z = radius, w = opacity
+    float ground_center[4];    // xy = centre of the ground disc
 };
 static_assert(sizeof(FrameUniforms)
                   == 16 * sizeof(float)
@@ -105,7 +108,7 @@ static_assert(sizeof(FrameUniforms)
                    + 4 * sizeof(float)
                    + 3 * 4 * sizeof(float)
                    + 16 * sizeof(float)
-                   + 2 * 4 * sizeof(float),
+                   + 4 * 4 * sizeof(float),
               "FrameUniforms must match WGSL layout");
 
 class ViewportCore {
@@ -435,6 +438,19 @@ public:
     };
     void setShadows(const ShadowSettings& s);
     const ShadowSettings& shadows() const { return shadow_settings_; }
+
+    // A ground that shows only the shadows falling on it: a disc under the
+    // scene, invisible except where the sun is blocked, fading out towards
+    // its rim. It blends over any background, transparent snapshots
+    // included. Drawn only while shadows are on.
+    struct GroundSettings {
+        bool  enabled = false;
+        float height  = std::numeric_limits<float>::quiet_NaN();  // z; NaN = bottom of the scene
+        float extent  = 3.0f;   // disc radius, in multiples of the scene's radius
+        float opacity = 1.0f;   // multiplies the shadow strength on the ground
+    };
+    void setGround(const GroundSettings& g);
+    const GroundSettings& ground() const { return ground_settings_; }
 
     // Frame the current selection: union the selected objects' world AABBs and
     // fit the camera to them (same 1.30 padding as the desktop "F" hotkey).
@@ -1585,6 +1601,14 @@ private:
     float               shadow_light_vp_[16]     = {};
     float               shadow_texel_world_      = 0.0f;
     float               shadow_depth_bias_       = 0.0f;
+    float               shadow_scene_min_[3]     = {};
+    float               shadow_scene_max_[3]     = {};
+    GroundSettings      ground_settings_;
+    WGPUPipelineLayout  ground_pipeline_layout_  = nullptr;
+    WGPURenderPipeline  ground_pipeline_         = nullptr;
+    // Draw the shadow-catching ground into the main pass (after the opaque
+    // geometry, before the transparent one).
+    void encodeGround(WGPURenderPassEncoder pass);
     std::vector<float>  shadow_key_;   // inputs the last map was drawn for
     bool buildShadowPipeline();
     void releaseShadowResources();

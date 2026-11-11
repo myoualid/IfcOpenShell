@@ -1279,6 +1279,25 @@
         return { azimuth: sun.azimuth, elevation: sun.elevation, direction: direction };
       },
 
+      // A ground that shows only the shadows on it (shadows must be on).
+      // `true` / `false`, or any subset of
+      //   enabled, height (z in metres; null = the bottom of the scene),
+      //   extent (radius in multiples of the scene's radius), opacity.
+      getGround: function () {
+        const v = readFloats(Module._ifcv_get_ground_c, 4);
+        return { enabled: v[0] !== 0, height: isNaN(v[1]) ? null : v[1], extent: v[2], opacity: v[3] };
+      },
+      setGround: function (o) {
+        if (typeof o === 'boolean') o = { enabled: o };
+        o = o || {};
+        const v = readFloats(Module._ifcv_get_ground_c, 4);
+        if (o.enabled !== undefined) v[0] = o.enabled ? 1 : 0;
+        if (o.height !== undefined) v[1] = o.height === null ? NaN : +o.height;
+        if (o.extent !== undefined) v[2] = +o.extent;
+        if (o.opacity !== undefined) v[3] = +o.opacity;
+        writeFloats(Module._ifcv_set_ground_c, v);
+      },
+
       getShadows: function () {
         const v = readFloats(Module._ifcv_get_shadows_c, 5);
         return { enabled: v[0] !== 0, resolution: v[1], strength: v[2], softness: v[3],

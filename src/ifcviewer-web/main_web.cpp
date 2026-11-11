@@ -975,6 +975,21 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shadows_c(float* out) {
                          sh.softness, sh.normal_bias };
     std::memcpy(out, v, sizeof(v));
 }
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_ground_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::GroundSettings& g = g_app->core.ground();
+    const float v[4] = { g.enabled ? 1.0f : 0.0f, g.height, g.extent, g.opacity };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_ground_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::GroundSettings g;
+    g.enabled = v[0] != 0.0f;
+    g.height  = v[1];
+    g.extent  = v[2];
+    g.opacity = v[3];
+    g_app->core.setGround(g);
+}
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_shadows_c(const float* v) {
     if (!g_app || !g_app->ready) return;
     ViewportCore::ShadowSettings sh;

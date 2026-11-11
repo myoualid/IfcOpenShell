@@ -57,6 +57,22 @@ void ViewportCore::setShadows(const ShadowSettings& s) {
     host_->requestFrame();
 }
 
+void ViewportCore::setGround(const GroundSettings& g) {
+    ground_settings_ = g;
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
+void ViewportCore::encodeGround(WGPURenderPassEncoder pass) {
+    if (!ground_pipeline_ || !frame_bind_group_ || !ground_settings_.enabled
+        || last_frame_uniforms_.ground_params[0] < 0.5f) {
+        return;
+    }
+    wgpuRenderPassEncoderSetPipeline(pass, ground_pipeline_);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, frame_bind_group_, 0, nullptr);
+    wgpuRenderPassEncoderDraw(pass, 6, 1, 0, 0);
+}
+
 bool ViewportCore::buildShadowPipeline() {
     if (!device_ || !main_shader_module_ || !model_bgl_ || !frame_uniform_buffer_) return false;
 
@@ -136,7 +152,51 @@ bool ViewportCore::buildShadowPipeline() {
     rp.multisample.count  = 1;
     rp.multisample.mask   = 0xFFFFFFFFu;
     shadow_pipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rp);
-    return shadow_pipeline_ != nullptr;
+    if (!shadow_pipeline_) return false;
+
+    // Shadow-catching ground: the main pass's targets, blended over, depth
+    // tested but not written so the edge pass ignores it.
+    WGPUPipelineLayoutDescriptor gpl = {};
+    gpl.bindGroupLayoutCount = 1;
+    gpl.bindGroupLayouts     = &frame_bgl_;
+    gpl.label                = shadowLabel("ifcviewer-wgpu.ground_pipeline_layout");
+    ground_pipeline_layout_ = wgpuDeviceCreatePipelineLayout(device_, &gpl);
+
+    WGPUBlendState blend = {};
+    blend.color.srcFactor = WGPUBlendFactor_SrcAlpha;
+    blend.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blend.color.operation = WGPUBlendOperation_Add;
+    blend.alpha.srcFactor = WGPUBlendFactor_One;
+    blend.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blend.alpha.operation = WGPUBlendOperation_Add;
+    WGPUColorTargetState target = {};
+    target.format    = surface_view_format_;
+    target.blend     = &blend;
+    target.writeMask = WGPUColorWriteMask_All;
+    WGPUFragmentState gfrag = {};
+    gfrag.module      = main_shader_module_;
+    gfrag.entryPoint  = shadowLabel("fs_ground");
+    gfrag.targetCount = 1;
+    gfrag.targets     = &target;
+    WGPUDepthStencilState gdepth = {};
+    gdepth.format              = WGPUTextureFormat_Depth32Float;
+    gdepth.depthWriteEnabled   = WGPUOptionalBool_False;
+    gdepth.depthCompare        = WGPUCompareFunction_Less;
+    gdepth.stencilFront.compare = WGPUCompareFunction_Always;
+    gdepth.stencilBack.compare  = WGPUCompareFunction_Always;
+    WGPURenderPipelineDescriptor grp = {};
+    grp.layout             = ground_pipeline_layout_;
+    grp.label              = shadowLabel("ifcviewer-wgpu.ground_pipeline");
+    grp.vertex.module      = main_shader_module_;
+    grp.vertex.entryPoint  = shadowLabel("vs_ground");
+    grp.fragment           = &gfrag;
+    grp.depthStencil       = &gdepth;
+    grp.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    grp.primitive.cullMode = WGPUCullMode_None;
+    grp.multisample.count  = kViewportSampleCount;
+    grp.multisample.mask   = 0xFFFFFFFFu;
+    ground_pipeline_ = wgpuDeviceCreateRenderPipeline(device_, &grp);
+    return true;
 }
 
 void ViewportCore::releaseShadowResources() {
@@ -145,6 +205,8 @@ void ViewportCore::releaseShadowResources() {
             if (c.shadow_bind_group) { wgpuBindGroupRelease(c.shadow_bind_group); c.shadow_bind_group = nullptr; }
         }
     }
+    if (ground_pipeline_)         { wgpuRenderPipelineRelease(ground_pipeline_);        ground_pipeline_ = nullptr; }
+    if (ground_pipeline_layout_)  { wgpuPipelineLayoutRelease(ground_pipeline_layout_); ground_pipeline_layout_ = nullptr; }
     if (shadow_pipeline_)         { wgpuRenderPipelineRelease(shadow_pipeline_);        shadow_pipeline_ = nullptr; }
     if (shadow_frame_bind_group_) { wgpuBindGroupRelease(shadow_frame_bind_group_);     shadow_frame_bind_group_ = nullptr; }
     if (shadow_pipeline_layout_)  { wgpuPipelineLayoutRelease(shadow_pipeline_layout_); shadow_pipeline_layout_ = nullptr; }
@@ -213,6 +275,7 @@ void ViewportCore::updateShadowState() {
         }
     }
     if (!(mn.x() <= mx.x())) { shadow_texel_world_ = 0.0f; return; }
+    for (int i = 0; i < 3; ++i) { shadow_scene_min_[i] = mn[i]; shadow_scene_max_[i] = mx[i]; }
 
     const Eigen::Vector3f centre = 0.5f * (mn + mx);
     const float radius = std::max(0.5f * (mx - mn).norm(), 0.01f);

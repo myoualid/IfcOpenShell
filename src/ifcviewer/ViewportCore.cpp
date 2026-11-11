@@ -1027,6 +1027,10 @@ struct FrameUniforms {
     shadow_params: vec4<f32>,
     // x = normal offset (world units), y = depth bias.
     shadow_bias:   vec4<f32>,
+    // Shadow-catching ground: x = on, y = height, z = radius, w = opacity.
+    ground_params: vec4<f32>,
+    // xy = centre of the ground disc.
+    ground_center: vec4<f32>,
 };
 
 // Returns true if `world` lies on the positive (clipped-away) side of any
@@ -1085,8 +1089,10 @@ fn shadowFactor(world: vec3<f32>, n: vec3<f32>) -> f32 {
     if (sp.x < 0.5) { return 1.0; }
     let p = u_frame.light_view_proj * vec4<f32>(world + n * u_frame.shadow_bias.x, 1.0);
     let uv = vec2<f32>(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
-    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || p.z > 1.0) { return 1.0; }
-    let ref_z = p.z - u_frame.shadow_bias.y;
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) { return 1.0; }
+    // A receiver beyond the far plane (a long shadow on the ground) is behind
+    // every caster: compare it as if it sat on that plane.
+    let ref_z = min(p.z, 1.0) - u_frame.shadow_bias.y;
     let step = sp.z * sp.w / 1.5;
     var lit = 0.0;
     for (var y = 0; y < 4; y = y + 1) {
@@ -1452,6 +1458,49 @@ fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
 @fragment
 fn fs_shadow(in: VsOutShadow) {
     if (is_section_clipped(in.world_pos)) { discard; }
+}
+
+// --------------------------- Shadow-catching ground ------------------------
+// A disc at ground_params.y, drawn as one quad. Transparent except where the
+// sun is blocked; the shadow fades out over the outer 40% of the radius.
+
+struct VsOutGround {
+    @builtin(position) clip_pos: vec4<f32>,
+    @location(0) world_pos: vec3<f32>,
+};
+
+@vertex
+fn vs_ground(@builtin(vertex_index) vid: u32) -> VsOutGround {
+    var corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
+    let g = u_frame.ground_params;
+    let xy = u_frame.ground_center.xy + corners[vid] * g.z;
+    var out: VsOutGround;
+    out.world_pos = vec3<f32>(xy, g.y);
+    out.clip_pos  = u_frame.view_proj * vec4<f32>(out.world_pos, 1.0);
+    return out;
+}
+
+@fragment
+fn fs_ground(in: VsOutGround) -> @location(0) vec4<f32> {
+    if (is_section_clipped(in.world_pos)) { discard; }
+    let g = u_frame.ground_params;
+    let r = length(in.world_pos.xy - u_frame.ground_center.xy) / g.z;
+    if (r >= 1.0) { discard; }
+    // As dark as the scene's own lighting makes a shadow on an upward face:
+    // shade receives the sky and the fill, sun adds the key on top.
+    let lp   = u_frame.light_params;
+    let lum  = vec3<f32>(0.2126, 0.7152, 0.0722);
+    let rest = dot(srgbToLinear(u_frame.sky_color.xyz), lum) * lp.z
+             + max(u_frame.fill_dir.z, 0.0) * lp.y;
+    let sun  = max(u_frame.light_dir.z, 0.0) * lp.x;
+    if (sun <= 0.0) { discard; }
+    let lit  = shadowFactor(in.world_pos, vec3<f32>(0.0, 0.0, 1.0));
+    let dark = 1.0 - (rest + sun * lit) / max(rest + sun, 1e-4);
+    let a = dark * g.w * (1.0 - smoothstep(0.6, 1.0, r));
+    if (a <= 0.0) { discard; }
+    return vec4<f32>(0.0, 0.0, 0.0, a);
 }
 )";
 } // namespace
@@ -1826,6 +1875,19 @@ void ViewportCore::updateFrameUniforms() {
     u.shadow_bias[0] = shadow_settings_.normal_bias > 0.0f ? shadow_settings_.normal_bias
                                                            : 2.0f * shadow_texel_world_;
     u.shadow_bias[1] = shadow_depth_bias_;
+    {
+        const float* mn = shadow_scene_min_;
+        const float* mx = shadow_scene_max_;
+        const float dx = mx[0] - mn[0], dy = mx[1] - mn[1], dz = mx[2] - mn[2];
+        const float radius = 0.5f * std::sqrt(dx * dx + dy * dy + dz * dz);
+        const bool ground_on = shadows_on && ground_settings_.enabled && radius > 0.0f;
+        u.ground_params[0] = ground_on ? 1.0f : 0.0f;
+        u.ground_params[1] = std::isnan(ground_settings_.height) ? mn[2] : ground_settings_.height;
+        u.ground_params[2] = std::max(radius * std::max(ground_settings_.extent, 0.01f), 1e-3f);
+        u.ground_params[3] = std::clamp(ground_settings_.opacity, 0.0f, 1.0f);
+        u.ground_center[0] = 0.5f * (mn[0] + mx[0]);
+        u.ground_center[1] = 0.5f * (mn[1] + mx[1]);
+    }
 
     last_frame_uniforms_ = u;
     wgpuQueueWriteBuffer(queue_, frame_uniform_buffer_, 0, &u, sizeof(u));
@@ -8381,7 +8443,12 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
             }
         }
 
+        // The shadow-catching ground: after the opaque geometry, so walls
+        // hide it, and before glass, which blends over it.
+        encodeGround(pass);
+
         wgpuRenderPassEncoderSetPipeline(pass, main_pipeline_transparent_);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, frame_bind_group_, 0, nullptr);
         for (const auto& [session_model_id, m] : models_gpu_) {
             if (!m.drawable()) continue;
             for (const auto& c : m.chunks) {
