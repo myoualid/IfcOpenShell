@@ -2844,6 +2844,7 @@ void ViewportCore::shutdown() {
     releaseShadowResources();
     releaseSkyResources();
     releaseOitResources();
+    releaseSnapshotAccumPipelines();
     if (pipeline_layout_)      { wgpuPipelineLayoutRelease(pipeline_layout_);     pipeline_layout_ = nullptr; }
     if (model_bgl_)            { wgpuBindGroupLayoutRelease(model_bgl_);          model_bgl_ = nullptr; }
     if (frame_bgl_)            { wgpuBindGroupLayoutRelease(frame_bgl_);          frame_bgl_ = nullptr; }

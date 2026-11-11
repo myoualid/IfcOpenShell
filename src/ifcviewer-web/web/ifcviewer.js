@@ -1375,6 +1375,10 @@
       //                  no alpha, so a transparent background turns black).
       //   timeoutMs      how long to wait for streaming before drawing anyway
       //                  (default 15000).
+      //   samples        sub-pixel-jittered renders averaged per pixel (1..64,
+      //                  default 1). 16 gives clean geometry edges, lines,
+      //                  ambient occlusion and shadow edges for final stills,
+      //                  at 16 times the render time.
       // The section gizmo, pivot and corner axis are left out; the grid and
       // floor axes follow their visibility. Edge and halo widths stay in
       // pixels, so they read thinner on a much larger image. The canvas holds
@@ -1419,7 +1423,8 @@
             resolve: resolve, reject: reject,
           });
           Module._ifcv_snapshot_c(token, w, h, useView, bg[0], bg[1], bg[2], bg[3],
-                                  o.timeoutMs > 0 ? Math.round(o.timeoutMs) : 0);
+                                  o.timeoutMs > 0 ? Math.round(o.timeoutMs) : 0,
+                                  o.samples > 1 ? Math.min(64, Math.round(o.samples)) : 1);
         });
       },
 

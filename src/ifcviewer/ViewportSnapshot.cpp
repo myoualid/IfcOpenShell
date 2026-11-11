@@ -97,7 +97,104 @@ void unpremultiplyRow(const std::uint8_t* src, std::uint8_t* dst, int width, boo
     }
 }
 
+// Multi-sample snapshots: add one render, divided by the sample count, into
+// the linear accumulator; then write the sum back over the tile, whose sRGB
+// format encodes it.
+const char* SNAPSHOT_ACCUM_WGSL = R"(
+@group(0) @binding(0) var src: texture_2d<f32>;
+struct Params { scale: vec4<f32> };
+
+@vertex
+fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
+    let xy = vec2<f32>(f32((vid << 1u) & 2u), f32(vid & 2u)) * 2.0 - 1.0;
+    return vec4<f32>(xy, 0.0, 1.0);
+}
+
+@fragment
+fn fs_copy(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    return textureLoad(src, vec2<i32>(frag.xy), 0);
+}
+)";
+
+// Radical inverse in base `b`: the Halton sequence, a low-discrepancy set of
+// sub-pixel offsets.
+float halton(int i, int b) {
+    float f = 1.0f, r = 0.0f;
+    for (; i > 0; i /= b) { f /= float(b); r += f * float(i % b); }
+    return r;
+}
+
 } // namespace
+
+bool ViewportCore::buildSnapshotAccumPipelines() {
+    if (snapshot_accum_pipeline_) return true;
+    WGPUShaderSourceWGSL src = {};
+    src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    src.code        = snapshotLabel(SNAPSHOT_ACCUM_WGSL);
+    WGPUShaderModuleDescriptor smd = {};
+    smd.nextInChain = &src.chain;
+    smd.label       = snapshotLabel("ifcviewer-wgpu.snapshot_accum_wgsl");
+    snapshot_accum_module_ = wgpuDeviceCreateShaderModule(device_, &smd);
+
+    WGPUBindGroupLayoutEntry e = {};
+    e.binding = 0;
+    e.visibility = WGPUShaderStage_Fragment;
+    e.texture.sampleType    = WGPUTextureSampleType_UnfilterableFloat;
+    e.texture.viewDimension = WGPUTextureViewDimension_2D;
+    WGPUBindGroupLayoutDescriptor bgl = {};
+    bgl.entryCount = 1;
+    bgl.entries    = &e;
+    bgl.label      = snapshotLabel("ifcviewer-wgpu.snapshot_accum_bgl");
+    snapshot_accum_bgl_ = wgpuDeviceCreateBindGroupLayout(device_, &bgl);
+    WGPUPipelineLayoutDescriptor pl = {};
+    pl.bindGroupLayoutCount = 1;
+    pl.bindGroupLayouts     = &snapshot_accum_bgl_;
+    snapshot_accum_layout_ = wgpuDeviceCreatePipelineLayout(device_, &pl);
+
+    // Accumulate: dst += src * constant (the blend constant is 1 / N).
+    WGPUBlendState add = {};
+    add.color = { WGPUBlendOperation_Add, WGPUBlendFactor_Constant, WGPUBlendFactor_One };
+    add.alpha = { WGPUBlendOperation_Add, WGPUBlendFactor_Constant, WGPUBlendFactor_One };
+    WGPUColorTargetState at = {};
+    at.format    = WGPUTextureFormat_RGBA16Float;
+    at.blend     = &add;
+    at.writeMask = WGPUColorWriteMask_All;
+    WGPUFragmentState af = {};
+    af.module      = snapshot_accum_module_;
+    af.entryPoint  = snapshotLabel("fs_copy");
+    af.targetCount = 1;
+    af.targets     = &at;
+    WGPURenderPipelineDescriptor rp = {};
+    rp.layout             = snapshot_accum_layout_;
+    rp.label              = snapshotLabel("ifcviewer-wgpu.snapshot_accumulate");
+    rp.vertex.module      = snapshot_accum_module_;
+    rp.vertex.entryPoint  = snapshotLabel("vs_main");
+    rp.fragment           = &af;
+    rp.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    rp.multisample.count  = 1;
+    rp.multisample.mask   = 0xFFFFFFFFu;
+    snapshot_accum_pipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rp);
+
+    // Resolve: the sum straight over the tile.
+    WGPUColorTargetState rt = {};
+    rt.format    = surface_view_format_;
+    rt.writeMask = WGPUColorWriteMask_All;
+    WGPUFragmentState rf = af;
+    rf.targets = &rt;
+    WGPURenderPipelineDescriptor rrp = rp;
+    rrp.label    = snapshotLabel("ifcviewer-wgpu.snapshot_resolve");
+    rrp.fragment = &rf;
+    snapshot_resolve_pipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rrp);
+    return snapshot_accum_pipeline_ && snapshot_resolve_pipeline_;
+}
+
+void ViewportCore::releaseSnapshotAccumPipelines() {
+    if (snapshot_resolve_pipeline_) { wgpuRenderPipelineRelease(snapshot_resolve_pipeline_); snapshot_resolve_pipeline_ = nullptr; }
+    if (snapshot_accum_pipeline_)   { wgpuRenderPipelineRelease(snapshot_accum_pipeline_);   snapshot_accum_pipeline_ = nullptr; }
+    if (snapshot_accum_layout_)     { wgpuPipelineLayoutRelease(snapshot_accum_layout_);     snapshot_accum_layout_ = nullptr; }
+    if (snapshot_accum_bgl_)        { wgpuBindGroupLayoutRelease(snapshot_accum_bgl_);       snapshot_accum_bgl_ = nullptr; }
+    if (snapshot_accum_module_)     { wgpuShaderModuleRelease(snapshot_accum_module_);       snapshot_accum_module_ = nullptr; }
+}
 
 void ViewportCore::requestSnapshot(const SnapshotRequest& request) {
     if (request.width < 1 || request.height < 1
@@ -282,7 +379,8 @@ bool ViewportCore::layoutSnapshotTiles(SnapshotJob& job) {
     job.band_bpr  = (std::uint32_t(W) * 4u + 255u) / 256u * 256u;
 
     WGPUTextureDescriptor desc = {};
-    desc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
+    desc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc
+                       | WGPUTextureUsage_TextureBinding;
     desc.dimension     = WGPUTextureDimension_2D;
     desc.size.width    = std::uint32_t(job.tile_w);
     desc.size.height   = std::uint32_t(job.tile_h);
@@ -296,6 +394,29 @@ bool ViewportCore::layoutSnapshotTiles(SnapshotJob& job) {
     job.color_texture = wgpuDeviceCreateTexture(device_, &desc);
     if (!job.color_texture) return false;
     job.color_view = wgpuTextureCreateView(job.color_texture, nullptr);
+
+    if (job.request.samples > 1) {
+        if (!buildSnapshotAccumPipelines()) return false;
+        WGPUTextureDescriptor ad = desc;
+        ad.usage  = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+        ad.format = WGPUTextureFormat_RGBA16Float;
+        ad.label  = snapshotLabel("ifcviewer-wgpu.snapshot_accum");
+        job.accum_texture = wgpuDeviceCreateTexture(device_, &ad);
+        if (!job.accum_texture) return false;
+        job.accum_view = wgpuTextureCreateView(job.accum_texture, nullptr);
+        auto group = [&](WGPUTextureView view) {
+            WGPUBindGroupEntry be = {};
+            be.binding     = 0;
+            be.textureView = view;
+            WGPUBindGroupDescriptor bd = {};
+            bd.layout     = snapshot_accum_bgl_;
+            bd.entryCount = 1;
+            bd.entries    = &be;
+            return wgpuDeviceCreateBindGroup(device_, &bd);
+        };
+        job.color_group = group(job.color_view);
+        job.accum_group = group(job.accum_view);
+    }
 
     job.bands.assign(std::size_t(job.rows), SnapshotBand{});
     for (int r = 0; r < job.rows; ++r) {
@@ -318,6 +439,10 @@ void ViewportCore::releaseSnapshotTiles(SnapshotJob& job) {
         if (b.buffer) { wgpuBufferRelease(b.buffer); b.buffer = nullptr; }
     }
     job.bands.clear();
+    if (job.color_group)   { wgpuBindGroupRelease(job.color_group);  job.color_group = nullptr; }
+    if (job.accum_group)   { wgpuBindGroupRelease(job.accum_group);  job.accum_group = nullptr; }
+    if (job.accum_view)    { wgpuTextureViewRelease(job.accum_view); job.accum_view = nullptr; }
+    if (job.accum_texture) { wgpuTextureRelease(job.accum_texture);  job.accum_texture = nullptr; }
     if (job.color_view)    { wgpuTextureViewRelease(job.color_view); job.color_view = nullptr; }
     if (job.color_texture) { wgpuTextureRelease(job.color_texture);  job.color_texture = nullptr; }
     job.tile_w = job.tile_h = 0;
@@ -358,20 +483,79 @@ void ViewportCore::renderSnapshotTile(SnapshotJob& job) {
     crop(1, 3) = -(t + b) / (t - b);
 
     // Uniforms and visible-draw lists go through queue writes, which land
-    // before the next submit — so every tile is its own submit.
-    enterSnapshotCamera(job, crop);
-    updateFrameUniforms();
-    Eigen::Matrix4f v, p;
-    buildViewProj(v, p);
-    const Eigen::Matrix4f vp = p * v;
+    // before the next submit — so every tile (and every sample of a
+    // multi-sample tile) is its own submit.
     const float focal_px =
         0.5f * float(H) / std::tan(camera_fov_y_deg_ * 0.5f * kPi / 180.0f);
-    cullScene(vp, focal_px, /*interactive=*/false);
+    const int samples = job.accum_group ? std::clamp(job.request.samples, 1, 64) : 1;
+    // Each render's lines get a pair of samples; the accumulation does the rest.
+    snapshot_line_samples_ = samples > 1 ? 2 : 0;
+    WGPUCommandEncoder enc = nullptr;
+    for (int s = 0; s < samples; ++s) {
+        // Sample 0 is centred; the rest follow Halton (2, 3), in image pixels.
+        Eigen::Matrix4f jitter = Eigen::Matrix4f::Identity();
+        if (s > 0) {
+            jitter(0, 3) =  2.0f * (halton(s, 2) - 0.5f) / float(W);
+            jitter(1, 3) = -2.0f * (halton(s, 3) - 0.5f) / float(H);
+        }
+        enterSnapshotCamera(job, jitter * crop);
+        updateFrameUniforms();
+        Eigen::Matrix4f v, p;
+        buildViewProj(v, p);
+        const Eigen::Matrix4f vp = p * v;
+        cullScene(vp, focal_px, /*interactive=*/false);
 
-    WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(device_, nullptr);
-    encodeScene(enc, job.color_view, vp, job.clear_rgba,
-                job.tile_w, job.tile_h, /*interactive=*/false);
-    leaveSnapshotCamera();
+        enc = wgpuDeviceCreateCommandEncoder(device_, nullptr);
+        encodeScene(enc, job.color_view, vp, job.clear_rgba,
+                    job.tile_w, job.tile_h, /*interactive=*/false);
+        leaveSnapshotCamera();
+        if (samples == 1) break;
+
+        WGPURenderPassColorAttachment ca = {};
+        ca.view       = job.accum_view;
+        ca.loadOp     = s == 0 ? WGPULoadOp_Clear : WGPULoadOp_Load;
+        ca.storeOp    = WGPUStoreOp_Store;
+        ca.clearValue = { 0.0, 0.0, 0.0, 0.0 };
+        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        WGPURenderPassDescriptor pd = {};
+        pd.colorAttachmentCount = 1;
+        pd.colorAttachments     = &ca;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &pd);
+        const double k = 1.0 / double(samples);
+        const WGPUColor blend_k = { k, k, k, k };
+        wgpuRenderPassEncoderSetBlendConstant(pass, &blend_k);
+        wgpuRenderPassEncoderSetPipeline(pass, snapshot_accum_pipeline_);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, job.color_group, 0, nullptr);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+
+        if (s + 1 < samples) {
+            WGPUCommandBuffer c = wgpuCommandEncoderFinish(enc, nullptr);
+            wgpuQueueSubmit(queue_, 1, &c);
+            wgpuCommandBufferRelease(c);
+            wgpuCommandEncoderRelease(enc);
+            enc = nullptr;
+        }
+    }
+    snapshot_line_samples_ = 0;
+    if (samples > 1) {
+        // The average back over the tile, for the copy below.
+        WGPURenderPassColorAttachment ca = {};
+        ca.view       = job.color_view;
+        ca.loadOp     = WGPULoadOp_Clear;
+        ca.storeOp    = WGPUStoreOp_Store;
+        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        WGPURenderPassDescriptor pd = {};
+        pd.colorAttachmentCount = 1;
+        pd.colorAttachments     = &ca;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &pd);
+        wgpuRenderPassEncoderSetPipeline(pass, snapshot_resolve_pipeline_);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, job.accum_group, 0, nullptr);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
 
     WGPUTexelCopyTextureInfo src = {};
     src.texture  = job.color_texture;

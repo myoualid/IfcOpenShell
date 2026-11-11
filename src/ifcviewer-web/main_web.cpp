@@ -1036,7 +1036,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_shadows_c(const float* v) {
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_snapshot_c(int token, int width, int height,
                                                      int use_view_background,
                                                      float r, float g, float b, float a,
-                                                     int timeout_ms) {
+                                                     int timeout_ms, int samples) {
     if (!g_app || !g_app->ready) {
         EM_ASM({
             if (Module.__ifcvOnSnapshotDone) Module.__ifcvOnSnapshotDone($0, 0, $1, $2);
@@ -1053,6 +1053,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_snapshot_c(int token, int width, int h
     req.background[2] = b;
     req.background[3] = a;
     if (timeout_ms > 0) req.timeout_ms = timeout_ms;
+    req.samples = std::clamp(samples, 1, 64);
     g_app->core.requestSnapshot(req);
 }
 
