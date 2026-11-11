@@ -1668,3 +1668,130 @@ body {
 	color: var(--dui-color-text-muted);
 	font-size: var(--dui-font-size-xs);
 }
+
+
+/* Cost sheet (bim.cost): code, description, quantity, unit, rate, total,
+   and the item's share of the schedule total. */
+.CostSheet {
+	--sheet-columns: 6.5rem minmax(12rem, 2.5fr) 5.5rem 3rem 7.5rem 8.5rem minmax(7rem, 1fr);
+}
+
+.CostSheet .is-unit {
+	color: var(--dui-color-text-muted);
+}
+
+.CostSheet .is-total {
+	font-weight: 600;
+}
+
+.CostSheet-row.is-summary .is-total {
+	color: var(--dui-color-text);
+}
+
+.CostSheet-row.is-unpriced .bonsai-sheet-label,
+.CostSheet-row.is-unpriced .is-number {
+	color: var(--dui-color-text-muted);
+}
+
+.CostSheet-row.is-unpriced .bonsai-sheet-label {
+	font-style: italic;
+}
+
+.bonsai-sheet-header .is-sortable {
+	align-items: center;
+	cursor: pointer;
+	display: flex;
+	gap: 2px;
+	user-select: none;
+}
+
+.bonsai-sheet-header .is-sortable.is-number {
+	justify-content: flex-end;
+}
+
+.bonsai-sheet-header .is-sortable:hover,
+.bonsai-sheet-header .is-sorted {
+	color: var(--dui-color-text);
+}
+
+.CostSheet-arrow {
+	font-size: 0.85rem;
+}
+
+.CostSheet-linked,
+.CostSheet-rate {
+	color: var(--dui-color-text-muted);
+	flex: 0 0 auto;
+	font-size: 0.9rem;
+	margin-left: 4px;
+}
+
+.CostSheet .is-share {
+	align-items: center;
+	display: flex;
+	gap: var(--dui-space-2);
+}
+
+.CostSheet-bar {
+	background: var(--dui-color-accent);
+	border-radius: 2px;
+	flex: 0 0 auto;
+	height: 0.55rem;
+	max-width: 60%;
+	min-width: 1px;
+	opacity: 0.8;
+}
+
+.CostSheet-percent {
+	color: var(--dui-color-text-muted);
+	font-size: inherit;
+	font-variant-numeric: tabular-nums;
+}
+
+@container (max-width: 44rem) {
+	.CostSheet {
+		--sheet-columns: minmax(9rem, 2fr) 5rem 7.5rem;
+	}
+
+	.CostSheet .is-code,
+	.CostSheet .is-unit,
+	.CostSheet .bonsai-sheet-cell.is-number:nth-child(5),
+	.CostSheet .is-share {
+		display: none;
+	}
+}
+
+/* Element cost (right): the cost items that price the picked element. */
+.CostElement-list {
+	gap: 2px;
+}
+
+.CostElement-item {
+	border-radius: var(--dui-radius);
+	cursor: pointer;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: var(--dui-space-1) var(--dui-space-2);
+}
+
+.CostElement-item:hover,
+.CostElement-item:focus-visible {
+	background: var(--dui-color-surface-hover);
+	outline: none;
+}
+
+.CostElement-name,
+.CostElement-figures {
+	font-size: inherit;
+}
+
+.CostElement-figures {
+	font-variant-numeric: tabular-nums;
+}
+
+.CostElement-schedule,
+.CostElement-empty {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+}

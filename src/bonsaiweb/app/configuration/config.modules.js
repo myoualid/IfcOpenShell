@@ -7,6 +7,7 @@ export const CoreModules = [
 	{ id: 'spatial-hierarchy', active: true },
 	{ id: 'properties', active: true },
 	{ id: 'bim.sequence', active: true },
+	{ id: 'bim.cost', active: true },
 	{ id: 'viewer', active: true },
 	{ id: 'profiling', active: true },
 	{ id: 'code.terminal', active: true },

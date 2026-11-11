@@ -216,6 +216,7 @@ const bonsai = new Bonsai( document.body, configuration );
 | `Project` | `New`, `OpenFile`, `OpenBag`, `LoadIfc`, `LoadSample`, `Download`, `DownloadView`, `Clear`, `ListModels`, `Benchmark` |
 | `Spatial` | `Select`, `Isolate`, `Objects`, `Hidden` |
 | `Properties`, `Settings`, `Georeferencing`, `Profiler`, `Terminal`, `Dropbox` | Panel toggles and module actions |
+| `Cost` | `Toggle`, `ToggleElement`, `Schedules`, `Items`, `ProductItems`, `SelectItem` |
 | `Sequence` | `Toggle`, `ToggleTasks`, `Schedules`, `Tasks`, `ProductTasks`, `SelectTask` |
 
 ## Viewer events

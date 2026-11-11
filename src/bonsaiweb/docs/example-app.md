@@ -13,8 +13,10 @@
     "ifcopenshell": "../../ts/ifcopenshell-js/dist/index.js",
     "ifcopenshell/geom": "../../ts/ifcopenshell-js/dist/geom/index.js",
     "ifcopenshell/util": "../../ts/ifcopenshell-js/dist/util/index.js",
+    "ifcopenshell/util/cost": "../../ts/ifcopenshell-js/dist/python/util/cost.js",
     "ifcopenshell/util/date": "../../ts/ifcopenshell-js/dist/python/util/date.js",
     "ifcopenshell/util/sequence": "../../ts/ifcopenshell-js/dist/python/util/sequence.js",
+    "ifcopenshell/util/unit": "../../ts/ifcopenshell-js/dist/python/util/unit.js",
     "@ifcopenshell/wasm": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@0.9.0/browser.js",
     "@ifcopenshell/wasm/api": "https://cdn.jsdelivr.net/npm/@ifcopenshell/wasm@0.9.0/wasm/ifcopenshell_api.mjs"
   }
@@ -132,6 +134,10 @@ Panels is special. It has no `operator`. After modules activate, `bindPanelDialo
 **Bottom, Schedule (Planning).** A Gantt of one work schedule: code, task, start, finish, duration and a bar on a shared timeline, with a dashed line for today. Summary tasks take the earliest start and latest finish of their subtasks, in italics. Critical tasks are red, milestones are diamonds, and work tasks with no element assigned are dimmed. Choosing a row selects what the task builds and uses (all subtasks for a summary row); a double click or Enter isolates it. The arrow keys move through the tree and expand or collapse it. Filtering by name or code, or to critical tasks, keeps each match's parents. Picking an element in the viewport highlights its tasks and expands the tree down to them.
 
 **Right, Element tasks (Planning).** The tasks that build and use the picked element, with their schedule. Choosing one opens it in the Gantt.
+
+**Bottom, Cost sheet (Costing).** One cost schedule as a tree: code, description, quantity and unit, rate, total in the project currency, and a bar for each item's share of the schedule total. Totals follow Bonsai: a SUM value adds up the children, category values add up the children of that category, and a unit basis prices per that many units. The summary line gives the schedule total and counts unpriced items and items linked to elements. Clicking a column header sorts each level of the tree by it. Choosing a row selects the elements it prices, with those of its nested items; a double click or Enter isolates them. The row tooltip shows each value's formula and the arithmetic of the total. Filtering by name or code, or to unpriced items, keeps each match's parents. The export button writes every item to CSV. Picking an element highlights the items that price it.
+
+**Right, Element cost (Costing).** The cost items that price the picked element, with quantity, rate and total. Choosing one opens it in the cost sheet.
 
 **Command bar.** Typing `c` then `d` over the viewport opens an empty command line there, like AutoCAD's. The menu lists matching operators (`grid` finds `Viewer.ToggleGrid`), then the values of the argument under the cursor. A line runs as JavaScript (`Viewer.SetStandardView('TOP')`; category names need no `bonsai.ops.` prefix) or as `Command arg arg` (`SetStandardView TOP`, `ToggleGrid off`, `SetColor $sel #f40`). `$sel`, `$entity`, `$model` and `$last` are built in, and `name = …` keeps a variable in the session. Enter on an empty line repeats the last command; Esc closes. It shares the terminal panel's session and history. Operators describe their arguments for the menu with `static operatorArgs`.
 
