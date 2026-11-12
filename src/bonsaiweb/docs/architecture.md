@@ -40,7 +40,7 @@ new Shell( bonsai, configuration );
 bonsai.start();
 ```
 
-1. **Session.** `new Bonsai(container, configuration)` applies `config.geometry`, sets `context.dom` to the container, creates its own `.bonsai-viewport` element (`bonsai.viewport`, `context.viewport`) inside it, registers operators into the ops singleton, and binds the keyboard. js-signals is bundled, and `ifcopenshell` is only ever imported dynamically, so nothing here waits on a download.
+1. **Session.** `new Bonsai(container, configuration)` applies `config.geometry`, sets `context.dom` to the container, creates its own `.bonsai-viewport` element (`bonsai.viewport`, `context.viewport`) inside it, registers operators into the ops singleton, and binds the keyboard. js-signals is bundled. The `ifcopenshell` runtime is imported dynamically, so the session never waits on the wasm. `tool.Sequence` imports the transpiled `ifcopenshell/util/*` and `ifcopenshell/api/*` modules statically; with the local build those are files next to the page.
 2. **Shell.** `new Shell(bonsai, configuration)` builds the gui2 `World` from `config.ui` inside `context.dom`, wraps it in a `Layout`, and moves `context.viewport` into its `#Viewport` region. The element is moved, never replaced, so every reference to it stays valid.
 3. **Chrome.** `bindRibbon` and `mountUi` take `bonsai.context`. Panels are constructed with `{ context }`. Progress listens on `context.signals`.
 
@@ -142,7 +142,7 @@ Operators and panels receive that object, and panels may hang their own state on
 | `Ifc` | The model list, view versus edit, the live file, the entity for a pick. |
 | `Element` | Scalar attributes and display names. |
 | `Pset` | Property sets and quantity sets, with type inheritance, formatted for a table cell. |
-| `Sequence` | Work schedules, task rows with derived dates, and the products a task builds or uses. Calls `ifcopenshell/util/sequence` from the local ifcopenshell build. |
+| `Sequence` | Work schedules, task rows with derived dates, and the products a task builds or uses; authoring of schedules, tasks, task times, assignments and sequence links. Calls `ifcopenshell/util/sequence` and `ifcopenshell/api/sequence` from the local ifcopenshell build. |
 | `Terminal` | In-memory JavaScript REPL sessions. |
 
 `Element` and `Pset` need an edit-mode entity. In view mode the properties panel uses the strings on the viewer pick instead.
@@ -186,7 +186,7 @@ A panel class has a static `id` (the module id) and a static `spec` (group, posi
 | `properties` | None. The panel follows the selection. | Right: attributes, relationships, psets, qtos |
 | `viewer` | Camera, navigation, visibility, colour, federation | None. The ribbon and other modules call these. |
 | `code.terminal` | Show, new session, clear, close session | Bottom: a JavaScript REPL |
-| `bim.sequence` | Panel toggles, schedules, tasks, tasks for a pick, select a task's products | Bottom: a Gantt of one work schedule. Right: the tasks that build or use the picked element |
+| `bim.sequence` | Panel toggles, schedules, tasks, tasks for a pick, select a task's products, and authoring | Bottom: a Gantt of one work schedule. Right: the tasks that build or use the picked element, and the task editor |
 
 Addons are modules that live outside the package. `configuration.app.Addons` lists them as `{ id, operators, ui, ribbon }`. `src/addons.js` registers their operators from `new Bonsai`, and `Shell` merges their ribbon into its configuration and mounts their panels after the built-in ones. See [api-structure.md](api-structure.md#addons).
 

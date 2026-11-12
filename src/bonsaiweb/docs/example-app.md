@@ -12,6 +12,7 @@
     "@aeco-dev/layout": "https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.js",
     "ifcopenshell": "../../ts/ifcopenshell-js/dist/index.js",
     "ifcopenshell/geom": "../../ts/ifcopenshell-js/dist/geom/index.js",
+    "ifcopenshell/api/sequence": "../../ts/ifcopenshell-js/dist/python/api/sequence/index.js",
     "ifcopenshell/util": "../../ts/ifcopenshell-js/dist/util/index.js",
     "ifcopenshell/util/date": "../../ts/ifcopenshell-js/dist/python/util/date.js",
     "ifcopenshell/util/sequence": "../../ts/ifcopenshell-js/dist/python/util/sequence.js",
@@ -132,6 +133,8 @@ Panels is special. It has no `operator`. After modules activate, `bindPanelDialo
 **Bottom, Schedule (Planning).** A Gantt of one work schedule: code, task, start, finish, duration and a bar on a shared timeline, with a dashed line for today. Summary tasks take the earliest start and latest finish of their subtasks, in italics. Critical tasks are red, milestones are diamonds, and work tasks with no element assigned are dimmed. Choosing a row selects what the task builds and uses (all subtasks for a summary row); a double click or Enter isolates it. The arrow keys move through the tree and expand or collapse it. Filtering by name or code, or to critical tasks, keeps each match's parents. Picking an element in the viewport highlights its tasks and expands the tree down to them.
 
 **Right, Element tasks (Planning).** The tasks that build and use the picked element, with their schedule. Choosing one opens it in the Gantt.
+
+**Right, Task editor (Planning).** Edits the open work schedule (name, type) and the Gantt's active task: code, name, description, status, type, milestone, schedule start, finish and duration in days, the elements it builds and uses (assign or unassign the viewport selection), and its predecessors. A new start keeps the duration, a new finish recomputes it, and successors move with the task, as `ifcopenshell.api.sequence.edit_task_time` does. The Gantt toolbar adds a task after the active one, a subtask, or a schedule, and deletes the active task (also the Delete key). Edits change the live IFC file and cannot be undone; deleting asks first. Project ▸ Save writes the edited file.
 
 **Command bar.** Typing `c` then `d` over the viewport opens an empty command line there, like AutoCAD's. The menu lists matching operators (`grid` finds `Viewer.ToggleGrid`), then the values of the argument under the cursor. A line runs as JavaScript (`Viewer.SetStandardView('TOP')`; category names need no `bonsai.ops.` prefix) or as `Command arg arg` (`SetStandardView TOP`, `ToggleGrid off`, `SetColor $sel #f40`). `$sel`, `$entity`, `$model` and `$last` are built in, and `name = …` keeps a variable in the session. Enter on an empty line repeats the last command; Esc closes. It shares the terminal panel's session and history. Operators describe their arguments for the menu with `static operatorArgs`.
 

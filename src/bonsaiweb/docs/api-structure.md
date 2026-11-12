@@ -216,7 +216,7 @@ const bonsai = new Bonsai( document.body, configuration );
 | `Project` | `New`, `OpenFile`, `OpenBag`, `LoadIfc`, `LoadSample`, `Download`, `DownloadView`, `Clear`, `ListModels`, `Benchmark` |
 | `Spatial` | `Select`, `Isolate`, `Objects`, `Hidden` |
 | `Properties`, `Settings`, `Georeferencing`, `Profiler`, `Terminal`, `Dropbox` | Panel toggles and module actions |
-| `Sequence` | `Toggle`, `ToggleTasks`, `Schedules`, `Tasks`, `ProductTasks`, `SelectTask` |
+| `Sequence` | `Toggle`, `ToggleTasks`, `ToggleEditor`, `Schedules`, `Tasks`, `ProductTasks`, `TaskDetails`, `SelectTask`; authoring: `AddWorkSchedule`, `EditWorkSchedule`, `RemoveWorkSchedule`, `AddTask`, `EditTask`, `RemoveTask`, `EditTaskTime`, `AssignProducts`, `UnassignProducts`, `AssignPredecessor`, `UnassignPredecessor`. They act on `context.sequence.model`, `.schedule` and `.task` (STEP ids) unless their options name others, and adding or removing moves that state. Authoring is not undoable. |
 
 ## Viewer events
 

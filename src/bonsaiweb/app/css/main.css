@@ -1537,6 +1537,14 @@ body {
 	text-align: center;
 }
 
+/* gui.css gives Text and StackPanel a display, which beats the hidden
+   attribute; the schedule panels hide parts of themselves with it. */
+.bonsai-sheet [hidden],
+.SequenceTasks [hidden],
+.SequenceEditor [hidden] {
+	display: none;
+}
+
 .bonsai-sheet-empty[hidden] {
 	display: none;
 }
@@ -1666,5 +1674,128 @@ body {
 .SequenceTasks-schedule,
 .SequenceTasks-empty {
 	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+}
+
+
+/* Schedule editors: labelled fields, small buttons, a checkbox row. */
+.bonsai-sheet-divider {
+	align-self: stretch;
+	border-left: 1px solid var(--dui-color-border);
+	margin: 2px var(--dui-space-1);
+}
+
+.bonsai-sheet-field {
+	flex: 1 1 0;
+	gap: 2px;
+	min-width: 0;
+}
+
+.bonsai-sheet-field-label {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+}
+
+.bonsai-sheet-field .InputText,
+.bonsai-sheet-field .InputDropdown {
+	box-sizing: border-box;
+	min-width: 0;
+	width: 100%;
+}
+
+.bonsai-sheet-button.Button {
+	align-items: center;
+	display: inline-flex;
+	font-size: var(--dui-font-size-xs);
+	gap: 4px;
+	padding: 2px var(--dui-space-2);
+}
+
+.bonsai-sheet-button .Icon {
+	font-size: 1rem;
+}
+
+.bonsai-sheet-check {
+	align-items: center;
+	cursor: pointer;
+	display: flex;
+	font-size: var(--dui-font-size-sm);
+	gap: var(--dui-space-2);
+}
+
+/* Task editor (right). */
+.SequenceEditor-section {
+	gap: var(--dui-space-2);
+}
+
+.SequenceEditor-title {
+	font-weight: 600;
+}
+
+.SequenceEditor-subtitle {
+	border-top: 1px solid var(--dui-color-border);
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	margin-top: var(--dui-space-1);
+	padding-top: var(--dui-space-2);
+	text-transform: uppercase;
+}
+
+.SequenceEditor-pair,
+.SequenceEditor-actions {
+	align-items: flex-end;
+	flex-wrap: wrap;
+	gap: var(--dui-space-2);
+}
+
+.SequenceEditor-actions {
+	align-items: center;
+}
+
+.SequenceEditor-actions .InputDropdown {
+	flex: 1 1 8rem;
+	min-width: 0;
+}
+
+.SequenceEditor-count {
+	flex: 1 1 100%;
+	font-size: var(--dui-font-size-sm);
+}
+
+.SequenceEditor-link {
+	align-items: center;
+	gap: var(--dui-space-2);
+}
+
+.SequenceEditor-link-name {
+	flex: 1 1 auto;
+	font-size: var(--dui-font-size-sm);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.SequenceEditor-link-type {
+	color: var(--dui-color-text-muted);
+	font-family: var(--dui-font-mono);
+	font-size: var(--dui-font-size-xs);
+}
+
+.SequenceEditor-link .Operator {
+	color: var(--dui-color-text-muted);
+	cursor: pointer;
+	font-size: 1rem;
+}
+
+.SequenceEditor-empty {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-sm);
+}
+
+.SequenceEditor-message {
+	color: var(--dui-color-accent);
 	font-size: var(--dui-font-size-xs);
 }
