@@ -2006,6 +2006,18 @@ rules:
       keywords: []
     when: callee.__class__.__name__ == "Name" and callee | resolve is not none and callee | signature is none and callee.id not in classes
     output: '{{ callee | emit }}({{ args | map("emit") | join(", ") }})'
+  # A REAL wrapped value prints as a Python float (30.0); JS numbers do not keep the difference, the schema does.
+  - input:
+      node: Call
+      func:
+        node: Name
+        id: str
+      args:
+        - node: Attribute
+          value: $value
+          attr: wrappedValue
+      keywords: []
+    output: '{{ "util._py" | use("py") }}.strWrapped({{ value | emit }})'
   - input:
       node: Call
       func:

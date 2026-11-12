@@ -53,4 +53,10 @@ const load = (module: string) => import(pathToFileURL(resolve(built, `${module}.
     });
     expect(cost.serialiseCostValue(formula)).toBe('Labour()+(Material()*1.2)');
   });
+
+  it('prints REAL wrapped values as Python floats', () => {
+    expect(cost.serialiseAppliedValue(money(30))).toBe('30.0');
+    expect(cost.serialiseAppliedValue(money(1.2))).toBe('1.2');
+    expect(cost.serialiseCostValue(costValue({ Category: 'Material', AppliedValue: money(210) }))).toBe('Material(210.0)');
+  });
 });
