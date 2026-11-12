@@ -131,4 +131,65 @@ for w in walls:
         "outputs": sorted(t.id() for t in outputs),
     }
 
+
+# Authoring: the steps tests/sequence.test.mjs replays through tool.Sequence,
+# run here with ifcopenshell.api on a fresh copy of the fixture.
+def authoring(model):
+    by_name = {t.Name: t for t in model.by_type("IfcTask")}
+    walls_by_name = {w.Name: w for w in model.by_type("IfcWall")}
+    plan = ifcopenshell.api.sequence.add_work_schedule(model, name="Fit-out 2", predefined_type="PLANNED")
+    ifcopenshell.api.sequence.edit_work_schedule(model, work_schedule=plan, attributes={"Name": "Interiors"})
+    partitions = ifcopenshell.api.sequence.add_task(model, work_schedule=plan, name="Partitions", identification="F")
+    studs = ifcopenshell.api.sequence.add_task(model, parent_task=partitions, name="Studs", identification="F.1")
+    boards = ifcopenshell.api.sequence.add_task(model, parent_task=partitions, name="Boards", identification="F.2")
+    ifcopenshell.api.sequence.edit_task(
+        model, task=studs, attributes={"Status": "STARTED", "PredefinedType": "CONSTRUCTION"}
+    )
+    time = ifcopenshell.api.sequence.add_task_time(model, task=studs)
+    ifcopenshell.api.sequence.edit_task_time(
+        model, task_time=time, attributes={"ScheduleStart": "2024-04-01T09:00:00", "ScheduleDuration": "P3D"}
+    )
+    time = ifcopenshell.api.sequence.add_task_time(model, task=boards)
+    ifcopenshell.api.sequence.edit_task_time(
+        model,
+        task_time=time,
+        attributes={"ScheduleStart": "2024-04-08T09:00:00", "ScheduleFinish": "2024-04-10T17:00:00"},
+    )
+    ifcopenshell.api.sequence.assign_sequence(
+        model, relating_process=studs, related_process=boards, sequence_type="FINISH_START"
+    )
+    ifcopenshell.api.sequence.edit_task_time(model, task_time=studs.TaskTime, attributes={"ScheduleDuration": "P5D"})
+    ifcopenshell.api.sequence.assign_product(model, relating_product=walls_by_name["Wall 4"], related_object=studs)
+    ifcopenshell.api.sequence.assign_product(model, relating_product=walls_by_name["Wall 3"], related_object=studs)
+    ifcopenshell.api.sequence.unassign_product(model, relating_product=walls_by_name["Wall 3"], related_object=studs)
+    ifcopenshell.api.sequence.assign_process(model, relating_process=boards, related_object=walls_by_name["Wall 1"])
+    temporary = ifcopenshell.api.sequence.add_task(model, parent_task=partitions, name="Temporary")
+    ifcopenshell.api.sequence.remove_task(model, task=temporary)
+    ifcopenshell.api.sequence.edit_task(model, task=by_name["Handover"], attributes={"IsMilestone": False})
+    fit_out = [w for w in model.by_type("IfcWorkSchedule") if w.Name == "Fit-out"][0]
+    ifcopenshell.api.sequence.remove_work_schedule(model, work_schedule=fit_out)
+
+    result = {"schedules": sorted(w.Name for w in model.by_type("IfcWorkSchedule")), "tasks": []}
+    for task in ifcopenshell.util.sequence.get_work_schedule_tasks(plan):
+        tt = task.TaskTime
+        result["tasks"].append(
+            {
+                "name": task.Name,
+                "identification": task.Identification,
+                "status": task.Status,
+                "predefinedType": task.PredefinedType,
+                "start": tt.ScheduleStart if tt else None,
+                "finish": tt.ScheduleFinish if tt else None,
+                "duration": tt.ScheduleDuration if tt else None,
+                "predecessors": [r.RelatingProcess.Name for r in task.IsSuccessorFrom],
+                "outputs": sorted(p.Name for p in ifcopenshell.util.sequence.get_task_outputs(task)),
+                "inputs": sorted(p.Name for p in ifcopenshell.util.sequence.get_task_inputs(task)),
+            }
+        )
+    result["handoverIsMilestone"] = by_name["Handover"].IsMilestone
+    return result
+
+
+expected["authoring"] = authoring(ifcopenshell.open(str(HERE / "sequence_4d.ifc")))
+
 (HERE / "sequence_4d.json").write_text(json.dumps(expected, indent="\t") + "\n")

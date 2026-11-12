@@ -12,7 +12,18 @@ import {
 import { store } from '../../context/store.js';
 import ops from '../../ops.js';
 import { Viewer } from '../../tool/Viewer.js';
-import { element, iconButton, plural, setDropdown, showPanel, togglePanel } from '../../util/sheet.js';
+import {
+	bindPanelToggle,
+	checkboxInput,
+	dropdownInput,
+	element,
+	field,
+	iconButton,
+	plural,
+	setDropdown,
+	textButton,
+	textInput,
+} from '../../util/sheet.js';
 import { ancestorIds, visibleRows } from '../../util/tree-rows.js';
 
 const DAY = 86400000;
@@ -82,10 +93,18 @@ function timelineTicks( start, end ) {
 
 }
 
+// context.sequence holds the active model, schedule and task (STEP ids).
+// Panels read it; only Sequence.* operators change it.
 function sequenceState( context ) {
 
-	context.sequence ??= {};
-	return context.sequence;
+	return context.sequence ?? {};
+
+}
+
+function confirmRemoveTask( name, hasChildren ) {
+
+	const what = hasChildren ? `"${ name }" and its subtasks` : `"${ name }"`;
+	return window.confirm( `Delete ${ what } from the IFC file? This cannot be undone.` );
 
 }
 
@@ -110,24 +129,33 @@ class SequencePanelUI {
 		this.workspacePanel = null;
 
 		this.schedules = [];
-		this.key = '';
 		this.rows = [];
 		this.byId = new Map();
 		this.collapsed = new Set();
 		this.linked = new Set();
-		this.activeId = 0;
+		this._loadedKey = '';
 		this.filter = '';
 		this.criticalOnly = false;
 		this.range = null;
 		this._token = 0;
 
 		this._build();
-		sequenceState( context ).panel = this;
 
 		const { signals } = context;
 		signals.liveIfcReady.add( () => this.refresh() );
 		signals.modelCleared.add( () => this.refresh() );
 		signals.objectPicked.add( ( pick ) => this._onPick( pick ) );
+		signals.scheduleChanged.add( ( change ) => {
+
+			if ( change?.module === 'sequence' ) this.refresh();
+
+		} );
+		signals.scheduleActivated.add( ( change ) => {
+
+			if ( change?.module === 'sequence' ) this._onActivated();
+
+		} );
+		bindPanelToggle( signals, SequencePanelUI.spec.id, () => this.workspacePanel );
 		this.refresh();
 
 	}
@@ -138,39 +166,24 @@ class SequencePanelUI {
 
 	}
 
-	toggle() {
+	// STATE — read from context.sequence (.model, .schedule, .task).
 
-		togglePanel( this.workspacePanel );
-		return this;
+	get state() {
 
-	}
-
-	show() {
-
-		showPanel( this.workspacePanel );
-		return this;
+		return sequenceState( this.context );
 
 	}
 
-	// Open a schedule at one task: expand to it, make it active, scroll to it.
-	async reveal( modelId, scheduleId, taskId ) {
+	get key() {
 
-		this.show();
-		const key = `${ modelId }:${ scheduleId }`;
-		if ( key !== this.key ) {
+		const { model, schedule } = this.state;
+		return schedule ? `${ model }:${ schedule }` : '';
 
-			if ( ! this.schedules.some( ( schedule ) => this._keyOf( schedule ) === key ) ) await this.refresh();
-			await this._open( key );
+	}
 
-		}
+	get activeId() {
 
-		if ( ! this.byId.has( taskId ) ) return;
-		this.filter = '';
-		this._search.setValue( '' );
-		this.criticalOnly = false;
-		this._critical.dom.classList.remove( 'is-active' );
-		for ( const id of ancestorIds( this.byId, taskId ) ) this.collapsed.delete( id );
-		this._setActive( taskId, { select: true } );
+		return this.state.task || 0;
 
 	}
 
@@ -180,7 +193,12 @@ class SequencePanelUI {
 
 		this._schedule = new InputDropdown();
 		this._schedule.dom.setAttribute( 'aria-label', 'Work schedule' );
-		this._schedule.onChange( () => this._open( this._schedule.getValue() ) );
+		this._schedule.onChange( () => {
+
+			const { modelId, scheduleId } = this._parseKey( this._schedule.getValue() );
+			ops.Sequence.Activate( { model: modelId, schedule: scheduleId, task: 0 } );
+
+		} );
 
 		this._search = new InputSearch( 'Filter tasks', ( value ) => {
 
@@ -208,6 +226,11 @@ class SequencePanelUI {
 				iconButton( 'center_focus_strong', 'Isolate the active task', () => this._selectActive( { isolate: true } ) ),
 				iconButton( 'visibility', 'Show all objects', () => ops.Viewer.ShowAll() ),
 				iconButton( 'refresh', 'Reload schedules from the model', () => this.refresh() ),
+				new Text( '' ).addClass( 'bonsai-sheet-divider' ),
+				iconButton( 'add_task', 'Add a task after the active one', () => this._addTask( 'sibling' ) ),
+				iconButton( 'subdirectory_arrow_right', 'Add a subtask to the active task', () => this._addTask( 'child' ) ),
+				iconButton( 'delete', 'Delete the active task (Delete)', () => this._removeTask() ),
+				iconButton( 'calendar_add_on', 'New work schedule', () => this._addSchedule() ),
 			);
 
 		this._summary = new Text( '' ).addClass( 'bonsai-sheet-summary' );
@@ -277,35 +300,34 @@ class SequencePanelUI {
 			label: several ? `${ schedule.name } — ${ schedule.modelName }` : schedule.name,
 		} ) ), this.key );
 
-		if ( failure ) {
+		if ( failure || ! schedules.length ) {
 
-			this._clear( `Work schedules could not be read: ${ failure }` );
+			let message = 'Open an IFC file to plan with its work schedules.';
+			if ( failure ) message = `Work schedules could not be read: ${ failure }`;
+			else if ( store.models.some( ( entry ) => entry.file ) ) message = 'No work schedules (IfcWorkSchedule) in the open IFC files.';
+			this._clear( message );
+			if ( this.state.schedule ) ops.Sequence.Activate( { schedule: 0, task: 0 } );
 			return;
 
 		}
 
-		if ( ! schedules.length ) {
-
-			this._clear( store.models.some( ( entry ) => entry.file )
-				? 'No work schedules (IfcWorkSchedule) in the open IFC files.'
-				: 'Open an IFC file to plan with its work schedules.' );
-			return;
-
-		}
-
-		const keep = schedules.some( ( schedule ) => this._keyOf( schedule ) === this.key );
-		await this._open( keep ? this.key : this._keyOf( schedules[ 0 ] ), { keepState: keep } );
+		// Reload the active schedule, or make the first one active.
+		if ( schedules.some( ( schedule ) => this._keyOf( schedule ) === this.key ) ) await this._open( this.key );
+		else ops.Sequence.Activate( { model: schedules[ 0 ].modelId, schedule: schedules[ 0 ].id, task: 0 } );
 
 	}
 
-	async _open( key, { keepState = false } = {} ) {
+	// Load a schedule's rows. Reopening the loaded schedule keeps what is
+	// collapsed; the active task stays if it is still there.
+	async _open( key ) {
 
 		const token = ++ this._token;
+		const keepState = key === this._loadedKey;
 		const { modelId, scheduleId } = this._parseKey( key );
 		let rows;
 		try {
 
-			const result = await ops.Sequence.Tasks( modelId, scheduleId );
+			const result = await ops.Sequence.Tasks( { model: modelId, schedule: scheduleId } );
 			rows = result?.result ?? [];
 
 		} catch ( error ) {
@@ -317,7 +339,7 @@ class SequencePanelUI {
 
 		if ( token !== this._token ) return;
 
-		this.key = key;
+		this._loadedKey = key;
 		this._schedule.setValue( key );
 		this.rows = rows;
 		this.byId = new Map( rows.map( ( row ) => [ row.id, row ] ) );
@@ -326,28 +348,25 @@ class SequencePanelUI {
 			this.collapsed = new Set( rows.length > EXPAND_ALL_LIMIT
 				? rows.filter( ( row ) => row.hasChildren && row.depth >= 1 ).map( ( row ) => row.id )
 				: [] );
-			this.activeId = 0;
 			this.linked.clear();
 			this._status.setValue( '' );
-
-		} else if ( ! this.byId.has( this.activeId ) ) {
-
-			this.activeId = 0;
 
 		}
 
 		this.range = this._range( rows );
 		this._summarise();
 		this._render();
+		// A task that is gone stops being active; otherwise show the active one.
+		if ( this.activeId && ! this.byId.has( this.activeId ) ) ops.Sequence.Activate( { task: 0 } );
+		else this._applyActive();
 
 	}
 
 	_clear( message ) {
 
-		this.key = '';
+		this._loadedKey = '';
 		this.rows = [];
 		this.byId = new Map();
-		this.activeId = 0;
 		this.linked.clear();
 		this.range = null;
 		this._summary.setValue( '' );
@@ -641,6 +660,9 @@ class SequencePanelUI {
 			case 'Enter':
 				this._selectActive( { isolate: true } );
 				break;
+			case 'Delete':
+				this._removeTask();
+				break;
 			default:
 				handled = false;
 
@@ -657,9 +679,49 @@ class SequencePanelUI {
 
 	_setActive( id, { select = false } = {} ) {
 
-		this.activeId = id;
-		const visible = this._visible?.some( ( row ) => row.id === id );
-		if ( ! visible ) this._render();
+		ops.Sequence.Activate( { task: id } );
+		if ( select ) this._selectActive();
+
+	}
+
+	// scheduleActivated: open another schedule, or show the active task.
+	_onActivated() {
+
+		const key = this.key;
+		if ( key !== this._loadedKey ) {
+
+			if ( key ) this._open( key );
+			return;
+
+		}
+
+		this._applyActive();
+
+	}
+
+	// Highlight the active task and scroll to it, expanding its parents and
+	// dropping a filter that would hide it.
+	_applyActive() {
+
+		const id = this.activeId;
+		let render = false;
+		for ( const parent of ancestorIds( this.byId, id ) ) {
+
+			if ( this.collapsed.delete( parent ) ) render = true;
+
+		}
+
+		if ( id && ( this.filter || this.criticalOnly ) && ! this._visible?.some( ( row ) => row.id === id ) ) {
+
+			this.filter = '';
+			this._search.setValue( '' );
+			this.criticalOnly = false;
+			this._critical.dom.classList.remove( 'is-active' );
+			render = true;
+
+		}
+
+		if ( render ) this._render();
 		for ( const node of this._body.querySelectorAll( '.bonsai-sheet-row.is-active' ) ) {
 
 			node.classList.remove( 'is-active' );
@@ -667,7 +729,7 @@ class SequencePanelUI {
 
 		}
 
-		const node = this._body.querySelector( `[data-id="${ id }"]` );
+		const node = id ? this._body.querySelector( `[data-id="${ id }"]` ) : null;
 		if ( node ) {
 
 			node.classList.add( 'is-active' );
@@ -676,8 +738,6 @@ class SequencePanelUI {
 
 		}
 
-		if ( select ) this._selectActive();
-
 	}
 
 	async _selectActive( { isolate = false } = {} ) {
@@ -685,7 +745,7 @@ class SequencePanelUI {
 		const row = this.byId.get( this.activeId );
 		if ( ! row ) return;
 		const { modelId } = this._parseKey( this.key );
-		const result = await ops.Sequence.SelectTask( modelId, row.id, { isolate } );
+		const result = await ops.Sequence.SelectTask( { model: modelId, task: row.id, isolate } );
 		if ( row.id !== this.activeId ) return;
 		if ( result?.status === 'CANCELLED' ) {
 
@@ -747,12 +807,69 @@ class SequencePanelUI {
 
 	}
 
+	// AUTHORING
+
+	// Run an authoring operator; report a refusal or an error on the status line.
+	async _run( run, done ) {
+
+		let result;
+		try {
+
+			result = await run();
+
+		} catch ( error ) {
+
+			result = { status: 'CANCELLED', message: error?.message || String( error ) };
+
+		}
+
+		if ( result?.status === 'CANCELLED' ) {
+
+			this._status.setValue( result.message || 'The change could not be made.' );
+			return null;
+
+		}
+
+		if ( done ) this._status.setValue( done );
+		return result;
+
+	}
+
+	// Sequence.AddTask places it next to or under the active task and makes
+	// it active; the reload that follows shows it.
+	_addTask( placement ) {
+
+		if ( this.key ) this._run( () => ops.Sequence.AddTask( { placement, name: 'New task' } ), 'Task added' );
+
+	}
+
+	_removeTask() {
+
+		const row = this.byId.get( this.activeId );
+		if ( ! row || ! confirmRemoveTask( row.name, row.hasChildren ) ) return;
+		this._run( () => ops.Sequence.RemoveTask(), `Deleted ${ row.identification || row.name }` );
+
+	}
+
+	_addSchedule() {
+
+		if ( ! store.models.some( ( entry ) => entry.file ) ) {
+
+			this._status.setValue( 'Open an IFC file first.' );
+			return;
+
+		}
+
+		this._run( () => ops.Sequence.AddWorkSchedule( { name: 'Work schedule' } ), 'Work schedule added' );
+
+	}
+
 	_collapseAll() {
 
 		this.collapsed = new Set( this.rows.filter( ( row ) => row.hasChildren ).map( ( row ) => row.id ) );
-		const root = this.byId.get( this.activeId );
-		if ( root && root.parentId ) this.activeId = [ root.id, ...ancestorIds( this.byId, root.id ) ].pop();
 		this._render();
+		const row = this.byId.get( this.activeId );
+		if ( row?.parentId ) ops.Sequence.Activate( { task: [ row.id, ...ancestorIds( this.byId, row.id ) ].pop() } );
 
 	}
 
@@ -790,9 +907,8 @@ class SequenceTasksPanelUI {
 			.gap( '10px' )
 			.add( this._card, this._outputsTitle, this._outputs, this._inputsTitle, this._inputs );
 
-		sequenceState( context ).tasksPanel = this;
-
 		const { signals } = context;
+		bindPanelToggle( signals, SequenceTasksPanelUI.spec.id, () => this.workspacePanel );
 		signals.objectPicked.add( () => this._refresh() );
 		signals.liveIfcReady.add( () => this._refresh() );
 		signals.modelCleared.add( () => this._refresh() );
@@ -803,13 +919,6 @@ class SequenceTasksPanelUI {
 	attach( workspacePanel ) {
 
 		this.workspacePanel = workspacePanel;
-
-	}
-
-	toggle() {
-
-		togglePanel( this.workspacePanel );
-		return this;
 
 	}
 
@@ -872,7 +981,7 @@ class SequenceTasksPanelUI {
 				element( 'span', 'SequenceTasks-name', [ task.identification, task.name ].filter( Boolean ).join( '  ' ) ),
 				element( 'span', 'SequenceTasks-schedule', task.schedule ),
 			);
-			const open = () => this.context.sequence?.panel?.reveal( pick.sourceId, task.scheduleId, task.id );
+			const open = () => ops.Sequence.Activate( { model: pick.sourceId, schedule: task.scheduleId, task: task.id, show: true } );
 			item.onClick( open );
 			item.dom.addEventListener( 'keydown', ( event ) => {
 
@@ -890,4 +999,335 @@ class SequenceTasksPanelUI {
 
 }
 
-export default [ SequencePanelUI, SequenceTasksPanelUI ];
+const SCHEDULE_TYPES = [ 'PLANNED', 'ACTUAL', 'BASELINE', 'NOTDEFINED' ];
+const TASK_TYPES = [
+	'NOTDEFINED', 'ATTENDANCE', 'CONSTRUCTION', 'DEMOLITION', 'DISMANTLE', 'DISPOSAL', 'INSTALLATION',
+	'LOGISTIC', 'MAINTENANCE', 'MOVE', 'OPERATION', 'REMOVAL', 'RENOVATION', 'USERDEFINED',
+];
+const SEQUENCE_TYPES = [
+	{ value: 'FINISH_START', label: 'Finish → start' },
+	{ value: 'START_START', label: 'Start → start' },
+	{ value: 'FINISH_FINISH', label: 'Finish → finish' },
+	{ value: 'START_FINISH', label: 'Start → finish' },
+];
+const SEQUENCE_SHORT = { FINISH_START: 'FS', START_START: 'SS', FINISH_FINISH: 'FF', START_FINISH: 'SF' };
+const INDENT = '\u2003';
+
+// Whole days of an ISO duration such as P5D or P2W, or '' for anything else.
+function durationDays( value ) {
+
+	const match = /^P(?:(\d+)W)?(?:(\d+)D)?$/.exec( value || '' );
+	if ( ! match || ( ! match[ 1 ] && ! match[ 2 ] ) ) return '';
+	return String( Number( match[ 1 ] || 0 ) * 7 + Number( match[ 2 ] || 0 ) );
+
+}
+
+// Edits the open work schedule and its active task: context.sequence
+// .model, .schedule and .task. Every change goes through a Sequence.*
+// operator, which works on that same state.
+class SequenceEditorPanelUI {
+
+	static id = 'bim.sequence';
+
+	static spec = {
+		group: 'sequence',
+		position: 'right',
+		id: 'sequence-editor-panel',
+		label: 'Task',
+		icon: 'edit_calendar',
+		title: 'Task Editor',
+		autoShow: false,
+	};
+
+	constructor( { context } ) {
+
+		this.context = context;
+		this.workspacePanel = null;
+		this._shownTaskId = 0;
+		this._token = 0;
+
+		this._build();
+		const { signals } = context;
+		bindPanelToggle( signals, SequenceEditorPanelUI.spec.id, () => this.workspacePanel );
+		signals.scheduleChanged.add( ( change ) => {
+
+			if ( change?.module === 'sequence' ) this.refresh();
+
+		} );
+		signals.scheduleActivated.add( ( change ) => {
+
+			if ( change?.module === 'sequence' ) this.refresh();
+
+		} );
+		signals.liveIfcReady.add( () => this.refresh() );
+		signals.modelCleared.add( () => this.refresh() );
+		this.refresh();
+
+	}
+
+	attach( workspacePanel ) {
+
+		this.workspacePanel = workspacePanel;
+
+	}
+
+	get state() {
+
+		return sequenceState( this.context );
+
+	}
+
+	_build() {
+
+		const run = ( fn ) => () => void fn();
+		const addSchedule = () => this._run( () => ops.Sequence.AddWorkSchedule( { name: 'Work schedule' } ), 'Work schedule added' );
+		const addTask = ( placement ) => this._run( () => ops.Sequence.AddTask( { placement, name: 'New task' } ), 'Task added' );
+
+		// Schedule
+		this._scheduleName = textInput( ( value ) => this._run( () => ops.Sequence.EditWorkSchedule( { Name: value.trim() || 'Work schedule' } ) ) );
+		this._scheduleType = dropdownInput( SCHEDULE_TYPES, ( value ) => this._run( () => ops.Sequence.EditWorkSchedule( { PredefinedType: value } ) ) );
+		this._scheduleSection = new StackPanel( { isVertical: true } ).addClass( 'SequenceEditor-section' ).add(
+			new Text( 'Work schedule' ).addClass( 'SequenceEditor-title' ),
+			field( 'Name', this._scheduleName ),
+			field( 'Type', this._scheduleType ),
+			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
+				textButton( 'New schedule', 'calendar_add_on', run( addSchedule ) ),
+				textButton( 'Delete schedule', 'delete', run( () => this._removeSchedule() ) ),
+			),
+		);
+
+		// Task
+		const editTask = ( attributes ) => this._run( () => ops.Sequence.EditTask( attributes ) );
+		this._taskTitle = new Text( '' ).addClass( 'SequenceEditor-title' );
+		this._identification = textInput( ( value ) => editTask( { Identification: value.trim() || null } ) );
+		this._name = textInput( ( value ) => editTask( { Name: value.trim() || 'Unnamed' } ) );
+		this._description = textInput( ( value ) => editTask( { Description: value.trim() || null } ) );
+		this._statusInput = textInput( ( value ) => editTask( { Status: value.trim() || null } ), { placeholder: 'e.g. NOTSTARTED, STARTED, COMPLETED' } );
+		this._taskType = dropdownInput( TASK_TYPES, ( value ) => editTask( { PredefinedType: value } ) );
+		this._milestone = checkboxInput( 'Milestone', ( value ) => editTask( { IsMilestone: value } ) );
+
+		// One attribute at a time, so the API keeps the others: a new start
+		// keeps the duration, a new finish recomputes it.
+		this._start = textInput( ( value ) => this._editTime( value ? { ScheduleStart: `${ value }T09:00:00` } : null ), { type: 'date' } );
+		this._finish = textInput( ( value ) => this._editTime( value ? { ScheduleFinish: `${ value }T17:00:00` } : null ), { type: 'date' } );
+		this._duration = textInput( ( value ) => {
+
+			const days = Math.round( Number( value ) );
+			this._editTime( value !== '' && Number.isFinite( days ) && days > 0 ? { ScheduleDuration: `P${ days }D` } : null );
+
+		}, { type: 'number', placeholder: 'days' } );
+		this._duration.dom.min = '1';
+
+		this._outputsLabel = new Text( '' ).addClass( 'SequenceEditor-count' );
+		this._inputsLabel = new Text( '' ).addClass( 'SequenceEditor-count' );
+		const products = ( label, kind ) => new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
+			label,
+			textButton( 'Assign selection', 'add_link', run( () => this._products( kind, true ) ) ),
+			textButton( 'Unassign', 'link_off', run( () => this._products( kind, false ) ) ),
+		);
+
+		this._predecessors = new StackPanel( { isVertical: true } ).addClass( 'SequenceEditor-links' );
+		this._predecessorPick = new InputDropdown();
+		this._predecessorPick.dom.setAttribute( 'aria-label', 'Predecessor' );
+		this._sequenceType = dropdownInput( SEQUENCE_TYPES, () => {} );
+		this._sequenceType.setValue( 'FINISH_START' );
+
+		this._taskSection = new StackPanel( { isVertical: true } ).addClass( 'SequenceEditor-section' ).add(
+			this._taskTitle,
+			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-pair' ).add(
+				field( 'Code', this._identification ),
+				field( 'Type', this._taskType ),
+			),
+			field( 'Name', this._name ),
+			field( 'Description', this._description ),
+			field( 'Status', this._statusInput ),
+			this._milestone,
+			new Text( 'Schedule' ).addClass( 'SequenceEditor-subtitle' ),
+			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-pair' ).add(
+				field( 'Start', this._start ),
+				field( 'Finish', this._finish ),
+				field( 'Days', this._duration ),
+			),
+			new Text( 'Elements' ).addClass( 'SequenceEditor-subtitle' ),
+			products( this._outputsLabel, 'outputs' ),
+			products( this._inputsLabel, 'inputs' ),
+			new Text( 'Predecessors' ).addClass( 'SequenceEditor-subtitle' ),
+			this._predecessors,
+			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
+				this._predecessorPick,
+				this._sequenceType,
+				textButton( 'Add', 'add', run( () => this._addPredecessor() ) ),
+			),
+			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
+				textButton( 'Add task', 'add_task', run( () => addTask( 'sibling' ) ) ),
+				textButton( 'Add subtask', 'subdirectory_arrow_right', run( () => addTask( 'child' ) ) ),
+				textButton( 'Delete', 'delete', run( () => this._removeTask() ) ),
+			),
+		);
+
+		this._empty = new Text( '' ).addClass( 'SequenceEditor-empty' );
+		this._message = new Text( '' ).addClass( 'SequenceEditor-message' );
+		this._noSchedule = textButton( 'New work schedule', 'calendar_add_on', run( addSchedule ) );
+
+		this.root = new StackPanel( { isVertical: true } )
+			.addClass( 'SequenceEditor' )
+			.gap( '12px' )
+			.add( this._empty, this._noSchedule, this._scheduleSection, this._taskSection, this._message );
+
+	}
+
+	// Show the active schedule and task.
+	refresh() {
+
+		const token = ++ this._token;
+		const { model, schedule: scheduleId, task: taskId } = this.state;
+		const hasFile = store.models.some( ( entry ) => entry.file );
+		const schedules = scheduleId ? ops.Sequence.Schedules().result ?? [] : [];
+		const schedule = schedules.find( ( entry ) => entry.modelId === model && entry.id === scheduleId ) ?? null;
+		this._noSchedule.setHidden( Boolean( schedule ) || ! hasFile );
+		this._empty.setHidden( Boolean( schedule ) );
+		this._empty.setValue( hasFile ? 'No work schedule is open.' : 'Open an IFC file to edit its work schedules.' );
+		this._scheduleSection.setHidden( ! schedule );
+		this._taskSection.setHidden( true );
+		if ( ! schedule ) return;
+
+		this._scheduleName.setValue( schedule.name );
+		this._scheduleType.setValue( schedule.predefinedType || 'NOTDEFINED' );
+		const result = taskId ? ops.Sequence.TaskDetails() : null;
+		if ( token !== this._token ) return;
+		if ( ! result?.result ) {
+
+			this._shownTaskId = 0;
+			this._message.setValue( 'Choose a task in the Gantt to edit it.' );
+			return;
+
+		}
+
+		const task = result.result;
+		// A reload after an edit keeps the edit's message; a new task clears it.
+		if ( task.id !== this._shownTaskId ) this._message.setValue( '' );
+		this._shownTaskId = task.id;
+		this._taskSection.setHidden( false );
+		this._taskTitle.setValue( [ task.identification, task.name ].filter( Boolean ).join( '  ' ) || 'Task' );
+		this._identification.setValue( task.identification );
+		this._name.setValue( task.name );
+		this._description.setValue( task.description );
+		this._statusInput.setValue( task.status );
+		this._taskType.setValue( task.predefinedType || 'NOTDEFINED' );
+		this._milestone.box.setValue( task.isMilestone );
+		this._start.setValue( task.time?.scheduleStart?.slice( 0, 10 ) ?? '' );
+		this._finish.setValue( task.time?.scheduleFinish?.slice( 0, 10 ) ?? '' );
+		const days = durationDays( task.time?.scheduleDuration );
+		this._duration.setValue( days );
+		this._duration.dom.placeholder = task.time?.scheduleDuration && ! days ? task.time.scheduleDuration : 'days';
+		this._outputsLabel.setValue( `Builds ${ plural( task.outputs.length, 'element' ) }` );
+		this._inputsLabel.setValue( `Uses ${ plural( task.inputs.length, 'element' ) }` );
+
+		this._predecessors.clear();
+		if ( ! task.predecessors.length ) this._predecessors.add( new Text( 'None' ).addClass( 'SequenceEditor-empty' ) );
+		for ( const link of task.predecessors ) {
+
+			const row = new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-link' );
+			row.dom.append(
+				element( 'span', 'SequenceEditor-link-name', [ link.identification, link.name ].filter( Boolean ).join( '  ' ) ),
+				element( 'span', 'SequenceEditor-link-type', SEQUENCE_SHORT[ link.sequenceType ] || link.sequenceType ),
+			);
+			row.add( iconButton( 'close', `Remove ${ link.name } as a predecessor`, () => this._run(
+				() => ops.Sequence.UnassignPredecessor( link.id ), 'Predecessor removed',
+			) ) );
+			this._predecessors.add( row );
+
+		}
+
+		const taken = new Set( [ task.id, ...task.predecessors.map( ( link ) => link.id ) ] );
+		setDropdown( this._predecessorPick, ( ops.Sequence.Tasks().result ?? [] )
+			.filter( ( row ) => ! taken.has( row.id ) )
+			.map( ( row ) => ( {
+				value: String( row.id ),
+				label: `${ INDENT.repeat( row.depth ) }${ [ row.identification, row.name ].filter( Boolean ).join( ' ' ) }`,
+			} ) ), '' );
+
+	}
+
+	// Run an operator; show a refusal or an error, else `done`.
+	async _run( run, done ) {
+
+		let result;
+		try {
+
+			result = await run();
+
+		} catch ( error ) {
+
+			result = { status: 'CANCELLED', message: error?.message || String( error ) };
+
+		}
+
+		if ( result?.status === 'CANCELLED' ) {
+
+			this._message.setValue( result.message || 'The change could not be made.' );
+			return null;
+
+		}
+
+		this._message.setValue( done || '' );
+		return result;
+
+	}
+
+	_removeTask() {
+
+		const task = this.state.task ? ops.Sequence.TaskDetails().result : null;
+		if ( ! task || ! confirmRemoveTask( task.name || 'this task', task.hasChildren ) ) return;
+		this._run( () => ops.Sequence.RemoveTask(), `Deleted ${ task.identification || task.name }` );
+
+	}
+
+	async _removeSchedule() {
+
+		const name = this._scheduleName.getValue() || 'this work schedule';
+		if ( ! window.confirm( `Delete "${ name }" and all its tasks from the IFC file? This cannot be undone.` ) ) return;
+		await this._run( () => ops.Sequence.RemoveWorkSchedule(), 'Work schedule deleted' );
+
+	}
+
+	_editTime( attributes ) {
+
+		if ( ! attributes ) {
+
+			this.refresh();
+			return;
+
+		}
+
+		this._run( () => ops.Sequence.EditTaskTime( attributes ) );
+
+	}
+
+	async _products( kind, assign ) {
+
+		const operator = assign ? ops.Sequence.AssignProducts : ops.Sequence.UnassignProducts;
+		const result = await this._run( () => operator( { kind } ) );
+		if ( ! result ) return;
+		const count = result.result ?? 0;
+		const verb = kind === 'inputs' ? 'uses' : 'builds';
+		this._message.setValue( count
+			? `${ assign ? 'Assigned' : 'Unassigned' } ${ plural( count, 'element' ) }: the task ${ assign ? 'now' : 'no longer' } ${ verb } ${ count === 1 ? 'it' : 'them' }`
+			: 'Select elements of this model in the viewport first.' );
+
+	}
+
+	_addPredecessor() {
+
+		const predecessor = Number( this._predecessorPick.getValue() );
+		if ( ! predecessor ) return;
+		this._run(
+			() => ops.Sequence.AssignPredecessor( predecessor, { sequenceType: this._sequenceType.getValue() } ),
+			'Predecessor added; the task now follows it',
+		);
+
+	}
+
+}
+
+export default [ SequencePanelUI, SequenceTasksPanelUI, SequenceEditorPanelUI ];

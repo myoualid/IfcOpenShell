@@ -209,6 +209,29 @@ export class Viewer {
 
 	}
 
+	// Viewer objectIds of GlobalIds in one source. One product can be drawn
+	// as several objects that share its GlobalId; all of them are returned.
+	static async objectIds( sourceId, guids ) {
+
+		if ( ! viewer || ! guids.length ) return [];
+		const want = new Set( guids );
+		return ( await viewer.getObjects() )
+			.filter( ( object ) => object.sourceId === sourceId && want.has( object.guid ) )
+			.map( ( object ) => object.objectId );
+
+	}
+
+	// GlobalIds of the selected objects in one source.
+	static async selectedGuids( sourceId ) {
+
+		if ( ! viewer ) return [];
+		await viewer.getObjects();
+		return [ ...new Set( viewer.getSelectedObjects()
+			.filter( ( object ) => object.sourceId === sourceId && object.guid )
+			.map( ( object ) => object.guid ) ) ];
+
+	}
+
 	// The world point under canvas-relative CSS px (x, y): a surface hit when
 	// the viewer build has one, otherwise the horizontal plane through
 	// `anchor` (or the camera target). Resolves { point, normal, placement }
