@@ -82,6 +82,17 @@ describe('str.format', () => {
       py.format('{name}!', { name: 'x' }),
     ]).toEqual(['12+003.142', '2.00', '       a|b    |   c   ', '1,234,567', '+1.2e+04', '0.0001234', 'x!']);
   });
+
+  it('prints floats as Python str()', () => {
+    expect([30, 1.2, 1e16, 1.5e-5, 0.0001, 1.2345678901234568e17, -0, NaN, -Infinity, 1230000000000, 9999999999999998, 2.5e-7]
+      .map(py.floatStr))
+      .toEqual(['30.0', '1.2', '1e+16', '1.5e-05', '0.0001', '1.2345678901234568e+17', '-0.0', 'nan', '-inf', '1230000000000.0', '9999999999999998.0', '2.5e-07']);
+  });
+
+  it('prints wrapped values by their schema type', () => {
+    const wrapped = (wrappedValue: unknown, type: string) => ({ wrappedValue, attributeType: () => type });
+    expect([wrapped(85, 'DOUBLE'), wrapped(85, 'INT'), wrapped('x', 'STRING')].map(py.strWrapped)).toEqual(['85.0', '85', 'x']);
+  });
 });
 
 describe('numpy', () => {
