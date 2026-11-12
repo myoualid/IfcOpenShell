@@ -2095,6 +2095,19 @@ rules:
       slice: $index
     when: value | kind == "map" and node.ctx.__class__.__name__ == "Load"
     output: '{{ value | emit }}.get({{ index | emit }})'
+  # Negative indices count from the end of a sequence; JS [] reads a missing property instead.
+  - input:
+      node: Subscript
+      value: $value
+      slice:
+        node: UnaryOp
+        op:
+          node: USub
+        operand:
+          node: Constant
+          value: $index
+    when: index is integer and node.ctx.__class__.__name__ == "Load" and value | kind not in ["dict", "map"]
+    output: '{{ "util._py" | use("py") }}.getitem({{ value | emit }}, -{{ index }})'
   - input:
       node: Subscript
       value: $value

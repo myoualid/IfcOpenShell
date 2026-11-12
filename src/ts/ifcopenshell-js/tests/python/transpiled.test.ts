@@ -27,6 +27,7 @@ const load = (module: string) => import(pathToFileURL(resolve(built, `${module}.
   });
 
   const money = (value: number) => file.create('IfcMonetaryMeasure', [value]);
+  const costValue = (attributes: Record<string, unknown>) => file.create('IfcCostValue', attributes);
 
   it('accepts whole numbers where a float check guards reading the value', () => {
     // isinstance(v, float) then `return v`: 85.0 is a float in Python and 85 in JS.
@@ -39,5 +40,17 @@ const load = (module: string) => import(pathToFileURL(resolve(built, `${module}.
     // infer_property_type("Foo", 3) == "Count" and infer_property_type("Foo", 2.5) == "Length" in Python.
     expect(editQto.inferPropertyType('Foo', 3)).toBe('Count');
     expect(editQto.inferPropertyType('Foo', 2.5)).toBe('Length');
+  });
+
+  it('indexes from the end with negative constant indices', () => {
+    // serialise_cost_value strips the outer brackets after checking result[-1] == ")".
+    const formula = costValue({
+      ArithmeticOperator: 'ADD',
+      Components: [
+        costValue({ Category: 'Labour' }),
+        costValue({ ArithmeticOperator: 'MULTIPLY', Components: [costValue({ Category: 'Material' }), costValue({ AppliedValue: money(1.2) })] }),
+      ],
+    });
+    expect(cost.serialiseCostValue(formula)).toBe('Labour()+(Material()*1.2)');
   });
 });
