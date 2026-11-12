@@ -43,6 +43,8 @@ export const Signals = {
 	// so attribute / pset / qto lookups return something richer than the
 	// sidecar's four basic fields. { sourceId, name, file }.
 	liveIfcReady: new Signal(),
+	// A schedule module changed the live file: { module: 'sequence' | 'cost', modelId }.
+	scheduleChanged: new Signal(),
 
 	// SCENE: SELECTION
 	objectPicked: new Signal(), // ({objectId, guid, modelIndex, sourceId}) — name/type via getSelectedObjects

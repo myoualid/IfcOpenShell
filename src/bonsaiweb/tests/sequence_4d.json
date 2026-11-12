@@ -22,9 +22,9 @@
 					"outputs": [],
 					"inputs": [],
 					"deepOutputs": [
-						"0gg8idUo16XBDHYF7M08B7",
-						"13JK5N$1D2eRwTdlf8UT4N",
-						"2H6i3hDFP3DxwfpS8Y3v_U"
+						"0m0_pcLaXFHxQMgoLNAFpl",
+						"1IK5v12DfBHefV7NEtF1Xn",
+						"3oxjLrKyj0Gf_h_mgO003Z"
 					]
 				},
 				{
@@ -40,8 +40,8 @@
 					"outputs": [],
 					"inputs": [],
 					"deepOutputs": [
-						"0gg8idUo16XBDHYF7M08B7",
-						"13JK5N$1D2eRwTdlf8UT4N"
+						"0m0_pcLaXFHxQMgoLNAFpl",
+						"1IK5v12DfBHefV7NEtF1Xn"
 					]
 				},
 				{
@@ -63,13 +63,13 @@
 					"start": "2024-01-15T08:00:00",
 					"finish": "2024-01-26T17:00:00",
 					"outputs": [
-						"0gg8idUo16XBDHYF7M08B7",
-						"13JK5N$1D2eRwTdlf8UT4N"
+						"0m0_pcLaXFHxQMgoLNAFpl",
+						"1IK5v12DfBHefV7NEtF1Xn"
 					],
 					"inputs": [],
 					"deepOutputs": [
-						"0gg8idUo16XBDHYF7M08B7",
-						"13JK5N$1D2eRwTdlf8UT4N"
+						"0m0_pcLaXFHxQMgoLNAFpl",
+						"1IK5v12DfBHefV7NEtF1Xn"
 					]
 				},
 				{
@@ -80,13 +80,13 @@
 					"start": "2024-01-29T08:00:00",
 					"finish": "2024-02-09T17:00:00",
 					"outputs": [
-						"2H6i3hDFP3DxwfpS8Y3v_U"
+						"3oxjLrKyj0Gf_h_mgO003Z"
 					],
 					"inputs": [
-						"0gg8idUo16XBDHYF7M08B7"
+						"1IK5v12DfBHefV7NEtF1Xn"
 					],
 					"deepOutputs": [
-						"2H6i3hDFP3DxwfpS8Y3v_U"
+						"3oxjLrKyj0Gf_h_mgO003Z"
 					]
 				},
 				{
@@ -121,7 +121,7 @@
 		}
 	],
 	"products": {
-		"0gg8idUo16XBDHYF7M08B7": {
+		"1IK5v12DfBHefV7NEtF1Xn": {
 			"inputs": [
 				26
 			],
@@ -129,21 +129,72 @@
 				24
 			]
 		},
-		"13JK5N$1D2eRwTdlf8UT4N": {
+		"0m0_pcLaXFHxQMgoLNAFpl": {
 			"inputs": [],
 			"outputs": [
 				24
 			]
 		},
-		"2H6i3hDFP3DxwfpS8Y3v_U": {
+		"3oxjLrKyj0Gf_h_mgO003Z": {
 			"inputs": [],
 			"outputs": [
 				26
 			]
 		},
-		"0adFkG8Mj1meYFMAoLrSyl": {
+		"0mMcloZGr3xeE8ZZ9Sxf2y": {
 			"inputs": [],
 			"outputs": []
 		}
+	},
+	"authoring": {
+		"schedules": [
+			"Construction",
+			"Interiors"
+		],
+		"tasks": [
+			{
+				"name": "Partitions",
+				"identification": "F",
+				"status": null,
+				"predefinedType": "NOTDEFINED",
+				"start": null,
+				"finish": null,
+				"duration": null,
+				"predecessors": [],
+				"outputs": [],
+				"inputs": []
+			},
+			{
+				"name": "Studs",
+				"identification": "F.1",
+				"status": "STARTED",
+				"predefinedType": "CONSTRUCTION",
+				"start": "2024-04-01T09:00:00",
+				"finish": "2024-04-05T17:00:00",
+				"duration": "P5D",
+				"predecessors": [],
+				"outputs": [
+					"Wall 4"
+				],
+				"inputs": []
+			},
+			{
+				"name": "Boards",
+				"identification": "F.2",
+				"status": null,
+				"predefinedType": "NOTDEFINED",
+				"start": "2024-04-06T09:00:00",
+				"finish": "2024-04-08T17:00:00",
+				"duration": "P3D",
+				"predecessors": [
+					"Studs"
+				],
+				"outputs": [],
+				"inputs": [
+					"Wall 1"
+				]
+			}
+		],
+		"handoverIsMilestone": false
 	}
 }

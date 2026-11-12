@@ -1,8 +1,8 @@
 // This file was generated with the assistance of an AI coding tool.
 //
-// tool.Sequence against ifcopenshell.util.sequence in Python. sequence_4d.ifc
-// and the expected values in sequence_4d.json come from
-// make_sequence_fixture.py.
+// tool.Sequence and the Sequence.* operators against ifcopenshell in
+// Python. sequence_4d.ifc and the expected values in sequence_4d.json come
+// from make_sequence_fixture.py.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +10,10 @@ import { readFile } from 'node:fs/promises';
 import { URL } from 'node:url';
 
 import * as ifcopenshell from 'ifcopenshell';
+import { context } from '../src/context/context.js';
 import { store } from '../src/context/store.js';
+import sequenceOperators from '../src/modules/bim.sequence/operators.js';
+import { Ops } from '../src/ops.js';
 import { Sequence } from '../src/tool/Sequence.js';
 
 const MODEL_ID = 7;
@@ -30,37 +33,39 @@ const file = await open();
 store.models.length = 0;
 store.models.push( { id: MODEL_ID, name: 'sequence_4d.ifc', file } );
 
-test( 'schedules lists every work schedule with its task count', async () => {
+const schedule = ( id ) => Sequence.byId( MODEL_ID, id, 'IfcWorkSchedule' );
+const task = ( id ) => Sequence.byId( MODEL_ID, id, 'IfcTask' );
 
-	const schedules = await Sequence.schedules();
+test( 'schedules lists every work schedule with its task count', () => {
+
 	assert.deepEqual(
-		schedules.map( ( s ) => [ s.modelId, s.id, s.name, s.taskCount ] ),
+		Sequence.schedules().map( ( s ) => [ s.modelId, s.id, s.name, s.taskCount ] ),
 		expected.schedules.map( ( s ) => [ MODEL_ID, s.id, s.name, s.tasks.length ] ),
 	);
 
 } );
 
-test( 'tasks walks the tree in util.sequence order with derived dates', async () => {
+test( 'taskRows walks the tree in util.sequence order with derived dates', () => {
 
-	for ( const schedule of expected.schedules ) {
+	for ( const want of expected.schedules ) {
 
-		const rows = await Sequence.tasks( MODEL_ID, schedule.id );
-		assert.deepEqual( rows.map( ( row ) => row.id ), schedule.tasks.map( ( task ) => task.id ) );
+		const rows = Sequence.taskRows( schedule( want.id ) );
+		assert.deepEqual( rows.map( ( row ) => row.id ), want.tasks.map( ( t ) => t.id ) );
 
 		const parents = new Map();
-		for ( const task of schedule.tasks ) for ( const child of task.nested ) parents.set( child, task.id );
+		for ( const t of want.tasks ) for ( const child of t.nested ) parents.set( child, t.id );
 
 		for ( const [ index, row ] of rows.entries() ) {
 
-			const task = schedule.tasks[ index ];
-			assert.equal( row.name, task.name );
-			assert.equal( row.identification, task.identification );
-			assert.equal( row.start, task.start, `${ task.name } start` );
-			assert.equal( row.finish, task.finish, `${ task.name } finish` );
-			assert.equal( row.hasChildren, task.nested.length > 0 );
-			assert.equal( row.parentId, parents.get( task.id ) ?? 0 );
-			assert.equal( row.outputCount, task.outputs.length );
-			assert.equal( row.inputCount, task.inputs.length );
+			const t = want.tasks[ index ];
+			assert.equal( row.name, t.name );
+			assert.equal( row.identification, t.identification );
+			assert.equal( row.start, t.start, `${ t.name } start` );
+			assert.equal( row.finish, t.finish, `${ t.name } finish` );
+			assert.equal( row.hasChildren, t.nested.length > 0 );
+			assert.equal( row.parentId, parents.get( t.id ) ?? 0 );
+			assert.equal( row.outputCount, t.outputs.length );
+			assert.equal( row.inputCount, t.inputs.length );
 
 		}
 
@@ -68,9 +73,9 @@ test( 'tasks walks the tree in util.sequence order with derived dates', async ()
 
 } );
 
-test( 'task rows carry milestone, critical, derived and readable duration', async () => {
+test( 'task rows carry milestone, critical, derived and readable duration', () => {
 
-	const rows = await Sequence.tasks( MODEL_ID, expected.schedules[ 0 ].id );
+	const rows = Sequence.taskRows( schedule( expected.schedules[ 0 ].id ) );
 	const byName = Object.fromEntries( rows.map( ( row ) => [ row.name, row ] ) );
 
 	assert.equal( byName.Handover.isMilestone, true );
@@ -86,32 +91,30 @@ test( 'task rows carry milestone, critical, derived and readable duration', asyn
 
 } );
 
-test( 'taskProducts returns outputs and inputs, recursively on request', async () => {
+test( 'taskProducts returns outputs and inputs, recursively on request', () => {
 
-	for ( const task of expected.schedules[ 0 ].tasks ) {
+	for ( const t of expected.schedules[ 0 ].tasks ) {
 
-		const own = await Sequence.taskProducts( MODEL_ID, task.id );
-		assert.deepEqual( own.outputs.sort(), task.outputs );
-		assert.deepEqual( own.inputs.sort(), task.inputs );
-
-		const deep = await Sequence.taskProducts( MODEL_ID, task.id, { recursive: true } );
-		assert.deepEqual( deep.outputs.sort(), task.deepOutputs );
+		const own = Sequence.taskProducts( task( t.id ) );
+		assert.deepEqual( own.outputs.sort(), t.outputs );
+		assert.deepEqual( own.inputs.sort(), t.inputs );
+		assert.deepEqual( Sequence.taskProducts( task( t.id ), { recursive: true } ).outputs.sort(), t.deepOutputs );
 
 	}
 
 } );
 
-test( 'productTasks matches util.sequence.get_tasks_for_product', async () => {
+test( 'productTasks matches util.sequence.get_tasks_for_product', () => {
 
 	for ( const [ guid, want ] of Object.entries( expected.products ) ) {
 
-		const got = await Sequence.productTasks( MODEL_ID, guid );
-		assert.deepEqual( got.inputs.map( ( task ) => task.id ).sort( ( a, b ) => a - b ), want.inputs );
-		assert.deepEqual( got.outputs.map( ( task ) => task.id ).sort( ( a, b ) => a - b ), want.outputs );
-		for ( const task of [ ...got.inputs, ...got.outputs ] ) {
+		const got = Sequence.productTasks( Sequence.byGuid( MODEL_ID, guid ) );
+		assert.deepEqual( got.inputs.map( ( t ) => t.id ).sort( ( a, b ) => a - b ), want.inputs );
+		assert.deepEqual( got.outputs.map( ( t ) => t.id ).sort( ( a, b ) => a - b ), want.outputs );
+		for ( const t of [ ...got.inputs, ...got.outputs ] ) {
 
-			assert.equal( task.schedule, 'Construction' );
-			assert.equal( task.scheduleId, expected.schedules[ 0 ].id );
+			assert.equal( t.schedule, 'Construction' );
+			assert.equal( t.scheduleId, expected.schedules[ 0 ].id );
 
 		}
 
@@ -119,11 +122,92 @@ test( 'productTasks matches util.sequence.get_tasks_for_product', async () => {
 
 } );
 
-test( 'unknown models, ids and GlobalIds return empty results', async () => {
+test( 'lookups return null for unknown models, ids, classes and GlobalIds', () => {
 
-	assert.deepEqual( await Sequence.tasks( 99, 1 ), [] );
-	assert.deepEqual( await Sequence.tasks( MODEL_ID, 999999 ), [] );
-	assert.deepEqual( await Sequence.taskProducts( MODEL_ID, 999999 ), { outputs: [], inputs: [] } );
-	assert.deepEqual( await Sequence.productTasks( MODEL_ID, 'not-a-guid' ), { outputs: [], inputs: [] } );
+	assert.equal( Sequence.byId( 99, 1 ), null );
+	assert.equal( Sequence.byId( MODEL_ID, 999999 ), null );
+	assert.equal( Sequence.byId( MODEL_ID, expected.schedules[ 0 ].id, 'IfcTask' ), null );
+	assert.equal( Sequence.byGuid( MODEL_ID, 'not-a-guid' ), null );
+
+} );
+
+test( 'authoring through the Sequence operators ends where ifcopenshell.api does in Python', async () => {
+
+	const AUTHOR_ID = 8;
+	const model = await open();
+	store.models.push( { id: AUTHOR_ID, name: 'authoring.ifc', file: model } );
+	const ops = new Ops();
+	for ( const Op of sequenceOperators ) ops.register( Op );
+	const changes = [];
+	const onChange = ( change ) => changes.push( change );
+	context.signals.scheduleChanged.add( onChange );
+	const taskNamed = ( name ) => model.byType( 'IfcTask' ).find( ( t ) => t.Name === name ).id();
+	const wallGuid = ( name ) => model.byType( 'IfcWall' ).find( ( wall ) => wall.Name === name ).GlobalId;
+	const finished = ( result ) => assert.equal( result?.status, 'FINISHED', result?.message );
+
+	try {
+
+		context.sequence = { model: AUTHOR_ID, schedule: 0, task: 0 };
+		finished( ops.Sequence.AddWorkSchedule( { name: 'Fit-out 2', predefinedType: 'PLANNED' } ) );
+		const plan = context.sequence.schedule;
+		finished( ops.Sequence.EditWorkSchedule( { Name: 'Interiors' } ) );
+		finished( ops.Sequence.AddTask( { name: 'Partitions', identification: 'F' } ) );
+		const partitions = context.sequence.task;
+		finished( ops.Sequence.AddTask( { parent: partitions, name: 'Studs', identification: 'F.1' } ) );
+		const studs = context.sequence.task;
+		finished( ops.Sequence.AddTask( { parent: partitions, name: 'Boards', identification: 'F.2' } ) );
+		const boards = context.sequence.task;
+
+		context.sequence.task = studs;
+		finished( ops.Sequence.EditTask( { Status: 'STARTED', PredefinedType: 'CONSTRUCTION' } ) );
+		finished( ops.Sequence.EditTaskTime( { ScheduleStart: '2024-04-01T09:00:00', ScheduleDuration: 'P3D' } ) );
+		finished( ops.Sequence.EditTaskTime( { ScheduleStart: '2024-04-08T09:00:00', ScheduleFinish: '2024-04-10T17:00:00' }, { task: boards } ) );
+		finished( ops.Sequence.AssignPredecessor( studs, { task: boards } ) );
+		finished( ops.Sequence.EditTaskTime( { ScheduleDuration: 'P5D' } ) );
+		assert.equal( ( await ops.Sequence.AssignProducts( { guids: [ wallGuid( 'Wall 4' ), wallGuid( 'Wall 3' ) ] } ) ).result, 2 );
+		finished( await ops.Sequence.UnassignProducts( { guids: [ wallGuid( 'Wall 3' ) ] } ) );
+		finished( await ops.Sequence.AssignProducts( { kind: 'inputs', guids: [ wallGuid( 'Wall 1' ) ], task: boards } ) );
+
+		finished( ops.Sequence.AddTask( { parent: partitions, name: 'Temporary' } ) );
+		finished( ops.Sequence.RemoveTask() );
+		assert.equal( context.sequence.task, partitions, 'removing the active task activates its parent' );
+		finished( ops.Sequence.EditTask( { IsMilestone: false }, { task: taskNamed( 'Handover' ) } ) );
+		const fitOut = model.byType( 'IfcWorkSchedule' ).find( ( s ) => s.Name === 'Fit-out' ).id();
+		finished( ops.Sequence.RemoveWorkSchedule( { schedule: fitOut } ) );
+		assert.equal( context.sequence.schedule, plan, 'removing another schedule keeps the active one' );
+
+		const want = expected.authoring;
+		assert.deepEqual( model.byType( 'IfcWorkSchedule' ).map( ( s ) => s.Name ).sort(), want.schedules );
+		const rows = ops.Sequence.Tasks().result;
+		assert.deepEqual( rows.map( ( row ) => row.name ), want.tasks.map( ( t ) => t.name ) );
+		for ( const t of want.tasks ) {
+
+			const details = ops.Sequence.TaskDetails( { task: taskNamed( t.name ) } ).result;
+			assert.equal( details.identification, t.identification ?? '', t.name );
+			assert.equal( details.status, t.status ?? '', `${ t.name } status` );
+			assert.equal( details.predefinedType, t.predefinedType ?? '', `${ t.name } type` );
+			assert.equal( details.time?.scheduleStart ?? null, t.start, `${ t.name } start` );
+			assert.equal( details.time?.scheduleFinish ?? null, t.finish, `${ t.name } finish` );
+			assert.equal( details.time?.scheduleDuration ?? null, t.duration, `${ t.name } duration` );
+			assert.deepEqual( details.predecessors.map( ( link ) => link.name ), t.predecessors, `${ t.name } predecessors` );
+			assert.deepEqual( details.outputs.map( ( product ) => product.name ).sort(), t.outputs, `${ t.name } outputs` );
+			assert.deepEqual( details.inputs.map( ( product ) => product.name ).sort(), t.inputs, `${ t.name } inputs` );
+
+		}
+
+		assert.equal( ops.Sequence.TaskDetails( { task: taskNamed( 'Handover' ) } ).result.isMilestone, want.handoverIsMilestone );
+		assert.ok( changes.length > 0 && changes.every( ( change ) => change.module === 'sequence' && change.modelId === AUTHOR_ID ) );
+
+		const self = ops.Sequence.AssignPredecessor( studs, { task: studs } );
+		assert.equal( self.status, 'CANCELLED' );
+		assert.match( self.message, /cannot precede itself/ );
+		assert.equal( ops.Sequence.EditTask( { Name: 'x' }, { task: plan } ).status, 'CANCELLED', 'a schedule is not a task' );
+
+	} finally {
+
+		context.signals.scheduleChanged.remove( onChange );
+		context.sequence = undefined;
+
+	}
 
 } );
