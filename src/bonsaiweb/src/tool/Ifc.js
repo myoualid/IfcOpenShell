@@ -169,6 +169,42 @@ export class Ifc {
 
 	}
 
+	// An entity of a model's live file by STEP id, or null when there is no
+	// file, no such id, or it is not an `ifcClass` (when given).
+	static byId( modelId, id, ifcClass ) {
+
+		const file = Ifc.get( modelId );
+		if ( ! file || ! Number.isInteger( id ) ) return null;
+		try {
+
+			const entity = file.byId( id );
+			return ! ifcClass || entity.isA( ifcClass ) ? entity : null;
+
+		} catch {
+
+			return null;
+
+		}
+
+	}
+
+	// An entity of a model's live file by GlobalId, or null.
+	static byGuid( modelId, guid ) {
+
+		const file = Ifc.get( modelId );
+		if ( ! file || ! guid ) return null;
+		try {
+
+			return file.byGuid( guid );
+
+		} catch {
+
+			return null;
+
+		}
+
+	}
+
 	// Live entity for a pick, or for the current selection when called
 	// with no argument. View mode has no entity and returns null.
 	static entity( pick = context.activeObject ) {

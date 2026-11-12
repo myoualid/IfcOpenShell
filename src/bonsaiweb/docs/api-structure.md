@@ -34,7 +34,7 @@ tool.Viewer.get().getSelection();   // talk to the viewer directly
 | Tool | Role |
 |---|---|
 | `Viewer` | `Viewer.get()` returns the IfcViewer, or null until `Bonsai.start()` has created it. The viewer is created once per session, and nothing can replace it. |
-| | `Viewer.addMeshes( meshes, { name, metadata } )` adds meshes that have no IFC file (ifcopenshell geom shape) as a new source and resolves its source id once loaded. `Viewer.removeSource( id )` hides that source and frees its GPU buffers: IfcViewer cannot drop one model. `Viewer.pickPoint( x, y, anchor )` resolves the world point under canvas px, on a surface when the build can pick one, else on the plane through `anchor`. |
+| | `Viewer.addMeshes( meshes, { name, metadata } )` adds meshes that have no IFC file (ifcopenshell geom shape) as a new source and resolves its source id once loaded. `Viewer.removeSource( id )` hides that source and frees its GPU buffers: IfcViewer cannot drop one model. `Viewer.pickPoint( x, y, anchor )` resolves the world point under canvas px, on a surface when the build can pick one, else on the plane through `anchor`. `Viewer.objectIds( sourceId, guids )` resolves GlobalIds to the objectIds the viewer draws for them, and `Viewer.selectedGuids( sourceId )` gives the GlobalIds of the selection in one model. |
 | `Scene` | Scene-wide changes: `setBackground`, `setUnit`, `setFalseOrigin`, `setModelTransform` (pass null to clear). Each one updates the viewer and records the value, so `store.scene` and the saved project agree with what is on screen. |
 | `Ifc` | The live ifcopenshell file per model, and the entity behind a pick. |
 | `Loader` | Opening, converting and clearing models. Drag and drop. |
@@ -216,7 +216,7 @@ const bonsai = new Bonsai( document.body, configuration );
 | `Project` | `New`, `OpenFile`, `OpenBag`, `LoadIfc`, `LoadSample`, `Download`, `DownloadView`, `Clear`, `ListModels`, `Benchmark` |
 | `Spatial` | `Select`, `Isolate`, `Objects`, `Hidden` |
 | `Properties`, `Settings`, `Georeferencing`, `Profiler`, `Terminal`, `Dropbox` | Panel toggles and module actions |
-| `Sequence` | `Toggle`, `ToggleTasks`, `ToggleEditor`, `Schedules`, `Tasks`, `ProductTasks`, `TaskDetails`, `SelectTask`; authoring: `AddWorkSchedule`, `EditWorkSchedule`, `RemoveWorkSchedule`, `AddTask`, `EditTask`, `RemoveTask`, `EditTaskTime`, `AssignProducts`, `UnassignProducts`, `AssignPredecessor`, `UnassignPredecessor`. They act on `context.sequence.model`, `.schedule` and `.task` (STEP ids) unless their options name others, and adding or removing moves that state. Authoring is not undoable. |
+| `Sequence` | `Toggle`, `ToggleTasks`, `ToggleEditor`, `Activate`, `Schedules`, `Tasks`, `ProductTasks`, `TaskDetails`, `SelectTask`; authoring: `AddWorkSchedule`, `EditWorkSchedule`, `RemoveWorkSchedule`, `AddTask`, `EditTask`, `RemoveTask`, `EditTaskTime`, `AssignProducts`, `UnassignProducts`, `AssignPredecessor`, `UnassignPredecessor`. They act on `context.sequence.model`, `.schedule` and `.task` (STEP ids) unless their options name others. Changing that state dispatches `scheduleActivated`, changing the IFC file dispatches `scheduleChanged`, and the toggles dispatch `panelToggled`; the panels only listen. Authoring is not undoable. |
 
 ## Viewer events
 

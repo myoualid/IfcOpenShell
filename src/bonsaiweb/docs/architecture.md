@@ -122,10 +122,11 @@ Operators and panels receive that object, and panels may hang their own state on
 | Group | Signals |
 |-------|---------|
 | Session | `appReady`, `viewerReady`, `viewportResized` |
-| Model | `modelLoadStarted`, `modelLoaded`, `modelCleared`, `modelLoadedToGPU`, `modelUnloaded`, `modelNameChanged`, `liveIfcReady` |
+| Model | `modelLoadStarted`, `modelLoaded`, `modelCleared`, `modelLoadedToGPU`, `modelUnloaded`, `modelNameChanged`, `liveIfcReady`, `scheduleChanged`, `scheduleActivated` |
 | Scene | `objectPicked`, `selectionChanged`, `selectionCleared`, `visibilityChanged`, `viewerToolsChanged`, `colorsChanged`, `backgroundChanged` |
 | Camera and controls | `cameraChanged`, `standardViewSet`, `navPresetChanged` |
 | History | `historyChanged` |
+| Panels | `panelToggled` |
 
 `bonsai.addSignal(name)` adds a `Signal` if that name is missing. Boot also attaches a logger to every signal so boot and load phases print timings.
 
@@ -139,7 +140,7 @@ Operators and panels receive that object, and panels may hang their own state on
 | `Scene` | Background, federation unit, false origin, and model transforms: applied to the viewer and recorded for the store and the project file. |
 | `Federation` | The in-memory `.ifcfed` project. |
 | `Loader` | Add, convert, pair, and clear sources. Drag-and-drop. |
-| `Ifc` | The model list, view versus edit, the live file, the entity for a pick. |
+| `Ifc` | The model list, view versus edit, the live file, the entity for a pick, and `byId` / `byGuid` lookups in a model's live file. |
 | `Element` | Scalar attributes and display names. |
 | `Pset` | Property sets and quantity sets, with type inheritance, formatted for a table cell. |
 | `Sequence` | Work schedules, task rows with derived dates, and the products a task builds or uses; authoring of schedules, tasks, task times, assignments and sequence links. Calls `ifcopenshell/util/sequence` and `ifcopenshell/api/sequence` from the local ifcopenshell build. |

@@ -45,6 +45,10 @@ export const Signals = {
 	liveIfcReady: new Signal(),
 	// A schedule module changed the live file: { module: 'sequence' | 'cost', modelId }.
 	scheduleChanged: new Signal(),
+	// The active model, schedule and task / cost item of a schedule module
+	// changed: { module: 'sequence' | 'cost' }. The state is on context.sequence
+	// or context.cost.
+	scheduleActivated: new Signal(),
 
 	// SCENE: SELECTION
 	objectPicked: new Signal(), // ({objectId, guid, modelIndex, sourceId}) — name/type via getSelectedObjects
@@ -67,6 +71,11 @@ export const Signals = {
 
 	// CONTROLS
 	navPresetChanged: new Signal(), // ({ preset })
+
+	// PANELS
+	// Show or hide a docked panel by its spec id: { id, show? }. show true
+	// shows it, false hides it, and leaving it out toggles it.
+	panelToggled: new Signal(),
 
 	// HISTORY
 	historyChanged: new Signal(), // (cmd | undefined)

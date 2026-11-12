@@ -4,7 +4,8 @@
 // mirroring bonsai.tool.Sequence in Python. Reads go through
 // ifcopenshell.util.sequence and writes through ifcopenshell.api.sequence,
 // both transpiled into the local ifcopenshell build. Each method does one
-// thing; the Sequence.* operators combine them, as Bonsai's core does.
+// thing on entities it is given; the Sequence.* operators find those
+// entities with tool.Ifc and combine the steps, as Bonsai's core does.
 
 import * as SequenceAPI from 'ifcopenshell/api/sequence';
 import * as DateUtil from 'ifcopenshell/util/date';
@@ -25,50 +26,6 @@ function iso( value ) {
 }
 
 export class Sequence {
-
-	// LOOKUP
-
-	// The live ifcopenshell file of a model, or null.
-	static file( modelId ) {
-
-		return store.models.find( ( entry ) => entry.id === modelId )?.file ?? null;
-
-	}
-
-	// An entity of a model by STEP id, or null when it is missing or of
-	// another class.
-	static byId( modelId, id, ifcClass ) {
-
-		const file = Sequence.file( modelId );
-		if ( ! file || ! Number.isInteger( id ) ) return null;
-		try {
-
-			const entity = file.byId( id );
-			return ! ifcClass || entity.isA( ifcClass ) ? entity : null;
-
-		} catch {
-
-			return null;
-
-		}
-
-	}
-
-	static byGuid( modelId, guid ) {
-
-		const file = Sequence.file( modelId );
-		if ( ! file || ! guid ) return null;
-		try {
-
-			return file.byGuid( guid );
-
-		} catch {
-
-			return null;
-
-		}
-
-	}
 
 	// READ
 

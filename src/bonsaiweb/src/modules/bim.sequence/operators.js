@@ -2,42 +2,21 @@
 //
 // Sequence.* operators. The active model, work schedule and task are
 // context.sequence.model, .schedule and .task (STEP ids); every operator
-// works on them unless its options name others. Authoring operators carry
-// the logic of Bonsai's core/sequence.py and call tool.Sequence for each
-// step. They are not undoable: the IFC file has no transactions.
+// works on them unless its options name others. Operators that change that
+// state dispatch scheduleActivated; operators that change the IFC file
+// dispatch scheduleChanged; panel toggles dispatch panelToggled. Panels
+// only listen. Authoring operators carry the logic of Bonsai's
+// core/sequence.py and call tool.Sequence for each step. They are not
+// undoable: the IFC file has no transactions.
 
 import { Operator } from '../../ops.js';
 import { store } from '../../context/store.js';
+import { Ifc } from '../../tool/Ifc.js';
 import { Sequence } from '../../tool/Sequence.js';
 import { Viewer } from '../../tool/Viewer.js';
 
 const OPTIONS = { name: 'options', type: 'object', optional: true };
 const ATTRIBUTES = { name: 'attributes', type: 'object' };
-
-// Viewer objectIds of the given GlobalIds in one model. The viewer can draw
-// one product as several objects that share its GlobalId.
-async function objectIds( viewer, modelId, guids ) {
-
-	if ( ! guids.length ) return [];
-	const want = new Set( guids );
-	const objects = await viewer.getObjects();
-	return objects
-		.filter( ( object ) => object.sourceId === modelId && want.has( object.guid ) )
-		.map( ( object ) => object.objectId );
-
-}
-
-// GlobalIds of the selected viewer objects that belong to one model.
-async function selectedGuids( modelId ) {
-
-	const viewer = Viewer.get();
-	if ( ! viewer ) return [];
-	await viewer.getObjects();
-	return viewer.getSelectedObjects()
-		.filter( ( object ) => object.sourceId === modelId && object.guid )
-		.map( ( object ) => object.guid );
-
-}
 
 // Resolves what an operator acts on: options.model / .schedule / .task when
 // given, else the active ones on context.sequence.
@@ -64,27 +43,28 @@ class SequenceOperator extends Operator {
 
 	get file() {
 
-		return Sequence.file( this.model );
+		return Ifc.get( this.model );
 
 	}
 
 	get schedule() {
 
-		return Sequence.byId( this.model, this.options.schedule ?? this.state.schedule, 'IfcWorkSchedule' );
+		return Ifc.byId( this.model, this.options.schedule ?? this.state.schedule, 'IfcWorkSchedule' );
 
 	}
 
 	get task() {
 
-		return Sequence.byId( this.model, this.options.task ?? this.state.task, 'IfcTask' );
+		return Ifc.byId( this.model, this.options.task ?? this.state.task, 'IfcTask' );
 
 	}
 
-	// The active state follows what an operator added or removed.
+	// Move the active state and tell the panels.
 	activate( changes ) {
 
 		this.context.sequence ??= {};
 		Object.assign( this.context.sequence, changes );
+		this.context.signals.scheduleActivated.dispatch( { module: 'sequence' } );
 
 	}
 
@@ -103,15 +83,9 @@ class SequenceToggle extends Operator {
 	static operatorName = 'Sequence.Toggle';
 	static operatorLabel = 'Toggle Work Schedule';
 
-	poll() {
-
-		return Boolean( this.context.sequence?.panel );
-
-	}
-
 	execute() {
 
-		this.context.sequence.panel.toggle();
+		this.context.signals.panelToggled.dispatch( { id: 'sequence-panel' } );
 		return { status: 'FINISHED' };
 
 	}
@@ -123,15 +97,9 @@ class SequenceToggleTasks extends Operator {
 	static operatorName = 'Sequence.ToggleTasks';
 	static operatorLabel = 'Toggle Element Tasks';
 
-	poll() {
-
-		return Boolean( this.context.sequence?.tasksPanel );
-
-	}
-
 	execute() {
 
-		this.context.sequence.tasksPanel.toggle();
+		this.context.signals.panelToggled.dispatch( { id: 'sequence-tasks-panel' } );
 		return { status: 'FINISHED' };
 
 	}
@@ -143,15 +111,36 @@ class SequenceToggleEditor extends Operator {
 	static operatorName = 'Sequence.ToggleEditor';
 	static operatorLabel = 'Toggle Task Editor';
 
-	poll() {
+	execute() {
 
-		return Boolean( this.context.sequence?.editor );
+		this.context.signals.panelToggled.dispatch( { id: 'sequence-editor-panel' } );
+		return { status: 'FINISHED' };
 
 	}
 
+}
+
+// STATE
+
+// Make a model, schedule and task active: options.model, .schedule, .task
+// (a task of 0 clears it). With options.show, also show the Gantt.
+class SequenceActivate extends SequenceOperator {
+
+	static operatorName = 'Sequence.Activate';
+	static operatorLabel = 'Activate Schedule or Task';
+	static operatorArgs = [ OPTIONS ];
+
 	execute() {
 
-		this.context.sequence.editor.toggle();
+		const changes = {};
+		for ( const key of [ 'model', 'schedule', 'task' ] ) {
+
+			if ( this.options[ key ] !== undefined ) changes[ key ] = this.options[ key ];
+
+		}
+
+		this.activate( changes );
+		if ( this.options.show ) this.context.signals.panelToggled.dispatch( { id: 'sequence-panel', show: true } );
 		return { status: 'FINISHED' };
 
 	}
@@ -227,7 +216,7 @@ class SequenceProductTasks extends Operator {
 
 	execute() {
 
-		const product = Sequence.byGuid( this.pick?.sourceId, this.pick?.guid );
+		const product = Ifc.byGuid( this.pick?.sourceId, this.pick?.guid );
 		const result = product ? Sequence.productTasks( product ) : { outputs: [], inputs: [] };
 		return { status: 'FINISHED', result };
 
@@ -235,8 +224,8 @@ class SequenceProductTasks extends Operator {
 
 }
 
-// Select what a task builds and uses; with `isolate`, hide everything else.
-// A summary task selects the products of all its subtasks.
+// Select what a task builds and uses; with options.isolate, hide everything
+// else. A summary task selects the products of all its subtasks.
 class SequenceSelectTask extends SequenceOperator {
 
 	static operatorName = 'Sequence.SelectTask';
@@ -254,7 +243,7 @@ class SequenceSelectTask extends SequenceOperator {
 		const viewer = Viewer.get();
 		const { outputs, inputs } = Sequence.taskProducts( this.task, { recursive: true } );
 		const guids = [ ...new Set( [ ...outputs, ...inputs ] ) ];
-		const ids = await objectIds( viewer, this.model, guids );
+		const ids = await Viewer.objectIds( this.model, guids );
 		viewer.setSelection( ids );
 		if ( ids.length && this.options.isolate ) {
 
@@ -357,7 +346,10 @@ class SequenceRemoveWorkSchedule extends SequenceOperator {
 
 // AUTHORING: TASKS
 
-// A subtask of options.parent (a task id), else a root task of the schedule.
+// Where the new task goes: options.parent (a task id); else options
+// .placement 'child' (under the active task) or 'sibling' (the default:
+// next to the active task, under its parent); a root task of the schedule
+// when there is no parent.
 class SequenceAddTask extends SequenceOperator {
 
 	static operatorName = 'Sequence.AddTask';
@@ -366,13 +358,18 @@ class SequenceAddTask extends SequenceOperator {
 
 	get parent() {
 
-		return this.options.parent ? Sequence.byId( this.model, this.options.parent, 'IfcTask' ) : null;
+		if ( this.options.parent ) return Ifc.byId( this.model, this.options.parent, 'IfcTask' );
+		const active = this.task;
+		if ( ! active ) return null;
+		if ( this.options.placement === 'child' ) return active;
+		const parent = active.Nests?.[ 0 ]?.RelatingObject;
+		return parent?.isA( 'IfcTask' ) ? parent : null;
 
 	}
 
 	poll() {
 
-		return Boolean( this.options.parent ? this.parent : this.schedule );
+		return Boolean( this.options.parent ? this.parent : this.parent || this.schedule );
 
 	}
 
@@ -496,14 +493,14 @@ class SequenceAssignProducts extends SequenceOperator {
 
 	async execute() {
 
-		const guids = this.options.guids ?? await selectedGuids( this.model );
+		const guids = this.options.guids ?? await Viewer.selectedGuids( this.model );
 		const assign = this.constructor.assign;
 		const inputs = this.options.kind === 'inputs';
 		const task = this.task;
 		let count = 0;
 		for ( const guid of new Set( guids ) ) {
 
-			const product = Sequence.byGuid( this.model, guid );
+			const product = Ifc.byGuid( this.model, guid );
 			if ( ! product?.isA( 'IfcProduct' ) ) continue;
 			count ++;
 			if ( inputs && assign ) Sequence.assignInput( this.file, task, product );
@@ -546,7 +543,7 @@ class SequenceAssignPredecessor extends SequenceOperator {
 
 	get predecessor() {
 
-		return Sequence.byId( this.model, this.predecessorId, 'IfcTask' );
+		return Ifc.byId( this.model, this.predecessorId, 'IfcTask' );
 
 	}
 
@@ -585,6 +582,7 @@ class SequenceUnassignPredecessor extends SequenceAssignPredecessor {
 }
 
 export {
+	SequenceActivate,
 	SequenceAddTask,
 	SequenceAddWorkSchedule,
 	SequenceAssignPredecessor,
@@ -610,6 +608,7 @@ export default [
 	SequenceToggle,
 	SequenceToggleTasks,
 	SequenceToggleEditor,
+	SequenceActivate,
 	SequenceSchedules,
 	SequenceTasks,
 	SequenceTaskDetails,

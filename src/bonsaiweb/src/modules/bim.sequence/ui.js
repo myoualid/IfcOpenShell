@@ -13,6 +13,7 @@ import { store } from '../../context/store.js';
 import ops from '../../ops.js';
 import { Viewer } from '../../tool/Viewer.js';
 import {
+	bindPanelToggle,
 	checkboxInput,
 	dropdownInput,
 	element,
@@ -20,10 +21,8 @@ import {
 	iconButton,
 	plural,
 	setDropdown,
-	showPanel,
 	textButton,
 	textInput,
-	togglePanel,
 } from '../../util/sheet.js';
 import { ancestorIds, visibleRows } from '../../util/tree-rows.js';
 
@@ -94,10 +93,18 @@ function timelineTicks( start, end ) {
 
 }
 
+// context.sequence holds the active model, schedule and task (STEP ids).
+// Panels read it; only Sequence.* operators change it.
 function sequenceState( context ) {
 
-	context.sequence ??= {};
-	return context.sequence;
+	return context.sequence ?? {};
+
+}
+
+function confirmRemoveTask( name, hasChildren ) {
+
+	const what = hasChildren ? `"${ name }" and its subtasks` : `"${ name }"`;
+	return window.confirm( `Delete ${ what } from the IFC file? This cannot be undone.` );
 
 }
 
@@ -133,7 +140,6 @@ class SequencePanelUI {
 		this._token = 0;
 
 		this._build();
-		sequenceState( context ).panel = this;
 
 		const { signals } = context;
 		signals.liveIfcReady.add( () => this.refresh() );
@@ -144,6 +150,12 @@ class SequencePanelUI {
 			if ( change?.module === 'sequence' ) this.refresh();
 
 		} );
+		signals.scheduleActivated.add( ( change ) => {
+
+			if ( change?.module === 'sequence' ) this._onActivated();
+
+		} );
+		bindPanelToggle( signals, SequencePanelUI.spec.id, () => this.workspacePanel );
 		this.refresh();
 
 	}
@@ -154,22 +166,7 @@ class SequencePanelUI {
 
 	}
 
-	toggle() {
-
-		togglePanel( this.workspacePanel );
-		return this;
-
-	}
-
-	show() {
-
-		showPanel( this.workspacePanel );
-		return this;
-
-	}
-
-	// STATE — the open schedule and the active task live on context.sequence
-	// (.model, .schedule, .task) so operators and the editor see them too.
+	// STATE — read from context.sequence (.model, .schedule, .task).
 
 	get state() {
 
@@ -184,54 +181,9 @@ class SequencePanelUI {
 
 	}
 
-	set key( value ) {
-
-		if ( ! value ) {
-
-			this.state.schedule = 0;
-			return;
-
-		}
-
-		const { modelId, scheduleId } = this._parseKey( value );
-		this.state.model = modelId;
-		this.state.schedule = scheduleId;
-
-	}
-
 	get activeId() {
 
 		return this.state.task || 0;
-
-	}
-
-	set activeId( id ) {
-
-		this.state.task = id || 0;
-
-	}
-
-	// Open a schedule at one task: expand to it, make it active, scroll to it.
-	async reveal( modelId, scheduleId, taskId ) {
-
-		this.show();
-		const key = `${ modelId }:${ scheduleId }`;
-		if ( key !== this.key ) {
-
-			if ( ! this.schedules.some( ( schedule ) => this._keyOf( schedule ) === key ) ) await this.refresh();
-			await this._open( key );
-
-		}
-
-		// A task added a moment ago may not be loaded yet.
-		if ( ! this.byId.has( taskId ) ) await this.refresh();
-		if ( ! this.byId.has( taskId ) ) return;
-		this.filter = '';
-		this._search.setValue( '' );
-		this.criticalOnly = false;
-		this._critical.dom.classList.remove( 'is-active' );
-		for ( const id of ancestorIds( this.byId, taskId ) ) this.collapsed.delete( id );
-		this._setActive( taskId, { select: true } );
 
 	}
 
@@ -241,7 +193,12 @@ class SequencePanelUI {
 
 		this._schedule = new InputDropdown();
 		this._schedule.dom.setAttribute( 'aria-label', 'Work schedule' );
-		this._schedule.onChange( () => this._open( this._schedule.getValue() ) );
+		this._schedule.onChange( () => {
+
+			const { modelId, scheduleId } = this._parseKey( this._schedule.getValue() );
+			ops.Sequence.Activate( { model: modelId, schedule: scheduleId, task: 0 } );
+
+		} );
 
 		this._search = new InputSearch( 'Filter tasks', ( value ) => {
 
@@ -270,10 +227,10 @@ class SequencePanelUI {
 				iconButton( 'visibility', 'Show all objects', () => ops.Viewer.ShowAll() ),
 				iconButton( 'refresh', 'Reload schedules from the model', () => this.refresh() ),
 				new Text( '' ).addClass( 'bonsai-sheet-divider' ),
-				iconButton( 'add_task', 'Add a task after the active one', () => this.addTask() ),
-				iconButton( 'subdirectory_arrow_right', 'Add a subtask to the active task', () => this.addTask( { child: true } ) ),
-				iconButton( 'delete', 'Delete the active task (Delete)', () => this.removeTask() ),
-				iconButton( 'calendar_add_on', 'New work schedule', () => this.addSchedule() ),
+				iconButton( 'add_task', 'Add a task after the active one', () => this._addTask( 'sibling' ) ),
+				iconButton( 'subdirectory_arrow_right', 'Add a subtask to the active task', () => this._addTask( 'child' ) ),
+				iconButton( 'delete', 'Delete the active task (Delete)', () => this._removeTask() ),
+				iconButton( 'calendar_add_on', 'New work schedule', () => this._addSchedule() ),
 			);
 
 		this._summary = new Text( '' ).addClass( 'bonsai-sheet-summary' );
@@ -343,24 +300,20 @@ class SequencePanelUI {
 			label: several ? `${ schedule.name } — ${ schedule.modelName }` : schedule.name,
 		} ) ), this.key );
 
-		if ( failure ) {
+		if ( failure || ! schedules.length ) {
 
-			this._clear( `Work schedules could not be read: ${ failure }` );
+			let message = 'Open an IFC file to plan with its work schedules.';
+			if ( failure ) message = `Work schedules could not be read: ${ failure }`;
+			else if ( store.models.some( ( entry ) => entry.file ) ) message = 'No work schedules (IfcWorkSchedule) in the open IFC files.';
+			this._clear( message );
+			if ( this.state.schedule ) ops.Sequence.Activate( { schedule: 0, task: 0 } );
 			return;
 
 		}
 
-		if ( ! schedules.length ) {
-
-			this._clear( store.models.some( ( entry ) => entry.file )
-				? 'No work schedules (IfcWorkSchedule) in the open IFC files.'
-				: 'Open an IFC file to plan with its work schedules.' );
-			return;
-
-		}
-
-		const keep = schedules.some( ( schedule ) => this._keyOf( schedule ) === this.key );
-		await this._open( keep ? this.key : this._keyOf( schedules[ 0 ] ) );
+		// Reload the active schedule, or make the first one active.
+		if ( schedules.some( ( schedule ) => this._keyOf( schedule ) === this.key ) ) await this._open( this.key );
+		else ops.Sequence.Activate( { model: schedules[ 0 ].modelId, schedule: schedules[ 0 ].id, task: 0 } );
 
 	}
 
@@ -386,7 +339,6 @@ class SequencePanelUI {
 
 		if ( token !== this._token ) return;
 
-		this.key = key;
 		this._loadedKey = key;
 		this._schedule.setValue( key );
 		this.rows = rows;
@@ -401,25 +353,20 @@ class SequencePanelUI {
 
 		}
 
-		// An operator may have made a new task active: show it.
-		if ( ! this.byId.has( this.activeId ) ) this.activeId = 0;
-		for ( const id of ancestorIds( this.byId, this.activeId ) ) this.collapsed.delete( id );
-
 		this.range = this._range( rows );
 		this._summarise();
 		this._render();
-		this._body.querySelector( '.bonsai-sheet-row.is-active' )?.scrollIntoView( { block: 'nearest' } );
-		this._notifyEditor();
+		// A task that is gone stops being active; otherwise show the active one.
+		if ( this.activeId && ! this.byId.has( this.activeId ) ) ops.Sequence.Activate( { task: 0 } );
+		else this._applyActive();
 
 	}
 
 	_clear( message ) {
 
-		this.key = '';
 		this._loadedKey = '';
 		this.rows = [];
 		this.byId = new Map();
-		this.activeId = 0;
 		this.linked.clear();
 		this.range = null;
 		this._summary.setValue( '' );
@@ -428,7 +375,6 @@ class SequencePanelUI {
 		this._body.replaceChildren();
 		this._empty.textContent = message;
 		this._empty.hidden = false;
-		this._notifyEditor();
 
 	}
 
@@ -715,7 +661,7 @@ class SequencePanelUI {
 				this._selectActive( { isolate: true } );
 				break;
 			case 'Delete':
-				this.removeTask();
+				this._removeTask();
 				break;
 			default:
 				handled = false;
@@ -733,9 +679,49 @@ class SequencePanelUI {
 
 	_setActive( id, { select = false } = {} ) {
 
-		this.activeId = id;
-		const visible = this._visible?.some( ( row ) => row.id === id );
-		if ( ! visible ) this._render();
+		ops.Sequence.Activate( { task: id } );
+		if ( select ) this._selectActive();
+
+	}
+
+	// scheduleActivated: open another schedule, or show the active task.
+	_onActivated() {
+
+		const key = this.key;
+		if ( key !== this._loadedKey ) {
+
+			if ( key ) this._open( key );
+			return;
+
+		}
+
+		this._applyActive();
+
+	}
+
+	// Highlight the active task and scroll to it, expanding its parents and
+	// dropping a filter that would hide it.
+	_applyActive() {
+
+		const id = this.activeId;
+		let render = false;
+		for ( const parent of ancestorIds( this.byId, id ) ) {
+
+			if ( this.collapsed.delete( parent ) ) render = true;
+
+		}
+
+		if ( id && ( this.filter || this.criticalOnly ) && ! this._visible?.some( ( row ) => row.id === id ) ) {
+
+			this.filter = '';
+			this._search.setValue( '' );
+			this.criticalOnly = false;
+			this._critical.dom.classList.remove( 'is-active' );
+			render = true;
+
+		}
+
+		if ( render ) this._render();
 		for ( const node of this._body.querySelectorAll( '.bonsai-sheet-row.is-active' ) ) {
 
 			node.classList.remove( 'is-active' );
@@ -743,7 +729,7 @@ class SequencePanelUI {
 
 		}
 
-		const node = this._body.querySelector( `[data-id="${ id }"]` );
+		const node = id ? this._body.querySelector( `[data-id="${ id }"]` ) : null;
 		if ( node ) {
 
 			node.classList.add( 'is-active' );
@@ -751,9 +737,6 @@ class SequencePanelUI {
 			node.scrollIntoView( { block: 'nearest' } );
 
 		}
-
-		this._notifyEditor();
-		if ( select ) this._selectActive();
 
 	}
 
@@ -826,12 +809,6 @@ class SequencePanelUI {
 
 	// AUTHORING
 
-	_notifyEditor() {
-
-		this.context.sequence?.editor?.refresh();
-
-	}
-
 	// Run an authoring operator; report a refusal or an error on the status line.
 	async _run( run, done ) {
 
@@ -858,31 +835,23 @@ class SequencePanelUI {
 
 	}
 
-	// A task after the active one (same parent), a subtask of it with
-	// `child`, or a root task when nothing is active. Sequence.AddTask makes
-	// the new task active, and the reload that follows shows it.
-	async addTask( { child = false } = {} ) {
+	// Sequence.AddTask places it next to or under the active task and makes
+	// it active; the reload that follows shows it.
+	_addTask( placement ) {
 
-		if ( ! this.key ) return;
-		const active = this.byId.get( this.activeId );
-		const options = { name: 'New task' };
-		if ( active && child ) options.parent = active.id;
-		else if ( active?.parentId ) options.parent = active.parentId;
-		await this._run( () => ops.Sequence.AddTask( options ), 'Task added' );
+		if ( this.key ) this._run( () => ops.Sequence.AddTask( { placement, name: 'New task' } ), 'Task added' );
 
 	}
 
-	async removeTask() {
+	_removeTask() {
 
 		const row = this.byId.get( this.activeId );
-		if ( ! row ) return;
-		const what = row.hasChildren ? `"${ row.name }" and its subtasks` : `"${ row.name }"`;
-		if ( ! window.confirm( `Delete ${ what } from the IFC file? This cannot be undone.` ) ) return;
-		await this._run( () => ops.Sequence.RemoveTask(), `Deleted ${ row.identification || row.name }` );
+		if ( ! row || ! confirmRemoveTask( row.name, row.hasChildren ) ) return;
+		this._run( () => ops.Sequence.RemoveTask(), `Deleted ${ row.identification || row.name }` );
 
 	}
 
-	async addSchedule() {
+	_addSchedule() {
 
 		if ( ! store.models.some( ( entry ) => entry.file ) ) {
 
@@ -891,16 +860,16 @@ class SequencePanelUI {
 
 		}
 
-		await this._run( () => ops.Sequence.AddWorkSchedule( { name: 'Work schedule' } ), 'Work schedule added' );
+		this._run( () => ops.Sequence.AddWorkSchedule( { name: 'Work schedule' } ), 'Work schedule added' );
 
 	}
 
 	_collapseAll() {
 
 		this.collapsed = new Set( this.rows.filter( ( row ) => row.hasChildren ).map( ( row ) => row.id ) );
-		const root = this.byId.get( this.activeId );
-		if ( root && root.parentId ) this.activeId = [ root.id, ...ancestorIds( this.byId, root.id ) ].pop();
 		this._render();
+		const row = this.byId.get( this.activeId );
+		if ( row?.parentId ) ops.Sequence.Activate( { task: [ row.id, ...ancestorIds( this.byId, row.id ) ].pop() } );
 
 	}
 
@@ -938,9 +907,8 @@ class SequenceTasksPanelUI {
 			.gap( '10px' )
 			.add( this._card, this._outputsTitle, this._outputs, this._inputsTitle, this._inputs );
 
-		sequenceState( context ).tasksPanel = this;
-
 		const { signals } = context;
+		bindPanelToggle( signals, SequenceTasksPanelUI.spec.id, () => this.workspacePanel );
 		signals.objectPicked.add( () => this._refresh() );
 		signals.liveIfcReady.add( () => this._refresh() );
 		signals.modelCleared.add( () => this._refresh() );
@@ -951,13 +919,6 @@ class SequenceTasksPanelUI {
 	attach( workspacePanel ) {
 
 		this.workspacePanel = workspacePanel;
-
-	}
-
-	toggle() {
-
-		togglePanel( this.workspacePanel );
-		return this;
 
 	}
 
@@ -1020,7 +981,7 @@ class SequenceTasksPanelUI {
 				element( 'span', 'SequenceTasks-name', [ task.identification, task.name ].filter( Boolean ).join( '  ' ) ),
 				element( 'span', 'SequenceTasks-schedule', task.schedule ),
 			);
-			const open = () => this.context.sequence?.panel?.reveal( pick.sourceId, task.scheduleId, task.id );
+			const open = () => ops.Sequence.Activate( { model: pick.sourceId, schedule: task.scheduleId, task: task.id, show: true } );
 			item.onClick( open );
 			item.dom.addEventListener( 'keydown', ( event ) => {
 
@@ -1086,12 +1047,20 @@ class SequenceEditorPanelUI {
 		this._token = 0;
 
 		this._build();
-		sequenceState( context ).editor = this;
-		context.signals.scheduleChanged.add( ( change ) => {
+		const { signals } = context;
+		bindPanelToggle( signals, SequenceEditorPanelUI.spec.id, () => this.workspacePanel );
+		signals.scheduleChanged.add( ( change ) => {
 
 			if ( change?.module === 'sequence' ) this.refresh();
 
 		} );
+		signals.scheduleActivated.add( ( change ) => {
+
+			if ( change?.module === 'sequence' ) this.refresh();
+
+		} );
+		signals.liveIfcReady.add( () => this.refresh() );
+		signals.modelCleared.add( () => this.refresh() );
 		this.refresh();
 
 	}
@@ -1099,13 +1068,6 @@ class SequenceEditorPanelUI {
 	attach( workspacePanel ) {
 
 		this.workspacePanel = workspacePanel;
-
-	}
-
-	toggle() {
-
-		togglePanel( this.workspacePanel );
-		return this;
 
 	}
 
@@ -1118,7 +1080,8 @@ class SequenceEditorPanelUI {
 	_build() {
 
 		const run = ( fn ) => () => void fn();
-		const gantt = () => this.state.panel;
+		const addSchedule = () => this._run( () => ops.Sequence.AddWorkSchedule( { name: 'Work schedule' } ), 'Work schedule added' );
+		const addTask = ( placement ) => this._run( () => ops.Sequence.AddTask( { placement, name: 'New task' } ), 'Task added' );
 
 		// Schedule
 		this._scheduleName = textInput( ( value ) => this._run( () => ops.Sequence.EditWorkSchedule( { Name: value.trim() || 'Work schedule' } ) ) );
@@ -1128,7 +1091,7 @@ class SequenceEditorPanelUI {
 			field( 'Name', this._scheduleName ),
 			field( 'Type', this._scheduleType ),
 			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
-				textButton( 'New schedule', 'calendar_add_on', run( () => gantt()?.addSchedule() ) ),
+				textButton( 'New schedule', 'calendar_add_on', run( addSchedule ) ),
 				textButton( 'Delete schedule', 'delete', run( () => this._removeSchedule() ) ),
 			),
 		);
@@ -1196,15 +1159,15 @@ class SequenceEditorPanelUI {
 				textButton( 'Add', 'add', run( () => this._addPredecessor() ) ),
 			),
 			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
-				textButton( 'Add task', 'add_task', run( () => gantt()?.addTask() ) ),
-				textButton( 'Add subtask', 'subdirectory_arrow_right', run( () => gantt()?.addTask( { child: true } ) ) ),
-				textButton( 'Delete', 'delete', run( () => gantt()?.removeTask() ) ),
+				textButton( 'Add task', 'add_task', run( () => addTask( 'sibling' ) ) ),
+				textButton( 'Add subtask', 'subdirectory_arrow_right', run( () => addTask( 'child' ) ) ),
+				textButton( 'Delete', 'delete', run( () => this._removeTask() ) ),
 			),
 		);
 
 		this._empty = new Text( '' ).addClass( 'SequenceEditor-empty' );
 		this._message = new Text( '' ).addClass( 'SequenceEditor-message' );
-		this._noSchedule = textButton( 'New work schedule', 'calendar_add_on', run( () => gantt()?.addSchedule() ) );
+		this._noSchedule = textButton( 'New work schedule', 'calendar_add_on', run( addSchedule ) );
 
 		this.root = new StackPanel( { isVertical: true } )
 			.addClass( 'SequenceEditor' )
@@ -1217,9 +1180,10 @@ class SequenceEditorPanelUI {
 	refresh() {
 
 		const token = ++ this._token;
-		const { model, schedule: scheduleId, task: taskId, panel } = this.state;
+		const { model, schedule: scheduleId, task: taskId } = this.state;
 		const hasFile = store.models.some( ( entry ) => entry.file );
-		const schedule = scheduleId ? panel?.schedules.find( ( entry ) => entry.modelId === model && entry.id === scheduleId ) : null;
+		const schedules = scheduleId ? ops.Sequence.Schedules().result ?? [] : [];
+		const schedule = schedules.find( ( entry ) => entry.modelId === model && entry.id === scheduleId ) ?? null;
 		this._noSchedule.setHidden( Boolean( schedule ) || ! hasFile );
 		this._empty.setHidden( Boolean( schedule ) );
 		this._empty.setValue( hasFile ? 'No work schedule is open.' : 'Open an IFC file to edit its work schedules.' );
@@ -1276,7 +1240,7 @@ class SequenceEditorPanelUI {
 		}
 
 		const taken = new Set( [ task.id, ...task.predecessors.map( ( link ) => link.id ) ] );
-		setDropdown( this._predecessorPick, ( panel?.rows ?? [] )
+		setDropdown( this._predecessorPick, ( ops.Sequence.Tasks().result ?? [] )
 			.filter( ( row ) => ! taken.has( row.id ) )
 			.map( ( row ) => ( {
 				value: String( row.id ),
@@ -1308,6 +1272,14 @@ class SequenceEditorPanelUI {
 
 		this._message.setValue( done || '' );
 		return result;
+
+	}
+
+	_removeTask() {
+
+		const task = this.state.task ? ops.Sequence.TaskDetails().result : null;
+		if ( ! task || ! confirmRemoveTask( task.name || 'this task', task.hasChildren ) ) return;
+		this._run( () => ops.Sequence.RemoveTask(), `Deleted ${ task.identification || task.name }` );
 
 	}
 

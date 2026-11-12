@@ -76,6 +76,24 @@ export function togglePanel( panel ) {
 
 }
 
+// Follow signals.panelToggled for one panel spec id: { id, show } shows
+// (true), hides (false) or toggles (left out) the docked panel that
+// `getPanel` returns. Operators dispatch it; panels never call each other.
+export function bindPanelToggle( signals, id, getPanel ) {
+
+	signals.panelToggled.add( ( request ) => {
+
+		if ( request?.id !== id ) return;
+		const panel = getPanel();
+		if ( ! panel ) return;
+		if ( request.show === true ) showPanel( panel );
+		else if ( request.show === false ) panel.hide( { closeIfEmpty: true } );
+		else togglePanel( panel );
+
+	} );
+
+}
+
 // EDITORS — form controls for the schedule editors. Inputs commit on change
 // (Enter or leaving the field), not on every keystroke.
 

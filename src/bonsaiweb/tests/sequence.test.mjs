@@ -14,6 +14,7 @@ import { context } from '../src/context/context.js';
 import { store } from '../src/context/store.js';
 import sequenceOperators from '../src/modules/bim.sequence/operators.js';
 import { Ops } from '../src/ops.js';
+import { Ifc } from '../src/tool/Ifc.js';
 import { Sequence } from '../src/tool/Sequence.js';
 
 const MODEL_ID = 7;
@@ -33,8 +34,8 @@ const file = await open();
 store.models.length = 0;
 store.models.push( { id: MODEL_ID, name: 'sequence_4d.ifc', file } );
 
-const schedule = ( id ) => Sequence.byId( MODEL_ID, id, 'IfcWorkSchedule' );
-const task = ( id ) => Sequence.byId( MODEL_ID, id, 'IfcTask' );
+const schedule = ( id ) => Ifc.byId( MODEL_ID, id, 'IfcWorkSchedule' );
+const task = ( id ) => Ifc.byId( MODEL_ID, id, 'IfcTask' );
 
 test( 'schedules lists every work schedule with its task count', () => {
 
@@ -108,7 +109,7 @@ test( 'productTasks matches util.sequence.get_tasks_for_product', () => {
 
 	for ( const [ guid, want ] of Object.entries( expected.products ) ) {
 
-		const got = Sequence.productTasks( Sequence.byGuid( MODEL_ID, guid ) );
+		const got = Sequence.productTasks( Ifc.byGuid( MODEL_ID, guid ) );
 		assert.deepEqual( got.inputs.map( ( t ) => t.id ).sort( ( a, b ) => a - b ), want.inputs );
 		assert.deepEqual( got.outputs.map( ( t ) => t.id ).sort( ( a, b ) => a - b ), want.outputs );
 		for ( const t of [ ...got.inputs, ...got.outputs ] ) {
@@ -122,12 +123,12 @@ test( 'productTasks matches util.sequence.get_tasks_for_product', () => {
 
 } );
 
-test( 'lookups return null for unknown models, ids, classes and GlobalIds', () => {
+test( 'tool.Ifc lookups return null for unknown models, ids, classes and GlobalIds', () => {
 
-	assert.equal( Sequence.byId( 99, 1 ), null );
-	assert.equal( Sequence.byId( MODEL_ID, 999999 ), null );
-	assert.equal( Sequence.byId( MODEL_ID, expected.schedules[ 0 ].id, 'IfcTask' ), null );
-	assert.equal( Sequence.byGuid( MODEL_ID, 'not-a-guid' ), null );
+	assert.equal( Ifc.byId( 99, 1 ), null );
+	assert.equal( Ifc.byId( MODEL_ID, 999999 ), null );
+	assert.equal( Ifc.byId( MODEL_ID, expected.schedules[ 0 ].id, 'IfcTask' ), null );
+	assert.equal( Ifc.byGuid( MODEL_ID, 'not-a-guid' ), null );
 
 } );
 
@@ -206,6 +207,52 @@ test( 'authoring through the Sequence operators ends where ifcopenshell.api does
 	} finally {
 
 		context.signals.scheduleChanged.remove( onChange );
+		context.sequence = undefined;
+
+	}
+
+} );
+
+test( 'Activate, AddTask placement and toggles go through signals', () => {
+
+	const ops = new Ops();
+	for ( const Op of sequenceOperators ) ops.register( Op );
+	const activated = [];
+	const toggled = [];
+	const onActivated = ( change ) => activated.push( change );
+	const onToggled = ( request ) => toggled.push( request );
+	context.signals.scheduleActivated.add( onActivated );
+	context.signals.panelToggled.add( onToggled );
+
+	try {
+
+		const construction = expected.schedules[ 0 ];
+		const shell = construction.tasks.find( ( t ) => t.name === 'Shell' ).id;
+		context.sequence = {};
+		ops.Sequence.Activate( { model: MODEL_ID, schedule: construction.id, task: shell, show: true } );
+		assert.deepEqual( context.sequence, { model: MODEL_ID, schedule: construction.id, task: shell } );
+		assert.deepEqual( activated.at( - 1 ), { module: 'sequence' } );
+		assert.deepEqual( toggled.at( - 1 ), { id: 'sequence-panel', show: true } );
+
+		const parentOf = ( id ) => Ifc.byId( MODEL_ID, id, 'IfcTask' ).Nests[ 0 ].RelatingObject.id();
+		ops.Sequence.AddTask( { placement: 'child', name: 'Child of shell' } );
+		assert.equal( parentOf( context.sequence.task ), shell );
+		ops.Sequence.AddTask( { placement: 'sibling', name: 'Next to the child' } );
+		assert.equal( parentOf( context.sequence.task ), shell );
+		ops.Sequence.Activate( { task: construction.roots[ 0 ] } );
+		ops.Sequence.AddTask( { name: 'Second root' } );
+		assert.ok( Ifc.byId( MODEL_ID, context.sequence.task, 'IfcTask' ).HasAssignments.some( ( rel ) => rel.isA( 'IfcRelAssignsToControl' ) ), 'a sibling of a root task is a root task' );
+
+		toggled.length = 0;
+		ops.Sequence.Toggle();
+		ops.Sequence.ToggleTasks();
+		ops.Sequence.ToggleEditor();
+		assert.deepEqual( toggled.map( ( request ) => request.id ), [ 'sequence-panel', 'sequence-tasks-panel', 'sequence-editor-panel' ] );
+
+	} finally {
+
+		context.signals.scheduleActivated.remove( onActivated );
+		context.signals.panelToggled.remove( onToggled );
 		context.sequence = undefined;
 
 	}
