@@ -1541,7 +1541,8 @@ body {
    attribute; the schedule panels hide parts of themselves with it. */
 .bonsai-sheet [hidden],
 .SequenceTasks [hidden],
-.SequenceEditor [hidden] {
+.SequenceEditor [hidden],
+.CostEditor [hidden] {
 	display: none;
 }
 
@@ -1724,15 +1725,18 @@ body {
 }
 
 /* Task editor (right). */
-.SequenceEditor-section {
+.SequenceEditor-section,
+.CostEditor-section {
 	gap: var(--dui-space-2);
 }
 
-.SequenceEditor-title {
+.SequenceEditor-title,
+.CostEditor-title {
 	font-weight: 600;
 }
 
-.SequenceEditor-subtitle {
+.SequenceEditor-subtitle,
+.CostEditor-subtitle {
 	border-top: 1px solid var(--dui-color-border);
 	color: var(--dui-color-text-muted);
 	font-size: var(--dui-font-size-xs);
@@ -1744,22 +1748,27 @@ body {
 }
 
 .SequenceEditor-pair,
-.SequenceEditor-actions {
+.CostEditor-pair,
+.SequenceEditor-actions,
+.CostEditor-actions {
 	align-items: flex-end;
 	flex-wrap: wrap;
 	gap: var(--dui-space-2);
 }
 
-.SequenceEditor-actions {
+.SequenceEditor-actions,
+.CostEditor-actions {
 	align-items: center;
 }
 
-.SequenceEditor-actions .InputDropdown {
+.SequenceEditor-actions .InputDropdown,
+.CostEditor-actions .InputDropdown {
 	flex: 1 1 8rem;
 	min-width: 0;
 }
 
-.SequenceEditor-count {
+.SequenceEditor-count,
+.CostEditor-count {
 	flex: 1 1 100%;
 	font-size: var(--dui-font-size-sm);
 }
@@ -1790,12 +1799,14 @@ body {
 	font-size: 1rem;
 }
 
-.SequenceEditor-empty {
+.SequenceEditor-empty,
+.CostEditor-empty {
 	color: var(--dui-color-text-muted);
 	font-size: var(--dui-font-size-sm);
 }
 
-.SequenceEditor-message {
+.SequenceEditor-message,
+.CostEditor-message {
 	color: var(--dui-color-accent);
 	font-size: var(--dui-font-size-xs);
 }
@@ -1924,4 +1935,53 @@ body {
 .CostElement-empty {
 	color: var(--dui-color-text-muted);
 	font-size: var(--dui-font-size-xs);
+}
+
+
+/* Cost item editor (right): quantity and value lines, the item total. */
+.CostEditor-total {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-sm);
+	font-variant-numeric: tabular-nums;
+}
+
+.CostEditor-list {
+	gap: var(--dui-space-1);
+}
+
+.CostEditor-line {
+	align-items: center;
+	gap: var(--dui-space-2);
+}
+
+.CostEditor-line .InputText {
+	box-sizing: border-box;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.CostEditor-line-label {
+	color: var(--dui-color-text-muted);
+	flex: 0 0 4.5rem;
+	font-size: var(--dui-font-size-xs);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.CostEditor-line-value {
+	flex: 0 0 auto;
+	font-size: var(--dui-font-size-xs);
+	font-variant-numeric: tabular-nums;
+}
+
+.CostEditor-line .Operator {
+	color: var(--dui-color-text-muted);
+	cursor: pointer;
+	font-size: 1rem;
+}
+
+.CostEditor-actions .InputText {
+	flex: 1 1 8rem;
+	min-width: 0;
 }

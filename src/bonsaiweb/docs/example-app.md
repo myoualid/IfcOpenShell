@@ -12,6 +12,8 @@
     "@aeco-dev/layout": "https://cdn.jsdelivr.net/npm/@aeco-dev/layout@0.2.4/layout.js",
     "ifcopenshell": "../../ts/ifcopenshell-js/dist/index.js",
     "ifcopenshell/geom": "../../ts/ifcopenshell-js/dist/geom/index.js",
+    "ifcopenshell/api/control": "../../ts/ifcopenshell-js/dist/python/api/control/index.js",
+    "ifcopenshell/api/cost": "../../ts/ifcopenshell-js/dist/python/api/cost/index.js",
     "ifcopenshell/api/sequence": "../../ts/ifcopenshell-js/dist/python/api/sequence/index.js",
     "ifcopenshell/util": "../../ts/ifcopenshell-js/dist/util/index.js",
     "ifcopenshell/util/cost": "../../ts/ifcopenshell-js/dist/python/util/cost.js",
@@ -141,6 +143,8 @@ Panels is special. It has no `operator`. After modules activate, `bindPanelDialo
 **Bottom, Cost sheet (Costing).** One cost schedule as a tree: code, description, quantity and unit, rate, total in the project currency, and a bar for each item's share of the schedule total. Totals follow Bonsai: a SUM value adds up the children, category values add up the children of that category, and a unit basis prices per that many units. The summary line gives the schedule total and counts unpriced items and items linked to elements. Clicking a column header sorts each level of the tree by it. Choosing a row selects the elements it prices, with those of its nested items; a double click or Enter isolates them. The row tooltip shows each value's formula and the arithmetic of the total. Filtering by name or code, or to unpriced items, keeps each match's parents. The export button writes every item to CSV. Picking an element highlights the items that price it.
 
 **Right, Element cost (Costing).** The cost items that price the picked element, with quantity, rate and total. Choosing one opens it in the cost sheet.
+
+**Right, Cost item editor (Costing).** Edits the open cost schedule (name, type, status) and the sheet's active item: code, name and description; quantities by type and value; cost values as formulas in Bonsai's syntax (`120.5`, `SUM()`, `Labour()+Material()*1.2`), with fixed, sum and category values to add; a rate from a schedule of rates, whose values are copied onto the item; and the elements it prices (assign or unassign the viewport selection). The sheet's toolbar adds an item after the active one, a nested item, or a schedule, and deletes the active item (also the Delete key). Edits change the live IFC file and cannot be undone; deleting asks first.
 
 **Command bar.** Typing `c` then `d` over the viewport opens an empty command line there, like AutoCAD's. The menu lists matching operators (`grid` finds `Viewer.ToggleGrid`), then the values of the argument under the cursor. A line runs as JavaScript (`Viewer.SetStandardView('TOP')`; category names need no `bonsai.ops.` prefix) or as `Command arg arg` (`SetStandardView TOP`, `ToggleGrid off`, `SetColor $sel #f40`). `$sel`, `$entity`, `$model` and `$last` are built in, and `name = …` keeps a variable in the session. Enter on an empty line repeats the last command; Esc closes. It shares the terminal panel's session and history. Operators describe their arguments for the menu with `static operatorArgs`.
 

@@ -216,7 +216,7 @@ const bonsai = new Bonsai( document.body, configuration );
 | `Project` | `New`, `OpenFile`, `OpenBag`, `LoadIfc`, `LoadSample`, `Download`, `DownloadView`, `Clear`, `ListModels`, `Benchmark` |
 | `Spatial` | `Select`, `Isolate`, `Objects`, `Hidden` |
 | `Properties`, `Settings`, `Georeferencing`, `Profiler`, `Terminal`, `Dropbox` | Panel toggles and module actions |
-| `Cost` | `Toggle`, `ToggleElement`, `Schedules`, `Items`, `ProductItems`, `SelectItem` |
+| `Cost` | `Toggle`, `ToggleElement`, `ToggleEditor`, `Activate`, `Schedules`, `Items`, `ItemDetails`, `RateItems`, `ProductItems`, `SelectItem`; authoring: `AddCostSchedule`, `EditCostSchedule`, `RemoveCostSchedule`, `AddCostItem`, `EditCostItem`, `RemoveCostItem`, `AddQuantity`, `EditQuantity`, `RemoveQuantity`, `AddValue`, `EditValue`, `EditValueFormula`, `RemoveValue`, `AssignRate`, `AssignProducts`, `UnassignProducts`. They act on `context.cost.model`, `.schedule` and `.item` unless their options name others, and use the same signals as `Sequence`. Authoring is not undoable. |
 | `Sequence` | `Toggle`, `ToggleTasks`, `ToggleEditor`, `Activate`, `Schedules`, `Tasks`, `ProductTasks`, `TaskDetails`, `SelectTask`; authoring: `AddWorkSchedule`, `EditWorkSchedule`, `RemoveWorkSchedule`, `AddTask`, `EditTask`, `RemoveTask`, `EditTaskTime`, `AssignProducts`, `UnassignProducts`, `AssignPredecessor`, `UnassignPredecessor`. They act on `context.sequence.model`, `.schedule` and `.task` (STEP ids) unless their options name others. Changing that state dispatches `scheduleActivated`, changing the IFC file dispatches `scheduleChanged`, and the toggles dispatch `panelToggled`; the panels only listen. Authoring is not undoable. |
 
 ## Viewer events

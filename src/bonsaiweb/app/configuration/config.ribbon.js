@@ -87,6 +87,7 @@ export const ribbonButtons = [
 	group( 'RG_Costing', 'Cost', 'Costing', [
 		button( 'RB_CostSchedule', 'Cost sheet', 'payments', 'Cost.Toggle' ),
 		button( 'RB_ElementCost', 'Element cost', 'receipt_long', 'Cost.ToggleElement' ),
+		button( 'RB_CostEditor', 'Item editor', 'edit_note', 'Cost.ToggleEditor' ),
 	] ),
 	group( 'RG_CostingObjects', 'Objects', 'Costing', [
 		button( 'RB_CostingFocus', 'Focus', 'center_focus_strong', 'Viewer.FrameSelection' ),

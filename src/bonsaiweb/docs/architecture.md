@@ -143,7 +143,7 @@ Operators and panels receive that object, and panels may hang their own state on
 | `Ifc` | The model list, view versus edit, the live file, the entity for a pick, and `byId` / `byGuid` lookups in a model's live file. |
 | `Element` | Scalar attributes and display names. |
 | `Pset` | Property sets and quantity sets, with type inheritance, formatted for a table cell. |
-| `Cost` | Cost schedules, and each cost item priced as Bonsai's cost panel prices it: quantity, unit, rate, unit basis, total. Calls `ifcopenshell/util/cost` and `util/unit` from the local ifcopenshell build. |
+| `Cost` | Cost schedules, and each cost item priced as Bonsai's cost panel prices it: quantity, unit, rate, unit basis, total; authoring of schedules, items, quantities, values and formulas, rates and element assignments. Calls `ifcopenshell/util/cost`, `util/unit`, `api/cost` and `api/control` from the local ifcopenshell build, and ports the value maths and the formula parser that did not transpile. |
 | `Sequence` | Work schedules, task rows with derived dates, and the products a task builds or uses; authoring of schedules, tasks, task times, assignments and sequence links. Calls `ifcopenshell/util/sequence` and `ifcopenshell/api/sequence` from the local ifcopenshell build. |
 | `Terminal` | In-memory JavaScript REPL sessions. |
 
@@ -188,7 +188,7 @@ A panel class has a static `id` (the module id) and a static `spec` (group, posi
 | `properties` | None. The panel follows the selection. | Right: attributes, relationships, psets, qtos |
 | `viewer` | Camera, navigation, visibility, colour, federation | None. The ribbon and other modules call these. |
 | `code.terminal` | Show, new session, clear, close session | Bottom: a JavaScript REPL |
-| `bim.cost` | Panel toggles, schedules, items, items for a pick, select an item's elements | Bottom: a cost sheet of one cost schedule. Right: the cost items that price the picked element |
+| `bim.cost` | Panel toggles, activation, schedules, items, items for a pick, select an item's elements, and authoring | Bottom: a cost sheet of one cost schedule. Right: the cost items that price the picked element, and the cost item editor |
 | `bim.sequence` | Panel toggles, schedules, tasks, tasks for a pick, select a task's products, and authoring | Bottom: a Gantt of one work schedule. Right: the tasks that build or use the picked element, and the task editor |
 
 Addons are modules that live outside the package. `configuration.app.Addons` lists them as `{ id, operators, ui, ribbon }`. `src/addons.js` registers their operators from `new Bonsai`, and `Shell` merges their ribbon into its configuration and mounts their panels after the built-in ones. See [api-structure.md](api-structure.md#addons).
