@@ -193,8 +193,86 @@ def build():
     return f
 
 
+def authoring(model):
+    """The steps tests/cost.test.mjs replays through the Cost operators, run
+    with ifcopenshell.api the way Bonsai's core/cost.py calls it."""
+    walls = {w.Name: w for w in model.by_type("IfcWall")}
+    rate = [i for i in model.by_type("IfcCostItem") if i.Name == "Kerb per 2 m"][0]
+
+    def add_item(schedule=None, parent=None, name="", identification=None):
+        item = ifcopenshell.api.cost.add_cost_item(model, cost_schedule=schedule, cost_item=parent)
+        attributes = {"Name": name}
+        if identification:
+            attributes["Identification"] = identification
+        ifcopenshell.api.cost.edit_cost_item(model, cost_item=item, attributes=attributes)
+        return item
+
+    def add_value(item, attributes):
+        value = ifcopenshell.api.cost.add_cost_value(model, parent=item)
+        ifcopenshell.api.cost.edit_cost_value(model, cost_value=value, attributes=attributes)
+        return value
+
+    def add_quantity(item, ifc_class, amount):
+        quantity = ifcopenshell.api.cost.add_cost_item_quantity(model, cost_item=item, ifc_class=ifc_class)
+        name = quantity.attribute_name(3)
+        ifcopenshell.api.cost.edit_cost_item_quantity(model, physical_quantity=quantity, attributes={name: amount})
+        return quantity
+
+    tender = ifcopenshell.api.cost.add_cost_schedule(model, name="Tender", predefined_type="COSTPLAN")
+    ifcopenshell.api.cost.edit_cost_schedule(model, cost_schedule=tender, attributes={"Name": "Tender pricing"})
+    works = add_item(schedule=tender, name="Works", identification="T")
+    add_value(works, {"Category": "*"})
+
+    concrete = add_item(parent=works, name="Concrete", identification="T.1")
+    add_quantity(concrete, "IfcQuantityVolume", 12.5)
+    value = add_value(concrete, {"AppliedValue": 0.0})
+    ifcopenshell.api.cost.edit_cost_value_formula(model, cost_value=value, formula="100+20.5")
+    ifcopenshell.api.control.assign_control(
+        model, relating_control=concrete, related_objects=[walls["Wall 1"], walls["Wall 2"]]
+    )
+    ifcopenshell.api.control.unassign_control(model, relating_control=concrete, related_objects=[walls["Wall 2"]])
+
+    kerbs = add_item(parent=works, name="Kerbs", identification="T.2")
+    add_quantity(kerbs, "IfcQuantityLength", 40.0)
+    ifcopenshell.api.cost.assign_cost_value(model, cost_item=kerbs, cost_rate=rate)
+    ifcopenshell.api.control.assign_control(model, relating_control=rate, related_objects=[kerbs])
+
+    doors = add_item(parent=works, name="Doors", identification="T.3")
+    add_quantity(doors, "IfcQuantityCount", 3)
+    value = add_value(doors, {"AppliedValue": 450.0})
+    ifcopenshell.api.cost.edit_cost_value_formula(model, cost_value=value, formula="Material(300)+Labour(150)")
+
+    temporary = add_item(parent=works, name="Temporary")
+    ifcopenshell.api.cost.remove_cost_item(model, cost_item=temporary)
+    quantity = add_quantity(doors, "IfcQuantityArea", 2.0)
+    ifcopenshell.api.cost.remove_cost_item_quantity(model, cost_item=doors, physical_quantity=quantity)
+    value = add_value(doors, {"Category": "Extras"})
+    ifcopenshell.api.cost.remove_cost_value(model, parent=doors, cost_value=value)
+
+    budget = [s for s in model.by_type("IfcCostSchedule") if s.Name == "Budget"][0]
+    ifcopenshell.api.cost.remove_cost_schedule(model, cost_schedule=budget)
+
+    items = []
+
+    def walk(item):
+        items.append(item_data(model, item))
+        for child in ifcopenshell.util.cost.get_nested_cost_items(item):
+            walk(child)
+
+    for root in ifcopenshell.util.cost.get_root_cost_items(tender):
+        walk(root)
+    for item in items:
+        item["productNames"] = sorted(model.by_guid(guid).Name for guid in item["products"])
+    return {
+        "schedules": sorted(s.Name for s in model.by_type("IfcCostSchedule")),
+        "items": items,
+    }
+
+
 if __name__ == "__main__":
     model = build()
     model.write(str(HERE / "cost_5d.ifc"))
     model = ifcopenshell.open(str(HERE / "cost_5d.ifc"))
-    (HERE / "cost_5d.json").write_text(json.dumps(expected(model), indent="\t") + "\n")
+    result = expected(model)
+    result["authoring"] = authoring(ifcopenshell.open(str(HERE / "cost_5d.ifc")))
+    (HERE / "cost_5d.json").write_text(json.dumps(result, indent="\t") + "\n")

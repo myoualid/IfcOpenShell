@@ -66,10 +66,10 @@
 					"rateItem": null,
 					"products": [],
 					"deepProducts": [
-						"0PG8F9lND709FijZoB_HUD",
-						"0YCmgIbAv20Qe71fzDQ0kd",
-						"2RKVhJXJrA7x6PuoKAKXVm",
-						"3kIN_Ec112tRPW6003pSGI"
+						"0CsBL1gtH5zeWqEPD1dJ2Y",
+						"18Hc58mInDSQVP48PA$gOa",
+						"2CnZOZ1rLFRP4lw6ok6PtF",
+						"3oy3Y0YhX0jPBzx1T3WEp4"
 					]
 				},
 				{
@@ -94,7 +94,7 @@
 					"rateItem": null,
 					"products": [],
 					"deepProducts": [
-						"3kIN_Ec112tRPW6003pSGI"
+						"2CnZOZ1rLFRP4lw6ok6PtF"
 					]
 				},
 				{
@@ -116,10 +116,10 @@
 					"totalCost": 10242.5,
 					"rateItem": null,
 					"products": [
-						"3kIN_Ec112tRPW6003pSGI"
+						"2CnZOZ1rLFRP4lw6ok6PtF"
 					],
 					"deepProducts": [
-						"3kIN_Ec112tRPW6003pSGI"
+						"2CnZOZ1rLFRP4lw6ok6PtF"
 					]
 				},
 				{
@@ -146,12 +146,12 @@
 					"totalCost": 5400.0,
 					"rateItem": null,
 					"products": [
-						"0YCmgIbAv20Qe71fzDQ0kd",
-						"2RKVhJXJrA7x6PuoKAKXVm"
+						"18Hc58mInDSQVP48PA$gOa",
+						"3oy3Y0YhX0jPBzx1T3WEp4"
 					],
 					"deepProducts": [
-						"0YCmgIbAv20Qe71fzDQ0kd",
-						"2RKVhJXJrA7x6PuoKAKXVm"
+						"18Hc58mInDSQVP48PA$gOa",
+						"3oy3Y0YhX0jPBzx1T3WEp4"
 					]
 				},
 				{
@@ -194,10 +194,10 @@
 					"totalCost": 0.0,
 					"rateItem": null,
 					"products": [
-						"0PG8F9lND709FijZoB_HUD"
+						"0CsBL1gtH5zeWqEPD1dJ2Y"
 					],
 					"deepProducts": [
-						"0PG8F9lND709FijZoB_HUD"
+						"0CsBL1gtH5zeWqEPD1dJ2Y"
 					]
 				},
 				{
@@ -295,17 +295,126 @@
 		}
 	],
 	"products": {
-		"3kIN_Ec112tRPW6003pSGI": [
+		"2CnZOZ1rLFRP4lw6ok6PtF": [
 			28
 		],
-		"0YCmgIbAv20Qe71fzDQ0kd": [
+		"3oy3Y0YhX0jPBzx1T3WEp4": [
 			33
 		],
-		"2RKVhJXJrA7x6PuoKAKXVm": [
+		"18Hc58mInDSQVP48PA$gOa": [
 			33
 		],
-		"0PG8F9lND709FijZoB_HUD": [
+		"0CsBL1gtH5zeWqEPD1dJ2Y": [
 			43
+		]
+	},
+	"authoring": {
+		"schedules": [
+			"Bill",
+			"Rates",
+			"Tender pricing"
+		],
+		"items": [
+			{
+				"id": 64,
+				"identification": "T",
+				"name": "Works",
+				"nested": [
+					67,
+					74,
+					77
+				],
+				"quantity": null,
+				"unitSymbol": "-",
+				"values": [
+					{
+						"category": "*",
+						"applied": 3456.25,
+						"formula": "SUM()"
+					}
+				],
+				"appliedValue": 3456.25,
+				"unitBasis": null,
+				"totalCost": 3456.25,
+				"rateItem": null,
+				"products": [],
+				"deepProducts": [
+					"3oy3Y0YhX0jPBzx1T3WEp4"
+				],
+				"productNames": []
+			},
+			{
+				"id": 67,
+				"identification": "T.1",
+				"name": "Concrete",
+				"nested": [],
+				"quantity": 12.5,
+				"unitSymbol": "m3",
+				"values": [
+					{
+						"category": null,
+						"applied": 120.5,
+						"formula": "100.0+20.5"
+					}
+				],
+				"appliedValue": 120.5,
+				"unitBasis": null,
+				"totalCost": 1506.25,
+				"rateItem": null,
+				"products": [
+					"3oy3Y0YhX0jPBzx1T3WEp4"
+				],
+				"deepProducts": [
+					"3oy3Y0YhX0jPBzx1T3WEp4"
+				],
+				"productNames": [
+					"Wall 1"
+				]
+			},
+			{
+				"id": 74,
+				"identification": "T.2",
+				"name": "Kerbs",
+				"nested": [],
+				"quantity": 40.0,
+				"unitSymbol": "mm",
+				"values": [
+					{
+						"category": null,
+						"applied": 30.0,
+						"formula": "30.0"
+					}
+				],
+				"appliedValue": 30.0,
+				"unitBasis": 2.0,
+				"totalCost": 600.0,
+				"rateItem": 17,
+				"products": [],
+				"deepProducts": [],
+				"productNames": []
+			},
+			{
+				"id": 77,
+				"identification": "T.3",
+				"name": "Doors",
+				"nested": [],
+				"quantity": 3.0,
+				"unitSymbol": "U",
+				"values": [
+					{
+						"category": null,
+						"applied": 450.0,
+						"formula": "Material(300.0)+Labour(150.0)"
+					}
+				],
+				"appliedValue": 450.0,
+				"unitBasis": null,
+				"totalCost": 1350.0,
+				"rateItem": null,
+				"products": [],
+				"deepProducts": [],
+				"productNames": []
+			}
 		]
 	}
 }
