@@ -351,6 +351,10 @@ public:
         bool  use_view_background = true;
         float background[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
         int   timeout_ms = 15000;
+        // Sub-pixel-jittered renders averaged per tile (1..64). Above 1 every
+        // per-pixel effect is supersampled together: geometry edges, lines,
+        // ambient occlusion noise, shadow filtering. Costs that many renders.
+        int   samples = 1;
     };
     void requestSnapshot(const SnapshotRequest& request);
 
@@ -2295,6 +2299,12 @@ private:
         std::uint32_t band_bpr = 0;
         WGPUTexture     color_texture = nullptr;
         WGPUTextureView color_view    = nullptr;
+        // Multi-sample accumulation (request.samples > 1): linear RGBA16F sum
+        // of the jittered renders, and the bind groups that read the two.
+        WGPUTexture     accum_texture = nullptr;
+        WGPUTextureView accum_view    = nullptr;
+        WGPUBindGroup   color_group   = nullptr;
+        WGPUBindGroup   accum_group   = nullptr;
         std::vector<SnapshotBand> bands;
         bool failed = false;
     };
@@ -2307,6 +2317,17 @@ private:
     bool layoutSnapshotTiles(SnapshotJob& job);
     void releaseSnapshotTiles(SnapshotJob& job);
     void renderSnapshotTile(SnapshotJob& job);
+    // Accumulation passes for multi-sample snapshots (ViewportSnapshot.cpp).
+    WGPUShaderModule    snapshot_accum_module_   = nullptr;
+    WGPUBindGroupLayout snapshot_accum_bgl_      = nullptr;
+    WGPUPipelineLayout  snapshot_accum_layout_   = nullptr;
+    WGPURenderPipeline  snapshot_accum_pipeline_ = nullptr;   // += sample / N
+    WGPURenderPipeline  snapshot_resolve_pipeline_ = nullptr; // sum -> tile
+    bool buildSnapshotAccumPipelines();
+    void releaseSnapshotAccumPipelines();
+    // Line samples a snapshot tile takes per render (0 = the default); a
+    // multi-sample snapshot lowers it, its own jitter doing the rest.
+    int snapshot_line_samples_ = 0;
     void deliverSnapshotBands(SnapshotJob& job);
     void finishSnapshot(bool ok);
     // Swap the job's frozen camera and projection overrides in (or back out).

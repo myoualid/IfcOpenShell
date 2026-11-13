@@ -747,7 +747,7 @@ void ViewportCore::encodePostPasses(WGPUCommandEncoder enc, WGPUTextureView view
         first = line_accum_count_;
         count = line_accum_count_ < kLineSamples ? 1 : 0;
     } else if (supersample) {
-        count = kSnapshotLineSamples;
+        count = snapshot_line_samples_ > 0 ? snapshot_line_samples_ : kSnapshotLineSamples;
         line_accum_count_ = 0;
     }
     const int resolved = interactive ? line_accum_count_ + count : count;
