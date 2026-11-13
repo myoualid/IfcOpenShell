@@ -70,6 +70,11 @@ void releaseModelBuffers(ModelGpuData& m) {
         if (c.visible_draws_buffer) { wgpuBufferRelease(c.visible_draws_buffer);   c.visible_draws_buffer = nullptr; }
         if (c.prefix_sums_buffer)   { wgpuBufferRelease(c.prefix_sums_buffer);     c.prefix_sums_buffer = nullptr; }
         if (c.per_chunk_uniform)    { wgpuBufferRelease(c.per_chunk_uniform);      c.per_chunk_uniform = nullptr; }
+        if (c.shadow_draws_buffer)  { wgpuBufferRelease(c.shadow_draws_buffer);    c.shadow_draws_buffer = nullptr; }
+        if (c.shadow_prefix_buffer) { wgpuBufferRelease(c.shadow_prefix_buffer);   c.shadow_prefix_buffer = nullptr; }
+        if (c.shadow_uniform)       { wgpuBufferRelease(c.shadow_uniform);         c.shadow_uniform = nullptr; }
+        c.shadow_draws_capacity = 0;
+        c.shadow_vertex_count   = 0;
     }
     if (m.mesh_storage)     { wgpuBufferRelease(m.mesh_storage);     m.mesh_storage = nullptr; }
     if (m.instance_storage) { wgpuBufferRelease(m.instance_storage); m.instance_storage = nullptr; }
@@ -84,6 +89,7 @@ void releaseModelBuffers(ModelGpuData& m) {
 void releaseWgpuModelGpuData(ModelGpuData& m, BufferPool& pool) {
     for (auto& c : m.chunks) {
         if (c.bind_group)           { wgpuBindGroupRelease(c.bind_group);          c.bind_group = nullptr; }
+        if (c.shadow_bind_group)    { wgpuBindGroupRelease(c.shadow_bind_group);   c.shadow_bind_group = nullptr; }
         if (c.vertex_slice.valid()) {
             pool.free(c.vertex_slice);
             c.vertex_slice = {};
@@ -139,7 +145,7 @@ std::vector<InstanceGpu> instanceGpuRecords(const std::vector<InstanceInfo>& ins
         dst.object_id            = inst.object_id;
         dst.color_override_rgba8 = inst.color_override_rgba8;
         dst.mesh_id              = inst.mesh_id;
-        dst._pad1                = 0;
+        dst.material             = inst.material;
     }
     return gpu;
 }
@@ -975,7 +981,8 @@ struct InstanceRecord {
     object_id: u32,
     color_override: u32,
     mesh_id: u32,
-    _pad1: u32,
+    // Surface finish: byte 0 specular, 1 gloss, 2 sky reflection. 0 = matte.
+    material: u32,
 };
 
 struct MeshQuant {
@@ -1011,10 +1018,28 @@ struct FrameUniforms {
     // x = surface style (0 model colours, 1 technical, 2 clay), y = linear
     // lighting (0/1), z = exposure, w = tone map (0 none, 1 ACES, 2 AgX).
     shading:      vec4<f32>,
-    // Technical / clay surface colour, sRGB.
+    // Technical / clay surface colour, sRGB; w = smooth normals (0/1).
     base_color:   vec4<f32>,
     // x = key, y = fill, z = ambient intensity.
     light_params: vec4<f32>,
+    // xyz = camera position, world space.
+    eye:          vec4<f32>,
+    // World to sun shadow-map clip space (depth 0..1).
+    light_view_proj: mat4x4<f32>,
+    // x = on, y = strength, z = 1 / map size, w = softness (texels).
+    shadow_params: vec4<f32>,
+    // x = normal offset (world units), y = depth bias.
+    shadow_bias:   vec4<f32>,
+    // Shadow-catching ground: x = on, y = height, z = radius, w = opacity.
+    ground_params: vec4<f32>,
+    // xy = centre of the ground disc.
+    ground_center: vec4<f32>,
+    // Clip to world, for the sky's view rays.
+    inv_view_proj: mat4x4<f32>,
+    // Linear sky colours; zenith.w = sky on.
+    sky_zenith:    vec4<f32>,
+    sky_horizon:   vec4<f32>,
+    sky_nadir:     vec4<f32>,
 };
 
 // Returns true if `world` lies on the positive (clipped-away) side of any
@@ -1059,6 +1084,35 @@ struct PerModel {
 // only, because WebGPU forbids a read_write storage buffer in the vertex stage.
 @group(0) @binding(2) var<storage, read_write> hit_flags: array<atomic<u32>>;
 
+// Sun shadow map (a 1x1 placeholder while shadows are off) and its
+// comparison sampler. Bilinear comparison gives each tap a smooth edge.
+@group(0) @binding(3) var shadow_map: texture_depth_2d;
+@group(0) @binding(4) var shadow_sampler: sampler_comparison;
+
+// Fraction of the key light that reaches `world`: 1 lit, 1 - strength fully
+// shadowed. Sixteen bilinear comparison taps over a square `softness` texels
+// wide; the point is first pushed off the surface along `n` so a face does
+// not shadow itself.
+fn shadowFactor(world: vec3<f32>, n: vec3<f32>) -> f32 {
+    let sp = u_frame.shadow_params;
+    if (sp.x < 0.5) { return 1.0; }
+    let p = u_frame.light_view_proj * vec4<f32>(world + n * u_frame.shadow_bias.x, 1.0);
+    let uv = vec2<f32>(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) { return 1.0; }
+    // A receiver beyond the far plane (a long shadow on the ground) is behind
+    // every caster: compare it as if it sat on that plane.
+    let ref_z = min(p.z, 1.0) - u_frame.shadow_bias.y;
+    let step = sp.z * sp.w / 1.5;
+    var lit = 0.0;
+    for (var y = 0; y < 4; y = y + 1) {
+        for (var x = 0; x < 4; x = x + 1) {
+            let o = (vec2<f32>(f32(x), f32(y)) - vec2<f32>(1.5)) * step;
+            lit = lit + textureSampleCompareLevel(shadow_map, shadow_sampler, uv + o, ref_z);
+        }
+    }
+    return 1.0 - sp.y * (1.0 - lit / 16.0);
+}
+
 @group(1) @binding(0) var<storage, read> vertices:      array<u32>;
 @group(1) @binding(1) var<storage, read> meshes:        array<MeshQuant>;
 @group(1) @binding(2) var<storage, read> instances:     array<InstanceRecord>;
@@ -1075,6 +1129,9 @@ struct VsOut {
     // 1 when the instance carries a setColor override, which technical and
     // clay surfaces keep instead of their flat colour.
     @location(4) @interpolate(flat) has_override: u32,
+    // Baked vertex normal in world space (not normalised).
+    @location(5) normal: vec3<f32>,
+    @location(6) @interpolate(flat) material: u32,
 };
 
 // Normal of the fragment's triangle, facing the viewer.
@@ -1164,8 +1221,12 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
         if (ca > 0.0) { color = vec4<f32>(cr, cg, cb, ca); has_override = 1u; }
     }
 
+    let n_local = octDecode(vec2<f32>(f32(extractI8(w1, 2u)), f32(extractI8(w1, 3u))) / 127.0);
+
     var out: VsOut;
     out.has_override = has_override;
+    out.normal    = (inst.transform * vec4<f32>(n_local, 0.0)).xyz;
+    out.material  = inst.material;
     out.clip_pos  = u_frame.view_proj * world4;
     out.color     = color;
     out.world_pos = world4.xyz;
@@ -1218,18 +1279,27 @@ fn toneMap(x: vec3<f32>, op: u32) -> vec3<f32> {
     return clamp(x, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-@fragment
-fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
+// The lit surface colour (as written to the sRGB target) and its alpha.
+// fs_main returns it; fs_oit accumulates it.
+fn shadeSurface(in: VsOut, front_facing: bool) -> vec4<f32> {
     if (is_section_clipped(in.world_pos)) { discard; }
 
-    let n = flatNormal(in.world_pos, front_facing);
+    var n = flatNormal(in.world_pos, front_facing);
+    // Smooth normals: the interpolated vertex normal, turned to the viewer's
+    // side of the triangle (mirrored instances and back faces flip it).
+    let nl = length(in.normal);
+    if (u_frame.base_color.w > 0.5 && nl > 1e-4) {
+        let s = in.normal / nl;
+        n = select(-s, s, dot(s, n) >= 0.0);
+    }
 
     // World +Z is up (BIM convention). Hemisphere ambient: faces pointing
     // up read sky, faces pointing down read ground, lerp by n.z.
     let hemi_t  = 0.5 + 0.5 * n.z;
     let ambient = mix(u_frame.ground_color.xyz, u_frame.sky_color.xyz, hemi_t);
 
-    let key  = max(dot(n, u_frame.light_dir.xyz), 0.0);
+    var key  = max(dot(n, u_frame.light_dir.xyz), 0.0);
+    if (key > 0.0) { key = key * shadowFactor(in.world_pos, n); }
     let fill = max(dot(n, u_frame.fill_dir.xyz),  0.0);
     let lp   = u_frame.light_params;
 
@@ -1238,6 +1308,28 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
     let style = u32(u_frame.shading.x + 0.5);
     var albedo = in.color.xyz;
     if (style != 0u && in.has_override == 0u) { albedo = u_frame.base_color.xyz; }
+
+    // Surface finish. `fres` is the share of the sky reflected (Schlick, so
+    // it climbs at grazing angles); `spec` a Blinn-Phong highlight of the key
+    // light, already shadowed and cosine-weighted through `key`.
+    var fres = 0.0;
+    var spec = 0.0;
+    var env  = vec3<f32>(0.0);
+    if (in.material != 0u && style != 1u) {
+        let m_spec  = f32(in.material & 0xFFu) / 255.0;
+        let m_gloss = f32((in.material >> 8u) & 0xFFu) / 255.0;
+        let m_refl  = f32((in.material >> 16u) & 0xFFu) / 255.0;
+        let V = normalize(u_frame.eye.xyz - in.world_pos);
+        let cos_v = max(dot(n, V), 0.0);
+        // Face-on reflectance well above glass's physical 4%: with no
+        // environment behind the panes, that is what makes them read as glass.
+        fres = m_refl * mix(0.2, 1.0, pow(1.0 - cos_v, 5.0));
+        let R = reflect(-V, n);
+        env = mix(u_frame.ground_color.xyz, u_frame.sky_color.xyz, smoothstep(-0.25, 0.25, R.z));
+        let H = normalize(u_frame.light_dir.xyz + V);
+        let shin = exp2(1.0 + m_gloss * 10.0);
+        spec = m_spec * pow(max(dot(n, H), 0.0), shin) * (shin + 8.0) / 25.0 * key;
+    }
 
     var color: vec3<f32>;
     if (style == 1u) {
@@ -1248,12 +1340,13 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
         // The result is display-referred linear; the sRGB target encodes it.
         let a_lin   = srgbToLinear(albedo);
         let amb_lin = srgbToLinear(ambient);
-        let hdr = a_lin * (amb_lin * lp.z + vec3<f32>(key * lp.x + fill * lp.y))
-                * u_frame.shading.z;
-        color = toneMap(hdr, u32(u_frame.shading.w + 0.5));
+        var hdr = a_lin * (amb_lin * lp.z + vec3<f32>(key * lp.x + fill * lp.y));
+        hdr = mix(hdr, srgbToLinear(env) * lp.z, fres) + vec3<f32>(spec * lp.x);
+        color = toneMap(hdr * u_frame.shading.z, u32(u_frame.shading.w + 0.5));
     } else {
         // Legacy: the GL viewer's gamma-space formula (defaults reproduce it).
         color = albedo * (ambient * lp.z + key * lp.x + fill * lp.y);
+        color = mix(color, env * lp.z, fres) + vec3<f32>(spec * lp.x);
     }
     let encoded_out = u_frame.shading.y > 0.5 && style != 1u;
 
@@ -1274,8 +1367,42 @@ fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0)
     // `xray_alpha_cap` (default 1.0 = no effect; X-ray sets it to ~0.3) so a
     // global translucency override lands without touching any per-instance
     // state.
-    let alpha_out = min(in.color.a, u_frame.xray_alpha_cap);
+    // A reflective surface reflects more at grazing angles: glass seen edge-on
+    // reads more opaque, as it does in life.
+    let alpha_out = min(in.color.a + (1.0 - in.color.a) * fres, u_frame.xray_alpha_cap);
     return vec4<f32>(select(srgbToLinear(color), color, encoded_out), alpha_out);
+}
+
+@fragment
+fn fs_main(in: VsOut, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
+    return shadeSurface(in, front_facing);
+}
+
+// Weighted blended OIT (McGuire & Bavoil 2013, eq. 7 with distances in
+// metres): premultiplied colour and alpha, weighted to favour near layers,
+// summed into `accum`; `reveal` multiplies down by (1 - alpha).
+struct OitOut {
+    @location(0) accum:  vec4<f32>,
+    @location(1) reveal: f32,
+};
+
+@fragment
+fn fs_oit(in: VsOut, @builtin(front_facing) front_facing: bool) -> OitOut {
+    let c = shadeSurface(in, front_facing);
+    let d = length(u_frame.eye.xyz - in.world_pos);
+    let w = clamp(c.a * 10.0 / (1e-5 + pow(d / 5.0, 2.0) + pow(d / 200.0, 6.0)), 1e-2, 3e3);
+    var out: OitOut;
+    out.accum  = vec4<f32>(c.rgb * c.a, c.a) * w;
+    out.reveal = c.a;
+    return out;
+}
+
+// Depth of the translucent surfaces, written after the OIT resolve so the
+// edge and outline passes still see them. No colour.
+@fragment
+fn fs_depth_only(in: VsOut) -> @location(0) vec4<f32> {
+    if (is_section_clipped(in.world_pos)) { discard; }
+    return vec4<f32>(0.0);
 }
 
 // Selection silhouette mask. Same vertex pulling as vs_main, but the only
@@ -1370,12 +1497,131 @@ fn fs_boxpick(in: VsOutPick) {
     if (word >= arrayLength(&hit_flags)) { return; }
     atomicOr(&hit_flags[word], 1u << (in.object_id & 31u));
 }
+
+// --------------------------- Shadow pipeline -------------------------------
+// Depth only, from the sun. Same vertex pulling; the draw list holds every
+// visible opaque instance (ViewportShadow.cpp), not the camera's cull.
+
+struct VsOutShadow {
+    @builtin(position) clip_pos: vec4<f32>,
+    @location(0) world_pos: vec3<f32>,
+};
+
+@vertex
+fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
+    var out: VsOutShadow;
+    if (vid >= u_model.total_vertex_count) {
+        out.clip_pos  = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        out.world_pos = vec3<f32>(0.0, 0.0, 0.0);
+        return out;
+    }
+    let draw_idx = find_draw(vid);
+    let local_v  = vid - prefix_sums[draw_idx];
+    let item     = visible_draws[draw_idx];
+    let mesh_local_index = indices[item.ebo_first_u32 + local_v];
+    let v_global = item.base_vertex + mesh_local_index;
+    let inst = instances[item.instance_idx];
+    let mq   = meshes[item.mesh_id];
+    let w0 = vertices[v_global * 3u + 0u];
+    let w1 = vertices[v_global * 3u + 1u];
+    let pos_norm = vec3<f32>(
+        f32(w0 & 0xFFFFu)          / 65535.0,
+        f32((w0 >> 16u) & 0xFFFFu) / 65535.0,
+        f32(w1 & 0xFFFFu)          / 65535.0,
+    );
+    let world4 = inst.transform * vec4<f32>(mix(mq.aabb_min.xyz, mq.aabb_max.xyz, pos_norm), 1.0);
+    out.clip_pos  = u_frame.light_view_proj * world4;
+    out.world_pos = world4.xyz;
+    return out;
+}
+
+// A section plane removes the caster as well as the surface.
+@fragment
+fn fs_shadow(in: VsOutShadow) {
+    if (is_section_clipped(in.world_pos)) { discard; }
+}
+
+// --------------------------- Shadow-catching ground ------------------------
+// A disc at ground_params.y, drawn as one quad. Transparent except where the
+// sun is blocked; the shadow fades out over the outer 40% of the radius.
+
+struct VsOutGround {
+    @builtin(position) clip_pos: vec4<f32>,
+    @location(0) world_pos: vec3<f32>,
+};
+
+@vertex
+fn vs_ground(@builtin(vertex_index) vid: u32) -> VsOutGround {
+    var corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
+    let g = u_frame.ground_params;
+    let xy = u_frame.ground_center.xy + corners[vid] * g.z;
+    var out: VsOutGround;
+    out.world_pos = vec3<f32>(xy, g.y);
+    out.clip_pos  = u_frame.view_proj * vec4<f32>(out.world_pos, 1.0);
+    return out;
+}
+
+@fragment
+fn fs_ground(in: VsOutGround) -> @location(0) vec4<f32> {
+    if (is_section_clipped(in.world_pos)) { discard; }
+    let g = u_frame.ground_params;
+    let r = length(in.world_pos.xy - u_frame.ground_center.xy) / g.z;
+    if (r >= 1.0) { discard; }
+    // As dark as the scene's own lighting makes a shadow on an upward face:
+    // shade receives the sky and the fill, sun adds the key on top.
+    let lp   = u_frame.light_params;
+    let lum  = vec3<f32>(0.2126, 0.7152, 0.0722);
+    let rest = dot(srgbToLinear(u_frame.sky_color.xyz), lum) * lp.z
+             + max(u_frame.fill_dir.z, 0.0) * lp.y;
+    let sun  = max(u_frame.light_dir.z, 0.0) * lp.x;
+    if (sun <= 0.0) { discard; }
+    let lit  = shadowFactor(in.world_pos, vec3<f32>(0.0, 0.0, 1.0));
+    let dark = 1.0 - (rest + sun * lit) / max(rest + sun, 1e-4);
+    let a = dark * g.w * (1.0 - smoothstep(0.6, 1.0, r));
+    if (a <= 0.0) { discard; }
+    return vec4<f32>(0.0, 0.0, 0.0, a);
+}
+
+// --------------------------- Sky -------------------------------------------
+// One full-screen triangle behind everything. Each pixel's view ray picks a
+// colour by its elevation: nadir .. horizon .. zenith, with a soft band at
+// the horizon. Colours arrive linear; the sRGB target encodes them.
+
+struct VsOutSky {
+    @builtin(position) clip_pos: vec4<f32>,
+    @location(0) ndc: vec2<f32>,
+};
+
+@vertex
+fn vs_sky(@builtin(vertex_index) vid: u32) -> VsOutSky {
+    let xy = vec2<f32>(f32((vid << 1u) & 2u), f32(vid & 2u)) * 2.0 - 1.0;
+    var out: VsOutSky;
+    out.clip_pos = vec4<f32>(xy, 0.0, 1.0);
+    out.ndc = xy;
+    return out;
+}
+
+@fragment
+fn fs_sky(in: VsOutSky) -> @location(0) vec4<f32> {
+    let a = u_frame.inv_view_proj * vec4<f32>(in.ndc, 0.0, 1.0);
+    let b = u_frame.inv_view_proj * vec4<f32>(in.ndc, 1.0, 1.0);
+    let d = normalize(b.xyz / b.w - a.xyz / a.w);
+    var c: vec3<f32>;
+    if (d.z >= 0.0) {
+        c = mix(u_frame.sky_horizon.xyz, u_frame.sky_zenith.xyz, sqrt(d.z));
+    } else {
+        c = mix(u_frame.sky_horizon.xyz, u_frame.sky_nadir.xyz, sqrt(min(-d.z * 4.0, 1.0)));
+    }
+    return vec4<f32>(c, 1.0);
+}
 )";
 } // namespace
 
 bool ViewportCore::buildPipelines() {
     // ---- Bind group layouts ----------------------------------------------
-    WGPUBindGroupLayoutEntry frame_entries[3] = {};
+    WGPUBindGroupLayoutEntry frame_entries[5] = {};
     frame_entries[0].binding = 0;
     frame_entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     frame_entries[0].buffer.type = WGPUBufferBindingType_Uniform;
@@ -1388,9 +1634,17 @@ bool ViewportCore::buildPipelines() {
     frame_entries[2].binding = 2;
     frame_entries[2].visibility = WGPUShaderStage_Fragment;
     frame_entries[2].buffer.type = WGPUBufferBindingType_Storage;
+    // Sun shadow map + comparison sampler (ViewportShadow.cpp).
+    frame_entries[3].binding = 3;
+    frame_entries[3].visibility = WGPUShaderStage_Fragment;
+    frame_entries[3].texture.sampleType    = WGPUTextureSampleType_Depth;
+    frame_entries[3].texture.viewDimension = WGPUTextureViewDimension_2D;
+    frame_entries[4].binding = 4;
+    frame_entries[4].visibility = WGPUShaderStage_Fragment;
+    frame_entries[4].sampler.type = WGPUSamplerBindingType_Comparison;
 
     WGPUBindGroupLayoutDescriptor frame_bgl_desc = {};
-    frame_bgl_desc.entryCount = 3;
+    frame_bgl_desc.entryCount = 5;
     frame_bgl_desc.entries    = frame_entries;
     frame_bgl_desc.label      = svFromCStr("ifcviewer-wgpu.frame_bgl");
     frame_bgl_ = wgpuDeviceCreateBindGroupLayout(device_, &frame_bgl_desc);
@@ -1543,6 +1797,18 @@ bool ViewportCore::buildPipelines() {
     fb_desc.label = svFromCStr("ifcviewer-wgpu.frame_uniform");
     frame_uniform_buffer_ = wgpuDeviceCreateBuffer(device_, &fb_desc);
 
+    // Sun shadows. The frame bind group samples the map, so the placeholder
+    // must exist before it is built; a failed pipeline only costs shadows.
+    if (!buildShadowPipeline()) {
+        Log::warn() << "wgpu shadow pipeline unavailable; sun shadows stay off";
+    }
+    if (!buildSkyPipeline()) {
+        Log::warn() << "wgpu sky pipeline unavailable; the background stays flat";
+    }
+    if (!buildOitPipelines()) {
+        Log::warn() << "wgpu OIT pipelines unavailable; transparency blends in draw order";
+    }
+
     // frame_bind_group_ is built lazily once we have a selection_flags_
     // buffer to bind alongside the uniform — ensureSelectionFlagsBuffer
     // handles both the first creation and any subsequent resize.
@@ -1615,11 +1881,27 @@ void ViewportCore::ensureSelectionFlagsBuffer() {
     }
 
     // Rebuild the frame bind group against the (possibly new) buffer.
+    buildFrameBindGroup();
+
+    // Force a re-upload of the flags into the (possibly new) buffer.
+    selection_flags_scratch_.assign(selection_flags_capacity_, 0);
+    selection_.fillFlagsArray(selection_flags_scratch_, selection_flags_capacity_);
+    wgpuQueueWriteBuffer(queue_, selection_flags_buffer_, 0,
+                         selection_flags_scratch_.data(),
+                         selection_flags_scratch_.size() * sizeof(uint32_t));
+    selection_.markClean();
+}
+
+void ViewportCore::buildFrameBindGroup() {
     if (frame_bind_group_) {
         wgpuBindGroupRelease(frame_bind_group_);
         frame_bind_group_ = nullptr;
     }
-    WGPUBindGroupEntry fbg_entries[3] = {};
+    if (!frame_uniform_buffer_ || !selection_flags_buffer_ || !hit_flags_buffer_
+        || !shadow_view_ || !shadow_sampler_) {
+        return;
+    }
+    WGPUBindGroupEntry fbg_entries[5] = {};
     fbg_entries[0].binding = 0;
     fbg_entries[0].buffer  = frame_uniform_buffer_;
     fbg_entries[0].size    = sizeof(FrameUniforms);
@@ -1629,20 +1911,16 @@ void ViewportCore::ensureSelectionFlagsBuffer() {
     fbg_entries[2].binding = 2;
     fbg_entries[2].buffer  = hit_flags_buffer_;
     fbg_entries[2].size    = WGPU_WHOLE_SIZE;
+    fbg_entries[3].binding     = 3;
+    fbg_entries[3].textureView = shadow_view_;
+    fbg_entries[4].binding = 4;
+    fbg_entries[4].sampler = shadow_sampler_;
     WGPUBindGroupDescriptor fbg_desc = {};
     fbg_desc.layout     = frame_bgl_;
-    fbg_desc.entryCount = 3;
+    fbg_desc.entryCount = 5;
     fbg_desc.entries    = fbg_entries;
     fbg_desc.label      = svFromCStr("ifcviewer-wgpu.frame_bind_group");
     frame_bind_group_ = wgpuDeviceCreateBindGroup(device_, &fbg_desc);
-
-    // Force a re-upload of the flags into the (possibly new) buffer.
-    selection_flags_scratch_.assign(selection_flags_capacity_, 0);
-    selection_.fillFlagsArray(selection_flags_scratch_, selection_flags_capacity_);
-    wgpuQueueWriteBuffer(queue_, selection_flags_buffer_, 0,
-                         selection_flags_scratch_.data(),
-                         selection_flags_scratch_.size() * sizeof(uint32_t));
-    selection_.markClean();
 }
 
 void ViewportCore::uploadSelectionFlagsIfDirty() {
@@ -1654,6 +1932,13 @@ void ViewportCore::uploadSelectionFlagsIfDirty() {
                          selection_flags_scratch_.size() * sizeof(uint32_t));
     selection_.markClean();
 }
+
+namespace {
+inline float srgbToLinearScalar(float c) {
+    return (c <= 0.04045f) ? (c * (1.0f / 12.92f))
+                           : std::pow((c + 0.055f) * (1.0f / 1.055f), 2.4f);
+}
+} // namespace
 
 void ViewportCore::updateFrameUniforms() {
     Eigen::Matrix4f view, proj;
@@ -1681,6 +1966,7 @@ void ViewportCore::updateFrameUniforms() {
         u.ground_color[i] = sh.ground_color[i];
         u.base_color[i]   = sh.base_color[i];
     }
+    u.base_color[3] = sh.smooth_normals ? 1.0f : 0.0f;
     u.shading[0] = float(int(sh.surface));
     u.shading[1] = sh.linear ? 1.0f : 0.0f;
     u.shading[2] = sh.exposure;
@@ -1688,6 +1974,11 @@ void ViewportCore::updateFrameUniforms() {
     u.light_params[0] = sh.key_intensity;
     u.light_params[1] = sh.fill_intensity;
     u.light_params[2] = sh.ambient_intensity;
+    {
+        const Eigen::Matrix3f R = view.block<3, 3>(0, 0);
+        const Eigen::Vector3f eye = -R.transpose() * view.block<3, 1>(0, 3);
+        u.eye[0] = eye.x(); u.eye[1] = eye.y(); u.eye[2] = eye.z(); u.eye[3] = 1.0f;
+    }
 
     // Pack active section planes. `is_section_clipped` (WGSL) reads
     // u.clip_count and u.clip_planes[0..clip_count) and discards
@@ -1703,6 +1994,45 @@ void ViewportCore::updateFrameUniforms() {
     }
     u.xray_alpha_cap = xray_alpha_cap_;
     u._pad_xray[0] = u._pad_xray[1] = u._pad_xray[2] = 0.0f;
+
+    // Sun shadows: refit the light to the scene when it changed, so the map
+    // the shader samples and the matrix it samples with always agree.
+    updateShadowState();
+    std::memcpy(u.light_view_proj, shadow_light_vp_, sizeof(u.light_view_proj));
+    const bool shadows_on = shadow_settings_.enabled && shadow_pipeline_
+                         && shadow_size_ > 1 && shadow_texel_world_ > 0.0f;
+    u.shadow_params[0] = shadows_on ? 1.0f : 0.0f;
+    u.shadow_params[1] = std::clamp(shadow_settings_.strength, 0.0f, 1.0f);
+    u.shadow_params[2] = shadow_size_ > 0 ? 1.0f / float(shadow_size_) : 0.0f;
+    u.shadow_params[3] = std::max(shadow_settings_.softness, 0.0f);
+    u.shadow_bias[0] = shadow_settings_.normal_bias > 0.0f ? shadow_settings_.normal_bias
+                                                           : 2.0f * shadow_texel_world_;
+    u.shadow_bias[1] = shadow_depth_bias_;
+    {
+        Eigen::Matrix4f inv;
+        if (!tryInvert4f(view_proj, inv)) inv = Eigen::Matrix4f::Identity();
+        std::memcpy(u.inv_view_proj, inv.data(), sizeof(u.inv_view_proj));
+        const SkySettings& sk = sky_settings_;
+        for (int i = 0; i < 3; ++i) {
+            u.sky_zenith[i]  = srgbToLinearScalar(sk.zenith[i]);
+            u.sky_horizon[i] = srgbToLinearScalar(sk.horizon[i]);
+            u.sky_nadir[i]   = srgbToLinearScalar(sk.nadir[i]);
+        }
+        u.sky_zenith[3] = sk.enabled && sky_pipeline_ ? 1.0f : 0.0f;
+    }
+    {
+        const float* mn = shadow_scene_min_;
+        const float* mx = shadow_scene_max_;
+        const float dx = mx[0] - mn[0], dy = mx[1] - mn[1], dz = mx[2] - mn[2];
+        const float radius = 0.5f * std::sqrt(dx * dx + dy * dy + dz * dz);
+        const bool ground_on = shadows_on && ground_settings_.enabled && radius > 0.0f;
+        u.ground_params[0] = ground_on ? 1.0f : 0.0f;
+        u.ground_params[1] = std::isnan(ground_settings_.height) ? mn[2] : ground_settings_.height;
+        u.ground_params[2] = std::max(radius * std::max(ground_settings_.extent, 0.01f), 1e-3f);
+        u.ground_params[3] = std::clamp(ground_settings_.opacity, 0.0f, 1.0f);
+        u.ground_center[0] = 0.5f * (mn[0] + mx[0]);
+        u.ground_center[1] = 0.5f * (mn[1] + mx[1]);
+    }
 
     last_frame_uniforms_ = u;
     wgpuQueueWriteBuffer(queue_, frame_uniform_buffer_, 0, &u, sizeof(u));
@@ -2378,6 +2708,9 @@ void ViewportCore::shutdown() {
     grid_helper_.destroy();
     tile_renderer_.destroy();
     if (main_shader_module_)   { wgpuShaderModuleRelease(main_shader_module_);    main_shader_module_ = nullptr; }
+    releaseShadowResources();
+    releaseSkyResources();
+    releaseOitResources();
     if (pipeline_layout_)      { wgpuPipelineLayoutRelease(pipeline_layout_);     pipeline_layout_ = nullptr; }
     if (model_bgl_)            { wgpuBindGroupLayoutRelease(model_bgl_);          model_bgl_ = nullptr; }
     if (frame_bgl_)            { wgpuBindGroupLayoutRelease(frame_bgl_);          frame_bgl_ = nullptr; }
@@ -6788,6 +7121,36 @@ void ViewportCore::setObjectsColor(const std::vector<std::uint32_t>& object_ids,
     host_->requestFrame();
 }
 
+void ViewportCore::setObjectsMaterial(const std::vector<std::uint32_t>& object_ids,
+                                      std::uint32_t material) {
+    if (object_ids.empty()) return;
+    const std::unordered_set<std::uint32_t> wanted(object_ids.begin(), object_ids.end());
+    for (auto& [session_model_id, m] : models_gpu_) {
+        bool touched = false;
+        for (InstanceInfo& inst : m.instances) {
+            if (inst.material == material) continue;
+            if (wanted.find(inst.object_id) == wanted.end()) continue;
+            inst.material = material;
+            touched = true;
+        }
+        if (touched) uploadInstanceRecords(m);
+    }
+    host_->requestFrame();
+}
+
+void ViewportCore::clearObjectMaterials() {
+    for (auto& [session_model_id, m] : models_gpu_) {
+        bool touched = false;
+        for (InstanceInfo& inst : m.instances) {
+            if (inst.material == 0u) continue;
+            inst.material = 0u;
+            touched = true;
+        }
+        if (touched) uploadInstanceRecords(m);
+    }
+    host_->requestFrame();
+}
+
 void ViewportCore::clearObjectColors() {
     for (auto& [session_model_id, m] : models_gpu_) {
         bool touched = false;
@@ -8183,9 +8546,14 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
                               const float clear_rgba[4],
                               int viewport_w_px, int viewport_h_px,
                               bool interactive) {
+    // With OIT the main pass stops after the opaque half, the translucent
+    // layers accumulate in their own pass, and the main pass reopens to
+    // resolve them; only that second half resolves to `view`.
+    const bool oit = oitWanted();
+
     WGPURenderPassColorAttachment color = {};
     color.view          = msaa_color_view_;
-    color.resolveTarget = view;
+    color.resolveTarget = oit ? nullptr : view;
     color.loadOp        = WGPULoadOp_Clear;
     color.storeOp       = WGPUStoreOp_Store;
     color.clearValue    = { clear_rgba[0], clear_rgba[1], clear_rgba[2], clear_rgba[3] };
@@ -8206,9 +8574,16 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
     pass_desc.colorAttachments     = &color;
     pass_desc.depthStencilAttachment = depth_view_ ? &depth : nullptr;
 
+    // The sun's shadow map, when the scene or the light changed. Its own
+    // pass, ahead of the main one that samples it.
+    encodeShadowPassIfDirty(enc);
+
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &pass_desc);
 
     const int dpr_int = std::max(1, int(host_->dpr()));
+
+    // The sky, behind everything else.
+    encodeSky(pass, clear_rgba);
 
     // Ground grid under scene geometry (depth-tested, no depth write).
     {
@@ -8253,7 +8628,22 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
             }
         }
 
+        // The shadow-catching ground: after the opaque geometry, so walls
+        // hide it, and before glass, which blends over it.
+        encodeGround(pass);
+
+        if (oit) {
+            wgpuRenderPassEncoderEnd(pass);
+            wgpuRenderPassEncoderRelease(pass);
+            encodeOitAccumulate(enc);
+            color.loadOp        = WGPULoadOp_Load;
+            color.resolveTarget = view;
+            depth.depthLoadOp   = WGPULoadOp_Load;
+            pass = wgpuCommandEncoderBeginRenderPass(enc, &pass_desc);
+            encodeOitResolve(pass);
+        } else {
         wgpuRenderPassEncoderSetPipeline(pass, main_pipeline_transparent_);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, frame_bind_group_, 0, nullptr);
         for (const auto& [session_model_id, m] : models_gpu_) {
             if (!m.drawable()) continue;
             for (const auto& c : m.chunks) {
@@ -8266,6 +8656,7 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
                                           transparent_verts, 1,
                                           c.opaque_visible_vertices, 0);
             }
+        }
         }
     }
 

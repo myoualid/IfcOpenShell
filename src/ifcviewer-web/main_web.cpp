@@ -902,7 +902,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_render_mode_c() {
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shading_c(float* out) {
     if (!g_app || !g_app->ready) return;
     const ViewportCore::ShadingSettings& s = g_app->core.shading();
-    const float v[22] = {
+    const float v[23] = {
         float(int(s.surface)), s.base_color[0], s.base_color[1], s.base_color[2],
         s.linear ? 1.0f : 0.0f, s.exposure, float(int(s.tone_map)),
         s.key_dir[0], s.key_dir[1], s.key_dir[2],
@@ -910,6 +910,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shading_c(float* out) {
         s.key_intensity, s.fill_intensity, s.ambient_intensity,
         s.sky_color[0], s.sky_color[1], s.sky_color[2],
         s.ground_color[0], s.ground_color[1], s.ground_color[2],
+        s.smooth_normals ? 1.0f : 0.0f,
     };
     std::memcpy(out, v, sizeof(v));
 }
@@ -930,6 +931,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_shading_c(const float* v) {
     s.key_intensity     = v[13];
     s.fill_intensity    = v[14];
     s.ambient_intensity = v[15];
+    s.smooth_normals    = v[22] != 0.0f;
     g_app->core.setShading(s);
 }
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_edges_c(float* out) {
@@ -967,6 +969,64 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_ao_c(const float* v) {
     a.intensity = v[2];
     a.bias      = v[3];
     g_app->core.setAmbientOcclusion(a);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_shadows_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::ShadowSettings& sh = g_app->core.shadows();
+    const float v[5] = { sh.enabled ? 1.0f : 0.0f, float(sh.resolution), sh.strength,
+                         sh.softness, sh.normal_bias };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_oit_c(int on) {
+    if (g_app && g_app->ready) g_app->core.setOrderIndependentTransparency(on != 0);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_oit_c() {
+    return (g_app && g_app->ready && g_app->core.orderIndependentTransparency()) ? 1 : 0;
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_sky_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::SkySettings& s = g_app->core.sky();
+    const float v[10] = { s.enabled ? 1.0f : 0.0f,
+                          s.zenith[0], s.zenith[1], s.zenith[2],
+                          s.horizon[0], s.horizon[1], s.horizon[2],
+                          s.nadir[0], s.nadir[1], s.nadir[2] };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_sky_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::SkySettings s;
+    s.enabled = v[0] != 0.0f;
+    for (int i = 0; i < 3; ++i) {
+        s.zenith[i]  = v[1 + i];
+        s.horizon[i] = v[4 + i];
+        s.nadir[i]   = v[7 + i];
+    }
+    g_app->core.setSky(s);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_get_ground_c(float* out) {
+    if (!g_app || !g_app->ready) return;
+    const ViewportCore::GroundSettings& g = g_app->core.ground();
+    const float v[4] = { g.enabled ? 1.0f : 0.0f, g.height, g.extent, g.opacity };
+    std::memcpy(out, v, sizeof(v));
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_ground_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::GroundSettings g;
+    g.enabled = v[0] != 0.0f;
+    g.height  = v[1];
+    g.extent  = v[2];
+    g.opacity = v[3];
+    g_app->core.setGround(g);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_shadows_c(const float* v) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::ShadowSettings sh;
+    sh.enabled     = v[0] != 0.0f;
+    sh.resolution  = int(v[1]);
+    sh.strength    = v[2];
+    sh.softness    = v[3];
+    sh.normal_bias = v[4];
+    g_app->core.setShadows(sh);
 }
 
 // Offscreen snapshot at width × height device pixels. use_view_background 0
@@ -1042,6 +1102,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_color_c(const std::uint32_t* ids, 
 }
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_clear_colors_c() {
     if (g_app && g_app->ready) g_app->core.clearObjectColors();
+}
+// Packed surface finish; see ViewportCore::setObjectsMaterial.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_material_c(const std::uint32_t* ids, int n,
+                                                         std::uint32_t material) {
+    if (!g_app || !g_app->ready) return;
+    g_app->core.setObjectsMaterial(idsFrom(ids, n), material);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_clear_materials_c() {
+    if (g_app && g_app->ready) g_app->core.clearObjectMaterials();
 }
 
 // ---- Federation ---------------------------------------------------------

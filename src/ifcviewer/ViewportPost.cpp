@@ -762,13 +762,15 @@ void ViewportCore::encodePostPasses(WGPUCommandEncoder enc, WGPUTextureView view
         const Eigen::Matrix4f jvp = jitter * vp;
         std::memcpy(fu.view_proj, jvp.data(), sizeof(fu.view_proj));
         wgpuQueueWriteBuffer(queue_, line_sample_uniforms_[i], 0, &fu, sizeof(fu));
-        WGPUBindGroupEntry e[3] = {};
+        WGPUBindGroupEntry e[5] = {};
         e[0].binding = 0; e[0].buffer = line_sample_uniforms_[i]; e[0].size = sizeof(FrameUniforms);
         e[1].binding = 1; e[1].buffer = selection_flags_buffer_;  e[1].size = WGPU_WHOLE_SIZE;
         e[2].binding = 2; e[2].buffer = hit_flags_buffer_;        e[2].size = WGPU_WHOLE_SIZE;
+        e[3].binding = 3; e[3].textureView = shadow_view_;
+        e[4].binding = 4; e[4].sampler     = shadow_sampler_;
         WGPUBindGroupDescriptor bg = {};
         bg.layout     = frame_bgl_;
-        bg.entryCount = 3;
+        bg.entryCount = 5;
         bg.entries    = e;
         bg.label      = postLabel("ifcviewer-wgpu.line_sample_frame_group");
         return wgpuDeviceCreateBindGroup(device_, &bg);

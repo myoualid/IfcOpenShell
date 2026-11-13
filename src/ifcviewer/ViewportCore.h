@@ -40,6 +40,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -91,8 +92,18 @@ struct FrameUniforms {
     float xray_alpha_cap;   // X-ray mode: fragment alpha clamped to min(in.color.a, cap)
     float _pad_xray[3];     // pad to 16-byte alignment so the struct stays vec4-aligned
     float shading[4];       // x = SurfaceStyle, y = linear (0/1), z = exposure, w = ToneMap
-    float base_color[4];    // xyz = Technical / Clay surface colour (sRGB)
+    float base_color[4];    // xyz = Technical / Clay surface colour (sRGB), w = smooth normals (0/1)
     float light_params[4];  // x = key, y = fill, z = ambient intensity
+    float eye[4];           // xyz = camera position (world), w unused
+    float light_view_proj[16]; // world -> shadow map clip space (depth 0..1)
+    float shadow_params[4];    // x = on (0/1), y = strength, z = 1 / map size, w = softness (texels)
+    float shadow_bias[4];      // x = normal offset (world units), y = depth bias
+    float ground_params[4];    // x = on (0/1), y = height (z), z = radius, w = opacity
+    float ground_center[4];    // xy = centre of the ground disc
+    float inv_view_proj[16];   // clip -> world, for the sky's view rays
+    float sky_zenith[4];       // rgb = linear zenith colour, w = sky on (0/1)
+    float sky_horizon[4];      // rgb = linear horizon colour
+    float sky_nadir[4];        // rgb = linear colour below the horizon
 };
 static_assert(sizeof(FrameUniforms)
                   == 16 * sizeof(float)
@@ -100,6 +111,10 @@ static_assert(sizeof(FrameUniforms)
                    + 4 * sizeof(int)
                    + kMaxSectionPlanes * 4 * sizeof(float)
                    + 4 * sizeof(float)
+                   + 4 * 4 * sizeof(float)
+                   + 16 * sizeof(float)
+                   + 4 * 4 * sizeof(float)
+                   + 16 * sizeof(float)
                    + 3 * 4 * sizeof(float),
               "FrameUniforms must match WGSL layout");
 
@@ -381,6 +396,10 @@ public:
         float ambient_intensity = 1.0f;
         float sky_color[3]    = { 0.55f, 0.60f, 0.70f };  // sRGB hemisphere ambient
         float ground_color[3] = { 0.35f, 0.32f, 0.28f };
+        // Light with the baked vertex normals instead of each triangle's own,
+        // so curved surfaces (furniture, round columns, pipes) read smooth.
+        // Lines and ambient occlusion keep the true faces.
+        bool  smooth_normals = false;
     };
     struct EdgeSettings {
         bool     enabled = true;
@@ -412,6 +431,61 @@ public:
     const EdgeSettings& edges() const { return edge_settings_; }
     void setAmbientOcclusion(const AoSettings& a);
     const AoSettings& ambientOcclusion() const { return ao_settings_; }
+
+    // ---- Sun shadows (ViewportShadow.cpp) -----------------------------------
+    //
+    // One shadow map from the key light (ShadingSettings::key_dir), fitted to
+    // the bounds of every loaded model. Every visible opaque instance casts,
+    // whether the camera sees it or not; transparent ones (glass, ghosted
+    // elements) do not. The map depends only on the scene and the light, so
+    // it is drawn again only when one of them changes, never because the
+    // camera moved. Section planes cut the casters too.
+    struct ShadowSettings {
+        bool  enabled    = false;
+        int   resolution = 4096;   // texels per side, clamped to [512, 8192]
+        float strength   = 0.85f;  // 0 no shadow .. 1 the key light is fully blocked
+        float softness   = 1.5f;   // filter radius, in shadow-map texels
+        float normal_bias = 0.0f;  // world units; <= 0 picks two texels' width
+    };
+    void setShadows(const ShadowSettings& s);
+    const ShadowSettings& shadows() const { return shadow_settings_; }
+
+    // A ground that shows only the shadows falling on it: a disc under the
+    // scene, invisible except where the sun is blocked, fading out towards
+    // its rim. It blends over any background, transparent snapshots
+    // included. Drawn only while shadows are on.
+    struct GroundSettings {
+        bool  enabled = false;
+        float height  = std::numeric_limits<float>::quiet_NaN();  // z; NaN = bottom of the scene
+        float extent  = 3.0f;   // disc radius, in multiples of the scene's radius
+        float opacity = 1.0f;   // multiplies the shadow strength on the ground
+    };
+    void setGround(const GroundSettings& g);
+    const GroundSettings& ground() const { return ground_settings_; }
+
+    // A sky behind the model instead of the flat background colour: a
+    // gradient by the elevation of each view ray, from `nadir` below the
+    // horizon through `horizon` to `zenith` overhead. It follows the camera,
+    // so the horizon stays level as the view tilts. Snapshots asked for a
+    // transparent background leave it out.
+    struct SkySettings {
+        bool  enabled    = false;
+        float zenith[3]  = { 0.42f, 0.62f, 0.86f };  // sRGB
+        float horizon[3] = { 0.86f, 0.90f, 0.94f };
+        float nadir[3]   = { 0.80f, 0.78f, 0.74f };
+    };
+    void setSky(const SkySettings& s);
+    const SkySettings& sky() const { return sky_settings_; }
+
+    // Order-independent transparency (weighted blended, McGuire & Bavoil
+    // 2013). Off: translucent surfaces blend in draw order, so overlapping
+    // layers (ghosted elements, X-ray) can show the wrong one in front. On:
+    // every translucent fragment is accumulated with a depth weight and
+    // resolved once, so the result no longer depends on order. Their depth
+    // is written afterwards, so edges and the selection outline still see
+    // them.
+    void setOrderIndependentTransparency(bool on);
+    bool orderIndependentTransparency() const { return oit_enabled_; }
 
     // Frame the current selection: union the selected objects' world AABBs and
     // fit the camera to them (same 1.30 padding as the desktop "F" hotkey).
@@ -1118,6 +1192,15 @@ public:
     // colouring a whole model is one upload, not one per object.
     void setObjectsColor(const std::vector<std::uint32_t>& object_ids, std::uint32_t rgba8);
     void clearObjectColors();   // drop every override in every model
+
+    // Surface finish per object, packed into one word: byte 0 specular
+    // strength, byte 1 gloss (0 broad .. 255 tight highlight), byte 2 sky
+    // reflection at grazing angles (Fresnel), 0..255 each. 0 is matte, the
+    // default. Glass wants a high reflection, which also makes it read more
+    // opaque at grazing angles; polished stone or metal a tight highlight.
+    // Same upload path as setObjectsColor.
+    void setObjectsMaterial(const std::vector<std::uint32_t>& object_ids, std::uint32_t material);
+    void clearObjectMaterials();
     // Global X-ray: translucent everything. Flips the frame uniform's alpha cap;
     // the cull classifier routes every instance through the transparent pass.
     void toggleXray();
@@ -1546,6 +1629,82 @@ private:
     int                 ao_h_ = 0;
     bool buildPostPipelines();
     void releasePostResources();
+
+    // Sun shadow map (ViewportShadow.cpp).
+    ShadowSettings      shadow_settings_;
+    WGPUTexture         shadow_texture_          = nullptr;
+    WGPUTextureView     shadow_view_             = nullptr;
+    int                 shadow_size_             = 0;
+    WGPUSampler         shadow_sampler_          = nullptr;
+    WGPUBindGroupLayout shadow_frame_bgl_        = nullptr;
+    WGPUPipelineLayout  shadow_pipeline_layout_  = nullptr;
+    WGPURenderPipeline  shadow_pipeline_         = nullptr;
+    WGPUBindGroup       shadow_frame_bind_group_ = nullptr;
+    bool                shadow_dirty_            = true;
+    std::uint64_t       shadow_epoch_            = ~std::uint64_t(0);
+    float               shadow_light_vp_[16]     = {};
+    float               shadow_texel_world_      = 0.0f;
+    float               shadow_depth_bias_       = 0.0f;
+    float               shadow_scene_min_[3]     = {};
+    float               shadow_scene_max_[3]     = {};
+    GroundSettings      ground_settings_;
+    SkySettings         sky_settings_;
+
+    // Order-independent transparency (ViewportOit.cpp).
+    bool                oit_enabled_             = false;
+    WGPUTexture         oit_accum_msaa_          = nullptr;
+    WGPUTextureView     oit_accum_msaa_view_     = nullptr;
+    WGPUTexture         oit_accum_               = nullptr;
+    WGPUTextureView     oit_accum_view_          = nullptr;
+    WGPUTexture         oit_reveal_msaa_         = nullptr;
+    WGPUTextureView     oit_reveal_msaa_view_    = nullptr;
+    WGPUTexture         oit_reveal_              = nullptr;
+    WGPUTextureView     oit_reveal_view_         = nullptr;
+    int                 oit_w_ = 0;
+    int                 oit_h_ = 0;
+    WGPURenderPipeline  oit_pipeline_            = nullptr;
+    WGPURenderPipeline  oit_depth_pipeline_      = nullptr;
+    WGPUShaderModule    oit_composite_module_    = nullptr;
+    WGPUBindGroupLayout oit_composite_bgl_       = nullptr;
+    WGPUPipelineLayout  oit_composite_layout_    = nullptr;
+    WGPURenderPipeline  oit_composite_pipeline_  = nullptr;
+    WGPUBindGroup       oit_composite_group_     = nullptr;
+    bool buildOitPipelines();
+    void releaseOitResources();
+    void ensureOitTextures(int w, int h);
+    void releaseOitTextures();
+    // True when OIT is on and some visible instance is translucent.
+    bool oitWanted() const;
+    // Accumulate every translucent draw (its own pass, after the main
+    // pass's opaque half).
+    void encodeOitAccumulate(WGPUCommandEncoder enc);
+    // In the reopened main pass: blend the resolved accumulation over the
+    // opaque image, then write the translucent depth.
+    void encodeOitResolve(WGPURenderPassEncoder pass);
+    WGPUPipelineLayout  sky_pipeline_layout_     = nullptr;
+    WGPURenderPipeline  sky_pipeline_            = nullptr;
+    bool buildSkyPipeline();
+    void releaseSkyResources();
+    // Paint the sky first in the main pass (no depth), unless `clear_rgba`
+    // asks for a transparent background.
+    void encodeSky(WGPURenderPassEncoder pass, const float clear_rgba[4]);
+    WGPUPipelineLayout  ground_pipeline_layout_  = nullptr;
+    WGPURenderPipeline  ground_pipeline_         = nullptr;
+    // Draw the shadow-catching ground into the main pass (after the opaque
+    // geometry, before the transparent one).
+    void encodeGround(WGPURenderPassEncoder pass);
+    std::vector<float>  shadow_key_;   // inputs the last map was drawn for
+    bool buildShadowPipeline();
+    void releaseShadowResources();
+    // (Re)create the map at `size` texels; 1 gives the placeholder the frame
+    // bind group samples while shadows are off.
+    void ensureShadowTexture(int size);
+    // Refit the light's orthographic frustum to the scene and mark the map
+    // dirty when the scene, the light or the settings changed since the last
+    // map. Called from updateFrameUniforms.
+    void updateShadowState();
+    // Draw the map when the scene or the light changed since the last one.
+    void encodeShadowPassIfDirty(WGPUCommandEncoder enc);
     void ensureAoTextures(int w, int h);
     void releaseAoTextures();
     // The G-buffer is drawn when feature edges or AO need it.
@@ -1656,6 +1815,9 @@ private:
     // from selection_ when it changes.
     WGPUBuffer    frame_uniform_buffer_     = nullptr;
     WGPUBindGroup frame_bind_group_         = nullptr;
+    // Builds frame_bind_group_ from the uniform, selection, hit-flag and
+    // shadow-map resources; called whenever one of them is replaced.
+    void buildFrameBindGroup();
     WGPUBuffer    selection_flags_buffer_   = nullptr;
     uint32_t      selection_flags_capacity_ = 0;  // u32 entries
     std::vector<uint32_t> selection_flags_scratch_;

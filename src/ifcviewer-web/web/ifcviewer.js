@@ -1169,8 +1169,10 @@
       //   keyDir, fillDir  [x, y, z] toward each light, world space (+Z up)
       //   key, fill, ambient  intensities
       //   sky, ground   hemisphere ambient colours
+      //   smoothNormals true: light with the baked vertex normals, so curved
+      //                 surfaces read smooth (lines and AO keep true faces)
       getShading: function () {
-        const v = readFloats(Module._ifcv_get_shading_c, 22);
+        const v = readFloats(Module._ifcv_get_shading_c, 23);
         return {
           surface: SURFACES[v[0]] || 'color',
           baseColor: rgbHex(v.slice(1, 4)),
@@ -1182,11 +1184,12 @@
           key: v[13], fill: v[14], ambient: v[15],
           sky: rgbHex(v.slice(16, 19)),
           ground: rgbHex(v.slice(19, 22)),
+          smoothNormals: v[22] !== 0,
         };
       },
       setShading: function (o) {
         o = o || {};
-        const v = readFloats(Module._ifcv_get_shading_c, 22);
+        const v = readFloats(Module._ifcv_get_shading_c, 23);
         if (o.surface !== undefined) v[0] = enumIndex(SURFACES, o.surface, 'surface');
         if (o.baseColor !== undefined) setRgb(v, 1, o.baseColor, 'baseColor');
         if (o.linear !== undefined) v[4] = o.linear ? 1 : 0;
@@ -1199,6 +1202,7 @@
         if (o.ambient !== undefined) v[15] = +o.ambient;
         if (o.sky !== undefined) setRgb(v, 16, o.sky, 'sky');
         if (o.ground !== undefined) setRgb(v, 19, o.ground, 'ground');
+        if (o.smoothNormals !== undefined) v[22] = o.smoothNormals ? 1 : 0;
         writeFloats(Module._ifcv_set_shading_c, v);
       },
 
@@ -1246,6 +1250,99 @@
         if (o.intensity !== undefined) v[2] = +o.intensity;
         if (o.bias !== undefined) v[3] = +o.bias;
         writeFloats(Module._ifcv_set_ao_c, v);
+      },
+
+      // Sun shadows from the key light (setShading keyDir). `true` / `false`,
+      // or any subset of
+      //   enabled, resolution (shadow-map texels per side, 512..8192),
+      //   strength (0 none .. 1 the key light fully blocked),
+      //   softness (filter radius in texels), normalBias (metres; 0 = auto).
+      // The map covers every loaded model and is redrawn only when the scene
+      // or the light changes, so navigation costs nothing extra.
+      // Aim the key light (and so the shadows) at the real sun for a site and
+      // a moment: { latitude, longitude, date, trueNorth }. trueNorth is the
+      // model's true north as an [x, y] direction (IFC TrueNorth), default
+      // [0, 1]: model +Y. Returns { azimuth, elevation, direction }; the light
+      // follows the sun below the horizon too, so check elevation for night.
+      setSun: function (o) {
+        o = o || {};
+        if (o.latitude === undefined || o.longitude === undefined) {
+          throw new Error('setSun needs latitude and longitude');
+        }
+        const sun = sunPosition(o.date !== undefined ? new Date(o.date) : new Date(),
+                                +o.latitude, +o.longitude);
+        const tn = o.trueNorth || [0, 1];
+        const tl = Math.hypot(tn[0], tn[1]) || 1;
+        const nx = tn[0] / tl, ny = tn[1] / tl;   // true north in the model
+        const ex = ny, ey = -nx;                  // east, a quarter turn clockwise
+        const r = Math.PI / 180;
+        const ce = Math.cos(sun.elevation * r);
+        const east = Math.sin(sun.azimuth * r) * ce, north = Math.cos(sun.azimuth * r) * ce;
+        const direction = [east * ex + north * nx, east * ey + north * ny, Math.sin(sun.elevation * r)];
+        api.setShading({ keyDir: direction });
+        return { azimuth: sun.azimuth, elevation: sun.elevation, direction: direction };
+      },
+
+      // Order-independent transparency: overlapping translucent layers
+      // (ghosted elements, X-ray, glass behind glass) blend the same whatever
+      // order they are drawn in. Off by default.
+      setOrderIndependentTransparency: function (on) { Module._ifcv_set_oit_c(on ? 1 : 0); },
+      orderIndependentTransparency: function () { return Module._ifcv_get_oit_c() !== 0; },
+
+      // A gradient sky behind the model instead of the flat background.
+      // `true` / `false`, or any subset of { enabled, zenith, horizon, ground }
+      // (colours as setBackground takes; `ground` is below the horizon).
+      // Snapshots with `transparent: true` leave it out.
+      getSky: function () {
+        const v = readFloats(Module._ifcv_get_sky_c, 10);
+        return { enabled: v[0] !== 0, zenith: rgbHex(v.slice(1, 4)),
+                 horizon: rgbHex(v.slice(4, 7)), ground: rgbHex(v.slice(7, 10)) };
+      },
+      setSky: function (o) {
+        if (typeof o === 'boolean') o = { enabled: o };
+        o = o || {};
+        const v = readFloats(Module._ifcv_get_sky_c, 10);
+        if (o.enabled !== undefined) v[0] = o.enabled ? 1 : 0;
+        if (o.zenith !== undefined) setRgb(v, 1, o.zenith, 'zenith');
+        if (o.horizon !== undefined) setRgb(v, 4, o.horizon, 'horizon');
+        if (o.ground !== undefined) setRgb(v, 7, o.ground, 'ground');
+        writeFloats(Module._ifcv_set_sky_c, v);
+      },
+
+      // A ground that shows only the shadows on it (shadows must be on).
+      // `true` / `false`, or any subset of
+      //   enabled, height (z in metres; null = the bottom of the scene),
+      //   extent (radius in multiples of the scene's radius), opacity.
+      getGround: function () {
+        const v = readFloats(Module._ifcv_get_ground_c, 4);
+        return { enabled: v[0] !== 0, height: isNaN(v[1]) ? null : v[1], extent: v[2], opacity: v[3] };
+      },
+      setGround: function (o) {
+        if (typeof o === 'boolean') o = { enabled: o };
+        o = o || {};
+        const v = readFloats(Module._ifcv_get_ground_c, 4);
+        if (o.enabled !== undefined) v[0] = o.enabled ? 1 : 0;
+        if (o.height !== undefined) v[1] = o.height === null ? NaN : +o.height;
+        if (o.extent !== undefined) v[2] = +o.extent;
+        if (o.opacity !== undefined) v[3] = +o.opacity;
+        writeFloats(Module._ifcv_set_ground_c, v);
+      },
+
+      getShadows: function () {
+        const v = readFloats(Module._ifcv_get_shadows_c, 5);
+        return { enabled: v[0] !== 0, resolution: v[1], strength: v[2], softness: v[3],
+                 normalBias: v[4] };
+      },
+      setShadows: function (o) {
+        if (typeof o === 'boolean') o = { enabled: o };
+        o = o || {};
+        const v = readFloats(Module._ifcv_get_shadows_c, 5);
+        if (o.enabled !== undefined) v[0] = o.enabled ? 1 : 0;
+        if (o.resolution !== undefined) v[1] = +o.resolution;
+        if (o.strength !== undefined) v[2] = +o.strength;
+        if (o.softness !== undefined) v[3] = +o.softness;
+        if (o.normalBias !== undefined) v[4] = +o.normalBias;
+        writeFloats(Module._ifcv_set_shadows_c, v);
       },
 
       // ---- Snapshots -------------------------------------------------------
@@ -1471,6 +1568,32 @@
       },
       // Drop every override in the scene at once.
       clearColors: function () { Module._ifcv_clear_colors_c(); },
+
+      // Surface finish, each 0..1: { specular, gloss, reflect }.
+      //   specular  strength of the key light's highlight
+      //   gloss     0 broad .. 1 tight highlight
+      //   reflect   sky reflection at grazing angles (glass ~0.9)
+      // Or a preset name: 'matte', 'glass', 'satin', 'polished', 'metal'.
+      // null / 'matte' restores the default.
+      setMaterial: function (x, m) {
+        const PRESETS = {
+          matte:    null,
+          satin:    { specular: 0.25, gloss: 0.35, reflect: 0.0 },
+          polished: { specular: 0.6,  gloss: 0.75, reflect: 0.35 },
+          metal:    { specular: 0.9,  gloss: 0.6,  reflect: 0.6 },
+          glass:    { specular: 0.9,  gloss: 0.9,  reflect: 0.9 },
+        };
+        if (typeof m === 'string') {
+          if (!(m in PRESETS)) throw new Error('unknown material: ' + m);
+          m = PRESETS[m];
+        }
+        const b = function (v) { return Math.round(Math.max(0, Math.min(1, +v || 0)) * 255); };
+        const packed = m ? ((b(m.specular) | (b(m.gloss) << 8) | (b(m.reflect) << 16)) >>> 0) : 0;
+        withIdArray(resolveIds(x), function (ptr, n) {
+          Module._ifcv_set_material_c(ptr, n, packed);
+        });
+      },
+      clearMaterials: function () { Module._ifcv_clear_materials_c(); },
 
       // ---- Scene -----------------------------------------------------------
 
@@ -2106,5 +2229,40 @@
     return api;
   }
 
-  global.IfcViewer = { create: create, sizeUrl: sizeUrl, packColor: packColor };
+  // Where the sun is, seen from latitude / longitude (degrees, east and north
+  // positive) at `date` (a Date, or anything Date accepts; the UTC instant is
+  // what counts). Returns { azimuth, elevation } in degrees: azimuth clockwise
+  // from true north, elevation above the horizon (negative at night). NOAA's
+  // solar position equations, good to a few hundredths of a degree for the
+  // years architecture cares about.
+  function sunPosition(date, lat, lon) {
+    const rad = Math.PI / 180;
+    const jd = date.getTime() / 86400000 + 2440587.5;
+    const t = (jd - 2451545.0) / 36525;
+    const L0 = ((280.46646 + t * (36000.76983 + t * 0.0003032)) % 360 + 360) % 360;
+    const M = 357.52911 + t * (35999.05029 - 0.0001537 * t);
+    const e = 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
+    const C = Math.sin(M * rad) * (1.914602 - t * (0.004817 + 0.000014 * t))
+            + Math.sin(2 * M * rad) * (0.019993 - 0.000101 * t) + Math.sin(3 * M * rad) * 0.000289;
+    const omega = 125.04 - 1934.136 * t;
+    const lambda = L0 + C - 0.00569 - 0.00478 * Math.sin(omega * rad);
+    const eps = 23 + (26 + (21.448 - t * (46.815 + t * (0.00059 - t * 0.001813))) / 60) / 60
+              + 0.00256 * Math.cos(omega * rad);
+    const decl = Math.asin(Math.sin(eps * rad) * Math.sin(lambda * rad));
+    const y = Math.pow(Math.tan(eps * rad / 2), 2);
+    const eqTime = 4 / rad * (y * Math.sin(2 * L0 * rad) - 2 * e * Math.sin(M * rad)
+                 + 4 * e * y * Math.sin(M * rad) * Math.cos(2 * L0 * rad)
+                 - 0.5 * y * y * Math.sin(4 * L0 * rad) - 1.25 * e * e * Math.sin(2 * M * rad));
+    const utcMin = date.getUTCHours() * 60 + date.getUTCMinutes() + date.getUTCSeconds() / 60;
+    const tst = (((utcMin + eqTime + 4 * lon) % 1440) + 1440) % 1440;
+    const ha = (tst / 4 - 180) * rad;
+    const latr = lat * rad;
+    const cosZ = Math.sin(latr) * Math.sin(decl) + Math.cos(latr) * Math.cos(decl) * Math.cos(ha);
+    const elevation = 90 - Math.acos(Math.max(-1, Math.min(1, cosZ))) / rad;
+    const az = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(latr) - Math.tan(decl) * Math.cos(latr));
+    const azimuth = ((az / rad + 180) % 360 + 360) % 360;
+    return { azimuth, elevation };
+  }
+
+  global.IfcViewer = { create: create, sizeUrl: sizeUrl, packColor: packColor, sunPosition: sunPosition };
 })(window);

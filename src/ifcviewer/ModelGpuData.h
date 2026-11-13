@@ -108,6 +108,16 @@ struct ModelGpuData {
         WGPUBuffer    per_chunk_uniform       = nullptr;
         WGPUBindGroup bind_group              = nullptr;
 
+        // Shadow casters: every visible opaque instance of the resident
+        // chunk, drawn into the sun shadow map. Created on the first shadow
+        // pass and rebuilt with it, so a viewer without shadows pays nothing.
+        WGPUBuffer    shadow_draws_buffer     = nullptr;
+        WGPUBuffer    shadow_prefix_buffer    = nullptr;
+        WGPUBuffer    shadow_uniform          = nullptr;
+        WGPUBindGroup shadow_bind_group       = nullptr;
+        size_t        shadow_draws_capacity   = 0;
+        uint32_t      shadow_vertex_count     = 0;
+
         uint32_t      vertex_count            = 0;   // chunk capacity (vertices)
         size_t        visible_draws_capacity  = 0;
         size_t        prefix_sums_capacity    = 0;
