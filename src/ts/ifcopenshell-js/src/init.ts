@@ -61,6 +61,17 @@ export function init(options: InitOptions = {}): Promise<IfcOpenShell> {
 
 /** Native module, available after awaiting init(). */
 export let ifcopenshell: IfcOpenshellModule;
+
+/**
+ * The native module, read when called. Modules of this package call this
+ * rather than importing the `ifcopenshell` binding: file.ts is in an import
+ * cycle with this module, and es-module-shims (which loads the package in
+ * workers, where import maps need a shim) does not keep bindings live across
+ * a cycle, so an imported binding can stay `undefined` after init().
+ */
+export function nativeModule(): IfcOpenshellModule {
+  return ifcopenshell;
+}
 /** Retrieve the loaded schema declaration by its full identifier. */
 export function schemaByName(name: string) {
   // Accept general names such as `file.schema()` returns, as Python schema_by_name does.
