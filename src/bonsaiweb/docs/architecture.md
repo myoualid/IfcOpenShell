@@ -189,7 +189,7 @@ A panel class has a static `id` (the module id) and a static `spec` (group, posi
 | `viewer` | Camera, navigation, visibility, colour, federation | None. The ribbon and other modules call these. |
 | `code.terminal` | Show, new session, clear, close session | Bottom: a JavaScript REPL |
 | `bim.cost` | Panel toggles, activation, schedules, items, items for a pick, select an item's elements, and authoring | Bottom: a cost sheet of one cost schedule. Right: the cost items that price the picked element, and the cost item editor |
-| `bim.sequence` | Panel toggles, schedules, tasks, tasks for a pick, select a task's products, and authoring | Bottom: a Gantt of one work schedule. Right: the tasks that build or use the picked element, and the task editor |
+| `bim.sequence` | Panel toggles, schedules, tasks, tasks for a pick, select a task's products, and authoring | Bottom: a Gantt of one work schedule. Right: the tasks that build or use the picked element. The Gantt edits cells in place and opens task and schedule dialogs |
 
 Addons are modules that live outside the package. `configuration.app.Addons` lists them as `{ id, operators, ui, ribbon }`. `src/addons.js` registers their operators from `new Bonsai`, and `Shell` merges their ribbon into its configuration and mounts their panels after the built-in ones. See [api-structure.md](api-structure.md#addons).
 

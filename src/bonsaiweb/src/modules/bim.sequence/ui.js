@@ -14,17 +14,16 @@ import ops from '../../ops.js';
 import { Viewer } from '../../tool/Viewer.js';
 import {
 	bindPanelToggle,
-	checkboxInput,
-	dropdownInput,
+	editCell,
 	element,
-	field,
 	iconButton,
 	plural,
+	setButtonLabel,
 	setDropdown,
 	textButton,
-	textInput,
 } from '../../util/sheet.js';
 import { ancestorIds, visibleRows } from '../../util/tree-rows.js';
+import { confirmTaskRemoval, durationDays, ScheduleDialog, TaskDialog } from './dialogs.js';
 
 const DAY = 86400000;
 
@@ -101,12 +100,10 @@ function sequenceState( context ) {
 
 }
 
-function confirmRemoveTask( name, hasChildren ) {
+// The cells that can be edited in place, in Tab order.
+const EDITABLE = [ 'identification', 'name', 'start', 'finish', 'duration' ];
 
-	const what = hasChildren ? `"${ name }" and its subtasks` : `"${ name }"`;
-	return window.confirm( `Delete ${ what } from the IFC file? This cannot be undone.` );
-
-}
+const HINT = 'Double-click a cell to type in it  ·  Enter opens the task  ·  Insert adds a task';
 
 class SequencePanelUI {
 
@@ -138,6 +135,11 @@ class SequencePanelUI {
 		this.criticalOnly = false;
 		this.range = null;
 		this._token = 0;
+		this._resumeEdit = null;
+
+		const onSaved = ( message ) => this._status.setValue( message );
+		this.taskDialog = new TaskDialog( { onSaved } );
+		this.scheduleDialog = new ScheduleDialog( { onSaved } );
 
 		this._build();
 
@@ -215,26 +217,37 @@ class SequencePanelUI {
 
 		} );
 
+		const divider = () => new Text( '' ).addClass( 'bonsai-sheet-divider' );
+		this._editing = [
+			textButton( 'Task', 'add', () => this._addTask( 'sibling' ), { title: 'Add a task below the active one (Insert)' } ),
+			textButton( 'Subtask', 'subdirectory_arrow_right', () => this._addTask( 'child' ), { title: 'Add a task inside the active one' } ),
+			textButton( 'Open', 'edit_note', () => this._openTask(), { title: 'Everything about the active task: dates, elements, links (Enter)' } ),
+			iconButton( 'delete', 'Delete the active task (Delete)', () => this._removeTask() ),
+		];
+		for ( const control of this._editing ) control.addClass( 'is-authoring' );
+
 		const toolbar = new StackPanel( { isVertical: false } )
 			.addClass( 'bonsai-sheet-toolbar' )
 			.add(
 				this._schedule,
+				iconButton( 'edit', 'Rename, change or delete this work schedule', () => this._editSchedule() ),
+				iconButton( 'calendar_add_on', 'New work schedule', () => this._addSchedule() ),
+				divider(),
+				...this._editing,
+				divider(),
 				this._search,
 				iconButton( 'unfold_more', 'Expand all', () => this._expandAll() ),
 				iconButton( 'unfold_less', 'Collapse all', () => this._collapseAll() ),
 				this._critical,
-				iconButton( 'center_focus_strong', 'Isolate the active task', () => this._selectActive( { isolate: true } ) ),
-				iconButton( 'visibility', 'Show all objects', () => ops.Viewer.ShowAll() ),
+				divider(),
+				iconButton( 'center_focus_strong', 'Show only what the active task builds', () => this._selectActive( { isolate: true } ) ),
+				iconButton( 'visibility', 'Show everything again', () => ops.Viewer.ShowAll() ),
 				iconButton( 'refresh', 'Reload schedules from the model', () => this.refresh() ),
-				new Text( '' ).addClass( 'bonsai-sheet-divider' ),
-				iconButton( 'add_task', 'Add a task after the active one', () => this._addTask( 'sibling' ) ),
-				iconButton( 'subdirectory_arrow_right', 'Add a subtask to the active task', () => this._addTask( 'child' ) ),
-				iconButton( 'delete', 'Delete the active task (Delete)', () => this._removeTask() ),
-				iconButton( 'calendar_add_on', 'New work schedule', () => this._addSchedule() ),
 			);
 
 		this._summary = new Text( '' ).addClass( 'bonsai-sheet-summary' );
 		this._status = new Text( '' ).addClass( 'bonsai-sheet-status' );
+		this._hint = new Text( HINT ).addClass( 'bonsai-sheet-hint' );
 
 		this._header = element( 'div', 'bonsai-sheet-row bonsai-sheet-header SequenceGantt-row' );
 		this._body = element( 'div', 'bonsai-sheet-body' );
@@ -242,6 +255,10 @@ class SequencePanelUI {
 		this._body.setAttribute( 'role', 'tree' );
 		this._body.setAttribute( 'aria-label', 'Tasks' );
 		this._empty = element( 'div', 'bonsai-sheet-empty' );
+		this._emptyText = element( 'p', 'bonsai-sheet-empty-text' );
+		this._emptyAction = textButton( '', 'add', () => this._emptyRun?.() );
+		this._emptyAction.addClass( 'primary' );
+		this._empty.append( element( 'span', 'bonsai-sheet-empty-icon material-symbols-outlined', 'view_timeline' ), this._emptyText, this._emptyAction.dom );
 
 		this._grid = new Container().addClass( 'bonsai-sheet-grid SequenceGantt' );
 		this._grid.dom.append( this._header, this._body, this._empty );
@@ -254,9 +271,20 @@ class SequencePanelUI {
 			.addClass( 'bonsai-sheet' )
 			.add(
 				toolbar,
-				new StackPanel( { isVertical: false } ).addClass( 'bonsai-sheet-info' ).add( this._summary, this._status ),
+				new StackPanel( { isVertical: false } ).addClass( 'bonsai-sheet-info' ).add( this._summary, this._status, this._hint ),
 				this._grid,
 			);
+
+	}
+
+	// The empty sheet says why, and offers the next step when there is one.
+	_setEmpty( message, action = null ) {
+
+		this._emptyText.textContent = message;
+		this._emptyAction.setHidden( ! action );
+		if ( action ) setButtonLabel( this._emptyAction, action.label );
+		this._emptyRun = action?.run ?? null;
+		this._empty.hidden = false;
 
 	}
 
@@ -302,10 +330,10 @@ class SequencePanelUI {
 
 		if ( failure || ! schedules.length ) {
 
-			let message = 'Open an IFC file to plan with its work schedules.';
-			if ( failure ) message = `Work schedules could not be read: ${ failure }`;
-			else if ( store.models.some( ( entry ) => entry.file ) ) message = 'No work schedules (IfcWorkSchedule) in the open IFC files.';
-			this._clear( message );
+			const hasFile = store.models.some( ( entry ) => entry.file );
+			if ( failure ) this._clear( `The work schedules could not be read: ${ failure }` );
+			else if ( hasFile ) this._clear( 'This model has no work schedule yet. Start one, then add tasks as you would on paper.', { label: 'Start a work schedule', run: () => this._addSchedule() } );
+			else this._clear( 'Open an IFC model to plan its construction.' );
 			if ( this.state.schedule ) ops.Sequence.Activate( { schedule: 0, task: 0 } );
 			return;
 
@@ -362,7 +390,7 @@ class SequencePanelUI {
 
 	}
 
-	_clear( message ) {
+	_clear( message, action = null ) {
 
 		this._loadedKey = '';
 		this.rows = [];
@@ -373,8 +401,15 @@ class SequencePanelUI {
 		this._status.setValue( '' );
 		this._header.replaceChildren();
 		this._body.replaceChildren();
-		this._empty.textContent = message;
-		this._empty.hidden = false;
+		this._setEmpty( message, action );
+		this._setAuthoring( false );
+
+	}
+
+	// Task buttons work only on an open schedule.
+	_setAuthoring( enabled ) {
+
+		for ( const control of this._editing ) control.dom.classList.toggle( 'is-disabled', ! enabled );
 
 	}
 
@@ -443,14 +478,17 @@ class SequencePanelUI {
 		for ( const row of rows ) fragment.append( this._renderRow( row, Boolean( match ) ) );
 		this._body.replaceChildren( fragment );
 
-		this._empty.hidden = rows.length > 0;
-		this._empty.textContent = this.rows.length ? 'No tasks match.' : 'This schedule has no tasks yet.';
+		this._setAuthoring( true );
+		if ( rows.length ) this._empty.hidden = true;
+		else if ( this.rows.length ) this._setEmpty( 'No task matches the filter.' );
+		else this._setEmpty( 'No tasks yet. Add the first one, then type its name and dates straight into the sheet.', { label: 'Add the first task', run: () => this._addTask( 'sibling' ) } );
+		this._resume();
 
 	}
 
 	_renderHeader() {
 
-		const cells = [ 'Code', 'Task', 'Start', 'Finish', 'Dur.' ].map( ( label, index ) =>
+		const cells = [ 'Code', 'Task', 'Start', 'Finish', 'Days' ].map( ( label, index ) =>
 			element( 'span', `bonsai-sheet-cell ${ [ 'is-code', 'is-name', 'is-date', 'is-date is-finish', 'is-duration' ][ index ] }`, label ) );
 		const track = element( 'span', 'bonsai-sheet-cell SequenceGantt-track' );
 		if ( this.range ) {
@@ -507,20 +545,29 @@ class SequencePanelUI {
 
 		if ( row.isMilestone ) name.append( element( 'span', 'SequenceGantt-flag material-symbols-outlined', 'flag' ) );
 		name.append( element( 'span', 'bonsai-sheet-label', row.name ) );
+		const open = element( 'span', 'bonsai-sheet-open material-symbols-outlined', 'open_in_new' );
+		open.dataset.open = row.id;
+		open.title = 'Open the task';
+		name.append( open );
+		name.dataset.key = 'name';
 
+		const code = element( 'span', 'bonsai-sheet-cell is-code', row.identification );
 		const start = element( 'span', 'bonsai-sheet-cell is-date', formatDate( row.start ) );
 		const finish = element( 'span', 'bonsai-sheet-cell is-date is-finish', formatDate( row.finish ) );
+		const duration = element( 'span', 'bonsai-sheet-cell is-duration', row.duration );
 		start.classList.toggle( 'is-derived', row.derived );
 		finish.classList.toggle( 'is-derived', row.derived );
+		code.dataset.key = 'identification';
+		// A summary task's dates come from its subtasks: open it to give it its own.
+		if ( ! ( row.hasChildren && row.derived ) ) {
 
-		node.append(
-			element( 'span', 'bonsai-sheet-cell is-code', row.identification ),
-			name,
-			start,
-			finish,
-			element( 'span', 'bonsai-sheet-cell is-duration', row.duration ),
-			this._renderTrack( row ),
-		);
+			start.dataset.key = 'start';
+			finish.dataset.key = 'finish';
+			duration.dataset.key = 'duration';
+
+		}
+
+		node.append( code, name, start, finish, duration, this._renderTrack( row ) );
 
 		const lines = [ [ row.identification, row.name ].filter( Boolean ).join( ' ' ) ];
 		if ( row.start || row.finish ) lines.push( `${ formatDate( row.start ) || '?' } → ${ formatDate( row.finish ) || '?' }${ row.duration ? `  (${ row.duration })` : '' }${ row.derived ? '  from subtasks' : '' }` );
@@ -594,18 +641,30 @@ class SequencePanelUI {
 
 		}
 
+		const open = event.target.closest( '[data-open]' );
+		if ( open ) {
+
+			this._setActive( Number( open.dataset.open ) );
+			this._openTask();
+			return;
+
+		}
+
 		const id = this._rowId( event );
-		if ( id ) this._setActive( id, { select: true } );
+		if ( id && id !== this.activeId ) this._setActive( id, { select: true } );
 
 	}
 
+	// Double-click types into a cell; elsewhere on the row it opens the task.
 	_onDoubleClick( event ) {
 
-		if ( event.target.closest( '[data-toggle]' ) ) return;
+		if ( event.target.closest( '[data-toggle], [data-open], .bonsai-sheet-input' ) ) return;
 		const id = this._rowId( event );
 		if ( ! id ) return;
 		this._setActive( id );
-		this._selectActive( { isolate: true } );
+		const key = event.target.closest( '[data-key]' )?.dataset.key;
+		if ( key ) this._editCell( id, key );
+		else this._openTask();
 
 	}
 
@@ -658,7 +717,13 @@ class SequencePanelUI {
 
 				break;
 			case 'Enter':
-				this._selectActive( { isolate: true } );
+				this._openTask();
+				break;
+			case 'F2':
+				if ( row ) this._editCell( row.id, 'name' );
+				break;
+			case 'Insert':
+				this._addTask( event.shiftKey ? 'child' : 'sibling' );
 				break;
 			case 'Delete':
 				this._removeTask();
@@ -835,19 +900,49 @@ class SequencePanelUI {
 
 	}
 
-	// Sequence.AddTask places it next to or under the active task and makes
-	// it active; the reload that follows shows it.
-	_addTask( placement ) {
+	// Sequence.AddTask places it below or inside the active task and makes
+	// it active; the reload that follows shows it, with its name ready to type.
+	async _addTask( placement ) {
 
-		if ( this.key ) this._run( () => ops.Sequence.AddTask( { placement, name: 'New task' } ), 'Task added' );
+		if ( ! this.key ) return;
+		if ( placement === 'child' && ! this.activeId ) {
+
+			this._status.setValue( 'Choose the task to add a subtask to.' );
+			return;
+
+		}
+
+		const result = await this._run( () => ops.Sequence.AddTask( { placement, name: 'New task' } ), 'Task added: type its name' );
+		if ( result?.result ) this._resumeEdit = { id: result.result, key: 'name' };
+		this._resume();
 
 	}
 
-	_removeTask() {
+	async _removeTask() {
 
 		const row = this.byId.get( this.activeId );
-		if ( ! row || ! confirmRemoveTask( row.name, row.hasChildren ) ) return;
-		this._run( () => ops.Sequence.RemoveTask(), `Deleted ${ row.identification || row.name }` );
+		if ( ! row ) {
+
+			this._status.setValue( 'Choose the task to delete.' );
+			return;
+
+		}
+
+		if ( ! await confirmTaskRemoval( row ) ) return;
+		this._run( () => ops.Sequence.RemoveTask( { task: row.id } ), `Deleted ${ row.identification || row.name }` );
+
+	}
+
+	_openTask() {
+
+		if ( ! this.activeId ) {
+
+			this._status.setValue( 'Choose a task first.' );
+			return;
+
+		}
+
+		this.taskDialog.open( this.activeId );
 
 	}
 
@@ -855,12 +950,155 @@ class SequencePanelUI {
 
 		if ( ! store.models.some( ( entry ) => entry.file ) ) {
 
-			this._status.setValue( 'Open an IFC file first.' );
+			this._status.setValue( 'Open an IFC model first.' );
 			return;
 
 		}
 
-		this._run( () => ops.Sequence.AddWorkSchedule( { name: 'Work schedule' } ), 'Work schedule added' );
+		this.scheduleDialog.open( null );
+
+	}
+
+	_editSchedule() {
+
+		const schedule = this.schedules.find( ( entry ) => this._keyOf( entry ) === this.key );
+		if ( schedule ) this.scheduleDialog.open( schedule );
+		else this._addSchedule();
+
+	}
+
+	// IN-PLACE EDITING
+
+	_editCell( id, key ) {
+
+		const row = this.byId.get( id );
+		const node = this._body.querySelector( `[data-id="${ id }"]` );
+		let cell = node?.querySelector( `[data-key="${ key }"]` );
+		if ( ! row || ! cell ) return;
+		if ( key === 'name' ) cell = cell.querySelector( '.bonsai-sheet-label' );
+
+		const details = [ 'start', 'finish', 'duration' ].includes( key ) ? ops.Sequence.TaskDetails( { task: id } ).result : null;
+		const values = {
+			identification: row.identification,
+			name: row.name,
+			start: details?.time?.scheduleStart?.slice( 0, 10 ) ?? '',
+			finish: details?.time?.scheduleFinish?.slice( 0, 10 ) ?? '',
+			duration: durationDays( details?.time?.scheduleDuration ),
+		};
+		const types = { start: 'date', finish: 'date', duration: 'number' };
+		const placeholders = { identification: 'Code', name: 'Task name', duration: 'Days' };
+
+		editCell( cell, {
+			value: values[ key ],
+			type: types[ key ] ?? 'text',
+			placeholder: placeholders[ key ] ?? '',
+			onCommit: ( text, move ) => this._commitCell( row, key, text.trim(), move ),
+			onMove: ( move ) => this._moveEdit( row.id, key, move ),
+		} );
+
+	}
+
+	// The next editable cell of the row, wrapping to the next row.
+	_moveEdit( id, key, move ) {
+
+		const rows = this._visible ?? [];
+		let index = rows.findIndex( ( row ) => row.id === id );
+		let column = EDITABLE.indexOf( key );
+		while ( index >= 0 && index < rows.length ) {
+
+			column += move;
+			if ( column >= EDITABLE.length ) {
+
+				column = 0;
+				index ++;
+
+			} else if ( column < 0 ) {
+
+				column = EDITABLE.length - 1;
+				index --;
+
+			}
+
+			const row = rows[ index ];
+			if ( ! row ) return;
+			const cell = this._body.querySelector( `[data-id="${ row.id }"] [data-key="${ EDITABLE[ column ] }"]` );
+			if ( cell ) {
+
+				if ( row.id !== this.activeId ) this._setActive( row.id );
+				this._editCell( row.id, EDITABLE[ column ] );
+				return;
+
+			}
+
+		}
+
+	}
+
+	// After the reload a change causes, carry on where the edit left off.
+	_resume() {
+
+		const next = this._resumeEdit;
+		if ( ! next || ! this.byId.has( next.id ) ) return;
+		if ( ! this._body.querySelector( `[data-id="${ next.id }"]` ) ) return;
+		this._resumeEdit = null;
+		if ( next.move ) this._moveEdit( next.id, next.key, next.move );
+		else this._editCell( next.id, next.key );
+
+	}
+
+	async _commitCell( row, key, text, move ) {
+
+		const task = { task: row.id };
+		let run;
+		if ( key === 'identification' ) run = () => ops.Sequence.EditTask( { Identification: text || null }, task );
+		else if ( key === 'name' ) run = () => ops.Sequence.EditTask( { Name: text || 'Unnamed' }, task );
+		else if ( key === 'start' && text ) run = () => ops.Sequence.EditTaskTime( { ScheduleStart: `${ text }T09:00:00` }, task );
+		else if ( key === 'finish' && text ) run = () => ops.Sequence.EditTaskTime( { ScheduleFinish: `${ text }T17:00:00` }, task );
+		else if ( key === 'duration' && text ) {
+
+			const days = Math.round( Number( text ) );
+			if ( ! Number.isFinite( days ) || days < 1 ) {
+
+				this._status.setValue( 'Working days must be a whole number of 1 or more.' );
+				return;
+
+			}
+
+			run = () => ops.Sequence.EditTaskTime( { ScheduleDuration: `P${ days }D` }, task );
+
+		}
+
+		if ( ! run ) {
+
+			// Clearing a date is done from the task dialog.
+			if ( move ) this._moveEdit( row.id, key, move );
+			return;
+
+		}
+
+		if ( move ) this._resumeEdit = { id: row.id, key, move };
+		const result = await this._run( run, '' );
+		if ( ! result ) {
+
+			this._resumeEdit = null;
+			return;
+
+		}
+
+		// A link can hold a date where it is: say so rather than ignore the edit.
+		if ( key === 'start' || key === 'finish' ) {
+
+			const task = ops.Sequence.TaskDetails( { task: row.id } ).result;
+			const kept = key === 'start' ? task?.time?.scheduleStart : task?.time?.scheduleFinish;
+			if ( kept && kept.slice( 0, 10 ) !== text ) {
+
+				const link = task.predecessors[ 0 ];
+				const why = link ? ` its link to ${ link.identification || link.name } holds it` : ' the schedule holds it';
+				this._status.setValue( `The ${ key } stays ${ formatDate( kept ) }:${ why }. Open the task to change its links.` );
+
+			}
+
+		}
 
 	}
 
@@ -999,335 +1237,4 @@ class SequenceTasksPanelUI {
 
 }
 
-const SCHEDULE_TYPES = [ 'PLANNED', 'ACTUAL', 'BASELINE', 'NOTDEFINED' ];
-const TASK_TYPES = [
-	'NOTDEFINED', 'ATTENDANCE', 'CONSTRUCTION', 'DEMOLITION', 'DISMANTLE', 'DISPOSAL', 'INSTALLATION',
-	'LOGISTIC', 'MAINTENANCE', 'MOVE', 'OPERATION', 'REMOVAL', 'RENOVATION', 'USERDEFINED',
-];
-const SEQUENCE_TYPES = [
-	{ value: 'FINISH_START', label: 'Finish → start' },
-	{ value: 'START_START', label: 'Start → start' },
-	{ value: 'FINISH_FINISH', label: 'Finish → finish' },
-	{ value: 'START_FINISH', label: 'Start → finish' },
-];
-const SEQUENCE_SHORT = { FINISH_START: 'FS', START_START: 'SS', FINISH_FINISH: 'FF', START_FINISH: 'SF' };
-const INDENT = '\u2003';
-
-// Whole days of an ISO duration such as P5D or P2W, or '' for anything else.
-function durationDays( value ) {
-
-	const match = /^P(?:(\d+)W)?(?:(\d+)D)?$/.exec( value || '' );
-	if ( ! match || ( ! match[ 1 ] && ! match[ 2 ] ) ) return '';
-	return String( Number( match[ 1 ] || 0 ) * 7 + Number( match[ 2 ] || 0 ) );
-
-}
-
-// Edits the open work schedule and its active task: context.sequence
-// .model, .schedule and .task. Every change goes through a Sequence.*
-// operator, which works on that same state.
-class SequenceEditorPanelUI {
-
-	static id = 'bim.sequence';
-
-	static spec = {
-		group: 'sequence',
-		position: 'right',
-		id: 'sequence-editor-panel',
-		label: 'Task',
-		icon: 'edit_calendar',
-		title: 'Task Editor',
-		autoShow: false,
-	};
-
-	constructor( { context } ) {
-
-		this.context = context;
-		this.workspacePanel = null;
-		this._shownTaskId = 0;
-		this._token = 0;
-
-		this._build();
-		const { signals } = context;
-		bindPanelToggle( signals, SequenceEditorPanelUI.spec.id, () => this.workspacePanel );
-		signals.scheduleChanged.add( ( change ) => {
-
-			if ( change?.module === 'sequence' ) this.refresh();
-
-		} );
-		signals.scheduleActivated.add( ( change ) => {
-
-			if ( change?.module === 'sequence' ) this.refresh();
-
-		} );
-		signals.liveIfcReady.add( () => this.refresh() );
-		signals.modelCleared.add( () => this.refresh() );
-		this.refresh();
-
-	}
-
-	attach( workspacePanel ) {
-
-		this.workspacePanel = workspacePanel;
-
-	}
-
-	get state() {
-
-		return sequenceState( this.context );
-
-	}
-
-	_build() {
-
-		const run = ( fn ) => () => void fn();
-		const addSchedule = () => this._run( () => ops.Sequence.AddWorkSchedule( { name: 'Work schedule' } ), 'Work schedule added' );
-		const addTask = ( placement ) => this._run( () => ops.Sequence.AddTask( { placement, name: 'New task' } ), 'Task added' );
-
-		// Schedule
-		this._scheduleName = textInput( ( value ) => this._run( () => ops.Sequence.EditWorkSchedule( { Name: value.trim() || 'Work schedule' } ) ) );
-		this._scheduleType = dropdownInput( SCHEDULE_TYPES, ( value ) => this._run( () => ops.Sequence.EditWorkSchedule( { PredefinedType: value } ) ) );
-		this._scheduleSection = new StackPanel( { isVertical: true } ).addClass( 'SequenceEditor-section' ).add(
-			new Text( 'Work schedule' ).addClass( 'SequenceEditor-title' ),
-			field( 'Name', this._scheduleName ),
-			field( 'Type', this._scheduleType ),
-			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
-				textButton( 'New schedule', 'calendar_add_on', run( addSchedule ) ),
-				textButton( 'Delete schedule', 'delete', run( () => this._removeSchedule() ) ),
-			),
-		);
-
-		// Task
-		const editTask = ( attributes ) => this._run( () => ops.Sequence.EditTask( attributes ) );
-		this._taskTitle = new Text( '' ).addClass( 'SequenceEditor-title' );
-		this._identification = textInput( ( value ) => editTask( { Identification: value.trim() || null } ) );
-		this._name = textInput( ( value ) => editTask( { Name: value.trim() || 'Unnamed' } ) );
-		this._description = textInput( ( value ) => editTask( { Description: value.trim() || null } ) );
-		this._statusInput = textInput( ( value ) => editTask( { Status: value.trim() || null } ), { placeholder: 'e.g. NOTSTARTED, STARTED, COMPLETED' } );
-		this._taskType = dropdownInput( TASK_TYPES, ( value ) => editTask( { PredefinedType: value } ) );
-		this._milestone = checkboxInput( 'Milestone', ( value ) => editTask( { IsMilestone: value } ) );
-
-		// One attribute at a time, so the API keeps the others: a new start
-		// keeps the duration, a new finish recomputes it.
-		this._start = textInput( ( value ) => this._editTime( value ? { ScheduleStart: `${ value }T09:00:00` } : null ), { type: 'date' } );
-		this._finish = textInput( ( value ) => this._editTime( value ? { ScheduleFinish: `${ value }T17:00:00` } : null ), { type: 'date' } );
-		this._duration = textInput( ( value ) => {
-
-			const days = Math.round( Number( value ) );
-			this._editTime( value !== '' && Number.isFinite( days ) && days > 0 ? { ScheduleDuration: `P${ days }D` } : null );
-
-		}, { type: 'number', placeholder: 'days' } );
-		this._duration.dom.min = '1';
-
-		this._outputsLabel = new Text( '' ).addClass( 'SequenceEditor-count' );
-		this._inputsLabel = new Text( '' ).addClass( 'SequenceEditor-count' );
-		const products = ( label, kind ) => new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
-			label,
-			textButton( 'Assign selection', 'add_link', run( () => this._products( kind, true ) ) ),
-			textButton( 'Unassign', 'link_off', run( () => this._products( kind, false ) ) ),
-		);
-
-		this._predecessors = new StackPanel( { isVertical: true } ).addClass( 'SequenceEditor-links' );
-		this._predecessorPick = new InputDropdown();
-		this._predecessorPick.dom.setAttribute( 'aria-label', 'Predecessor' );
-		this._sequenceType = dropdownInput( SEQUENCE_TYPES, () => {} );
-		this._sequenceType.setValue( 'FINISH_START' );
-
-		this._taskSection = new StackPanel( { isVertical: true } ).addClass( 'SequenceEditor-section' ).add(
-			this._taskTitle,
-			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-pair' ).add(
-				field( 'Code', this._identification ),
-				field( 'Type', this._taskType ),
-			),
-			field( 'Name', this._name ),
-			field( 'Description', this._description ),
-			field( 'Status', this._statusInput ),
-			this._milestone,
-			new Text( 'Schedule' ).addClass( 'SequenceEditor-subtitle' ),
-			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-pair' ).add(
-				field( 'Start', this._start ),
-				field( 'Finish', this._finish ),
-				field( 'Days', this._duration ),
-			),
-			new Text( 'Elements' ).addClass( 'SequenceEditor-subtitle' ),
-			products( this._outputsLabel, 'outputs' ),
-			products( this._inputsLabel, 'inputs' ),
-			new Text( 'Predecessors' ).addClass( 'SequenceEditor-subtitle' ),
-			this._predecessors,
-			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
-				this._predecessorPick,
-				this._sequenceType,
-				textButton( 'Add', 'add', run( () => this._addPredecessor() ) ),
-			),
-			new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-actions' ).add(
-				textButton( 'Add task', 'add_task', run( () => addTask( 'sibling' ) ) ),
-				textButton( 'Add subtask', 'subdirectory_arrow_right', run( () => addTask( 'child' ) ) ),
-				textButton( 'Delete', 'delete', run( () => this._removeTask() ) ),
-			),
-		);
-
-		this._empty = new Text( '' ).addClass( 'SequenceEditor-empty' );
-		this._message = new Text( '' ).addClass( 'SequenceEditor-message' );
-		this._noSchedule = textButton( 'New work schedule', 'calendar_add_on', run( addSchedule ) );
-
-		this.root = new StackPanel( { isVertical: true } )
-			.addClass( 'SequenceEditor' )
-			.gap( '12px' )
-			.add( this._empty, this._noSchedule, this._scheduleSection, this._taskSection, this._message );
-
-	}
-
-	// Show the active schedule and task.
-	refresh() {
-
-		const token = ++ this._token;
-		const { model, schedule: scheduleId, task: taskId } = this.state;
-		const hasFile = store.models.some( ( entry ) => entry.file );
-		const schedules = scheduleId ? ops.Sequence.Schedules().result ?? [] : [];
-		const schedule = schedules.find( ( entry ) => entry.modelId === model && entry.id === scheduleId ) ?? null;
-		this._noSchedule.setHidden( Boolean( schedule ) || ! hasFile );
-		this._empty.setHidden( Boolean( schedule ) );
-		this._empty.setValue( hasFile ? 'No work schedule is open.' : 'Open an IFC file to edit its work schedules.' );
-		this._scheduleSection.setHidden( ! schedule );
-		this._taskSection.setHidden( true );
-		if ( ! schedule ) return;
-
-		this._scheduleName.setValue( schedule.name );
-		this._scheduleType.setValue( schedule.predefinedType || 'NOTDEFINED' );
-		const result = taskId ? ops.Sequence.TaskDetails() : null;
-		if ( token !== this._token ) return;
-		if ( ! result?.result ) {
-
-			this._shownTaskId = 0;
-			this._message.setValue( 'Choose a task in the Gantt to edit it.' );
-			return;
-
-		}
-
-		const task = result.result;
-		// A reload after an edit keeps the edit's message; a new task clears it.
-		if ( task.id !== this._shownTaskId ) this._message.setValue( '' );
-		this._shownTaskId = task.id;
-		this._taskSection.setHidden( false );
-		this._taskTitle.setValue( [ task.identification, task.name ].filter( Boolean ).join( '  ' ) || 'Task' );
-		this._identification.setValue( task.identification );
-		this._name.setValue( task.name );
-		this._description.setValue( task.description );
-		this._statusInput.setValue( task.status );
-		this._taskType.setValue( task.predefinedType || 'NOTDEFINED' );
-		this._milestone.box.setValue( task.isMilestone );
-		this._start.setValue( task.time?.scheduleStart?.slice( 0, 10 ) ?? '' );
-		this._finish.setValue( task.time?.scheduleFinish?.slice( 0, 10 ) ?? '' );
-		const days = durationDays( task.time?.scheduleDuration );
-		this._duration.setValue( days );
-		this._duration.dom.placeholder = task.time?.scheduleDuration && ! days ? task.time.scheduleDuration : 'days';
-		this._outputsLabel.setValue( `Builds ${ plural( task.outputs.length, 'element' ) }` );
-		this._inputsLabel.setValue( `Uses ${ plural( task.inputs.length, 'element' ) }` );
-
-		this._predecessors.clear();
-		if ( ! task.predecessors.length ) this._predecessors.add( new Text( 'None' ).addClass( 'SequenceEditor-empty' ) );
-		for ( const link of task.predecessors ) {
-
-			const row = new StackPanel( { isVertical: false } ).addClass( 'SequenceEditor-link' );
-			row.dom.append(
-				element( 'span', 'SequenceEditor-link-name', [ link.identification, link.name ].filter( Boolean ).join( '  ' ) ),
-				element( 'span', 'SequenceEditor-link-type', SEQUENCE_SHORT[ link.sequenceType ] || link.sequenceType ),
-			);
-			row.add( iconButton( 'close', `Remove ${ link.name } as a predecessor`, () => this._run(
-				() => ops.Sequence.UnassignPredecessor( link.id ), 'Predecessor removed',
-			) ) );
-			this._predecessors.add( row );
-
-		}
-
-		const taken = new Set( [ task.id, ...task.predecessors.map( ( link ) => link.id ) ] );
-		setDropdown( this._predecessorPick, ( ops.Sequence.Tasks().result ?? [] )
-			.filter( ( row ) => ! taken.has( row.id ) )
-			.map( ( row ) => ( {
-				value: String( row.id ),
-				label: `${ INDENT.repeat( row.depth ) }${ [ row.identification, row.name ].filter( Boolean ).join( ' ' ) }`,
-			} ) ), '' );
-
-	}
-
-	// Run an operator; show a refusal or an error, else `done`.
-	async _run( run, done ) {
-
-		let result;
-		try {
-
-			result = await run();
-
-		} catch ( error ) {
-
-			result = { status: 'CANCELLED', message: error?.message || String( error ) };
-
-		}
-
-		if ( result?.status === 'CANCELLED' ) {
-
-			this._message.setValue( result.message || 'The change could not be made.' );
-			return null;
-
-		}
-
-		this._message.setValue( done || '' );
-		return result;
-
-	}
-
-	_removeTask() {
-
-		const task = this.state.task ? ops.Sequence.TaskDetails().result : null;
-		if ( ! task || ! confirmRemoveTask( task.name || 'this task', task.hasChildren ) ) return;
-		this._run( () => ops.Sequence.RemoveTask(), `Deleted ${ task.identification || task.name }` );
-
-	}
-
-	async _removeSchedule() {
-
-		const name = this._scheduleName.getValue() || 'this work schedule';
-		if ( ! window.confirm( `Delete "${ name }" and all its tasks from the IFC file? This cannot be undone.` ) ) return;
-		await this._run( () => ops.Sequence.RemoveWorkSchedule(), 'Work schedule deleted' );
-
-	}
-
-	_editTime( attributes ) {
-
-		if ( ! attributes ) {
-
-			this.refresh();
-			return;
-
-		}
-
-		this._run( () => ops.Sequence.EditTaskTime( attributes ) );
-
-	}
-
-	async _products( kind, assign ) {
-
-		const operator = assign ? ops.Sequence.AssignProducts : ops.Sequence.UnassignProducts;
-		const result = await this._run( () => operator( { kind } ) );
-		if ( ! result ) return;
-		const count = result.result ?? 0;
-		const verb = kind === 'inputs' ? 'uses' : 'builds';
-		this._message.setValue( count
-			? `${ assign ? 'Assigned' : 'Unassigned' } ${ plural( count, 'element' ) }: the task ${ assign ? 'now' : 'no longer' } ${ verb } ${ count === 1 ? 'it' : 'them' }`
-			: 'Select elements of this model in the viewport first.' );
-
-	}
-
-	_addPredecessor() {
-
-		const predecessor = Number( this._predecessorPick.getValue() );
-		if ( ! predecessor ) return;
-		this._run(
-			() => ops.Sequence.AssignPredecessor( predecessor, { sequenceType: this._sequenceType.getValue() } ),
-			'Predecessor added; the task now follows it',
-		);
-
-	}
-
-}
-
-export default [ SequencePanelUI, SequenceTasksPanelUI, SequenceEditorPanelUI ];
+export default [ SequencePanelUI, SequenceTasksPanelUI ];

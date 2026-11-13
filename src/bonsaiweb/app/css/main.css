@@ -1541,7 +1541,7 @@ body {
    attribute; the schedule panels hide parts of themselves with it. */
 .bonsai-sheet [hidden],
 .SequenceTasks [hidden],
-.SequenceEditor [hidden],
+.bonsai-dialog [hidden],
 .CostEditor [hidden] {
 	display: none;
 }
@@ -1679,138 +1679,6 @@ body {
 }
 
 
-/* Schedule editors: labelled fields, small buttons, a checkbox row. */
-.bonsai-sheet-divider {
-	align-self: stretch;
-	border-left: 1px solid var(--dui-color-border);
-	margin: 2px var(--dui-space-1);
-}
-
-.bonsai-sheet-field {
-	flex: 1 1 0;
-	gap: 2px;
-	min-width: 0;
-}
-
-.bonsai-sheet-field-label {
-	color: var(--dui-color-text-muted);
-	font-size: var(--dui-font-size-xs);
-}
-
-.bonsai-sheet-field .InputText,
-.bonsai-sheet-field .InputDropdown {
-	box-sizing: border-box;
-	min-width: 0;
-	width: 100%;
-}
-
-.bonsai-sheet-button.Button {
-	align-items: center;
-	display: inline-flex;
-	font-size: var(--dui-font-size-xs);
-	gap: 4px;
-	padding: 2px var(--dui-space-2);
-}
-
-.bonsai-sheet-button .Icon {
-	font-size: 1rem;
-}
-
-.bonsai-sheet-check {
-	align-items: center;
-	cursor: pointer;
-	display: flex;
-	font-size: var(--dui-font-size-sm);
-	gap: var(--dui-space-2);
-}
-
-/* Task editor (right). */
-.SequenceEditor-section,
-.CostEditor-section {
-	gap: var(--dui-space-2);
-}
-
-.SequenceEditor-title,
-.CostEditor-title {
-	font-weight: 600;
-}
-
-.SequenceEditor-subtitle,
-.CostEditor-subtitle {
-	border-top: 1px solid var(--dui-color-border);
-	color: var(--dui-color-text-muted);
-	font-size: var(--dui-font-size-xs);
-	font-weight: 600;
-	letter-spacing: 0.03em;
-	margin-top: var(--dui-space-1);
-	padding-top: var(--dui-space-2);
-	text-transform: uppercase;
-}
-
-.SequenceEditor-pair,
-.CostEditor-pair,
-.SequenceEditor-actions,
-.CostEditor-actions {
-	align-items: flex-end;
-	flex-wrap: wrap;
-	gap: var(--dui-space-2);
-}
-
-.SequenceEditor-actions,
-.CostEditor-actions {
-	align-items: center;
-}
-
-.SequenceEditor-actions .InputDropdown,
-.CostEditor-actions .InputDropdown {
-	flex: 1 1 8rem;
-	min-width: 0;
-}
-
-.SequenceEditor-count,
-.CostEditor-count {
-	flex: 1 1 100%;
-	font-size: var(--dui-font-size-sm);
-}
-
-.SequenceEditor-link {
-	align-items: center;
-	gap: var(--dui-space-2);
-}
-
-.SequenceEditor-link-name {
-	flex: 1 1 auto;
-	font-size: var(--dui-font-size-sm);
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.SequenceEditor-link-type {
-	color: var(--dui-color-text-muted);
-	font-family: var(--dui-font-mono);
-	font-size: var(--dui-font-size-xs);
-}
-
-.SequenceEditor-link .Operator {
-	color: var(--dui-color-text-muted);
-	cursor: pointer;
-	font-size: 1rem;
-}
-
-.SequenceEditor-empty,
-.CostEditor-empty {
-	color: var(--dui-color-text-muted);
-	font-size: var(--dui-font-size-sm);
-}
-
-.SequenceEditor-message,
-.CostEditor-message {
-	color: var(--dui-color-accent);
-	font-size: var(--dui-font-size-xs);
-}
-
 /* Cost sheet (bim.cost): code, description, quantity, unit, rate, total,
    and the item's share of the schedule total. */
 .CostSheet {
@@ -1937,6 +1805,312 @@ body {
 	font-size: var(--dui-font-size-xs);
 }
 
+
+/* Schedule forms: labelled fields, small buttons, a checkbox row. */
+.bonsai-sheet-divider {
+	align-self: stretch;
+	border-left: 1px solid var(--dui-color-border);
+	margin: 2px var(--dui-space-1);
+}
+
+.bonsai-sheet-field {
+	flex: 1 1 0;
+	gap: 2px;
+	min-width: 0;
+}
+
+.bonsai-sheet-field-label {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+}
+
+.bonsai-sheet-field .InputText,
+.bonsai-sheet-field .InputDropdown {
+	box-sizing: border-box;
+	min-width: 0;
+	width: 100%;
+}
+
+.bonsai-sheet-button.Button {
+	align-items: center;
+	display: inline-flex;
+	font-size: var(--dui-font-size-xs);
+	gap: 4px;
+	padding: 2px var(--dui-space-2);
+}
+
+.bonsai-sheet-button .Icon {
+	font-size: 1rem;
+}
+
+.bonsai-sheet-check {
+	align-items: center;
+	cursor: pointer;
+	display: flex;
+	font-size: var(--dui-font-size-sm);
+	gap: var(--dui-space-2);
+}
+
+/* Sheet toolbar: labelled task buttons, greyed out without a schedule. */
+.bonsai-sheet-toolbar .bonsai-sheet-button.is-disabled,
+.bonsai-sheet-toolbar .Operator.is-disabled {
+	opacity: 0.45;
+	pointer-events: none;
+}
+
+.bonsai-sheet-toolbar .Operator[aria-label^='Delete']:hover {
+	color: var(--dui-color-danger);
+}
+
+.bonsai-sheet-hint {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+	margin-left: auto;
+	opacity: 0.75;
+}
+
+@container (max-width: 44rem) {
+	.bonsai-sheet-hint {
+		display: none;
+	}
+}
+
+/* The empty sheet: why it is empty, and the next step. */
+.bonsai-sheet-empty {
+	align-items: center;
+	display: flex;
+	flex-direction: column;
+	gap: var(--dui-space-2);
+	padding: var(--dui-space-5, 1.5rem) var(--dui-space-4);
+}
+
+.bonsai-sheet-empty-icon {
+	font-size: 2rem;
+	opacity: 0.5;
+}
+
+.bonsai-sheet-empty-text {
+	font-size: var(--dui-font-size-sm);
+	margin: 0;
+	max-width: 32rem;
+}
+
+/* In-place cell editing, and the row's open button. */
+.bonsai-sheet-body [data-key] {
+	cursor: text;
+}
+
+.bonsai-sheet-cell.is-editing {
+	overflow: visible;
+	padding: 0 2px;
+}
+
+.bonsai-sheet-input {
+	background: var(--dui-input-bg, var(--dui-surface-bg));
+	border: 1px solid var(--dui-color-accent);
+	border-radius: 3px;
+	box-sizing: border-box;
+	color: var(--dui-color-text);
+	font: inherit;
+	height: 1.45rem;
+	min-width: 0;
+	outline: none;
+	padding: 0 4px;
+	width: 100%;
+}
+
+.bonsai-sheet-input[type='number'],
+.bonsai-sheet-input[type='date'] {
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+
+.bonsai-sheet-label:has(.bonsai-sheet-input) {
+	flex: 1 1 auto;
+	overflow: visible;
+}
+
+.bonsai-sheet-open {
+	color: var(--dui-color-text-muted);
+	cursor: pointer;
+	flex: 0 0 auto;
+	font-size: 0.95rem;
+	margin-left: auto;
+	opacity: 0;
+	padding: 0 2px;
+}
+
+.bonsai-sheet-row:hover .bonsai-sheet-open,
+.bonsai-sheet-row.is-active .bonsai-sheet-open {
+	opacity: 1;
+}
+
+.bonsai-sheet-open:hover {
+	color: var(--dui-color-accent);
+}
+
+/* Schedule dialogs (bim.sequence, bim.cost): sections of labelled fields,
+   lists of staged changes, Save and Cancel. */
+.bonsai-dialog > .PanelContent {
+	overflow-y: auto;
+}
+
+.bonsai-dialog-body {
+	gap: var(--dui-space-3);
+	padding: var(--dui-space-3);
+}
+
+.bonsai-dialog-section {
+	gap: var(--dui-space-2);
+}
+
+.bonsai-dialog-section + .bonsai-dialog-section {
+	border-top: 1px solid var(--dui-color-border);
+	padding-top: var(--dui-space-3);
+}
+
+.bonsai-dialog-heading {
+	font-size: var(--dui-font-size-sm);
+	font-weight: 600;
+}
+
+.bonsai-dialog-subheading {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+	font-weight: 600;
+}
+
+.bonsai-dialog-row {
+	align-items: flex-end;
+	flex-wrap: wrap;
+	gap: var(--dui-space-2);
+}
+
+.bonsai-dialog-row > .InputDropdown {
+	flex: 1 1 8rem;
+	min-width: 0;
+}
+
+.bonsai-dialog-row > .InputText {
+	box-sizing: border-box;
+	flex: 1 1 8rem;
+	min-width: 0;
+}
+
+.bonsai-dialog .bonsai-sheet-field {
+	flex: 0 0 auto;
+}
+
+.bonsai-dialog-row > .bonsai-sheet-field {
+	flex: 1 1 8rem;
+}
+
+.bonsai-dialog-row > .bonsai-sheet-field.is-narrow {
+	flex: 0 1 7rem;
+}
+
+.bonsai-dialog-list {
+	gap: 1px;
+	max-height: 9.5rem;
+	overflow-y: auto;
+}
+
+.bonsai-dialog-line {
+	align-items: center;
+	border-radius: var(--dui-radius);
+	display: flex;
+	gap: var(--dui-space-2);
+	min-height: 1.6rem;
+	padding: 0 var(--dui-space-1);
+}
+
+.bonsai-dialog-line:hover {
+	background: var(--dui-color-surface-hover);
+}
+
+.bonsai-dialog-line-label {
+	flex: 1 1 auto;
+	font-size: var(--dui-font-size-sm);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bonsai-dialog-line-detail {
+	color: var(--dui-color-text-muted);
+	flex: 0 0 auto;
+	font-size: var(--dui-font-size-xs);
+}
+
+.bonsai-dialog-line .Operator {
+	color: var(--dui-color-text-muted);
+	cursor: pointer;
+	font-size: 1rem;
+}
+
+.bonsai-dialog-line.is-added .bonsai-dialog-line-label {
+	color: var(--dui-color-accent);
+}
+
+.bonsai-dialog-line.is-added .bonsai-dialog-line-label::before {
+	content: '+ ';
+}
+
+.bonsai-dialog-line.is-removed .bonsai-dialog-line-label {
+	color: var(--dui-color-text-muted);
+	text-decoration: line-through;
+}
+
+.bonsai-dialog-empty,
+.bonsai-dialog-note {
+	color: var(--dui-color-text-muted);
+	font-size: var(--dui-font-size-xs);
+}
+
+.bonsai-dialog-question {
+	font-size: var(--dui-font-size-md);
+}
+
+.bonsai-dialog-message {
+	color: var(--dui-color-accent);
+	font-size: var(--dui-font-size-xs);
+	padding: 0 var(--dui-space-3) var(--dui-space-2);
+}
+
+.bonsai-dialog-message:empty {
+	display: none;
+}
+
+.bonsai-dialog-message.is-error {
+	color: var(--dui-color-danger);
+}
+
+.bonsai-dialog .RibbonBar {
+	align-items: center;
+	border-top: 1px solid var(--dui-color-border);
+	gap: var(--dui-space-2);
+	padding: var(--dui-space-2) var(--dui-space-3);
+}
+
+.bonsai-dialog-spacer {
+	flex: 1 1 auto;
+}
+
+.Button.bonsai-dialog-danger {
+	background: transparent;
+	border-color: var(--dui-color-danger);
+	color: var(--dui-color-danger);
+}
+
+.Button.bonsai-dialog-danger:hover {
+	background: var(--dui-color-danger);
+	color: var(--dui-color-on-accent);
+}
+
+.Button.primary:disabled {
+	opacity: 0.6;
+}
 
 /* Cost item editor (right): quantity and value lines, the item total. */
 .CostEditor-total {

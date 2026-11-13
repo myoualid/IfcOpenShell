@@ -78,7 +78,6 @@ export const ribbonButtons = [
 	group( 'RG_Planning', 'Schedule', 'Planning', [
 		button( 'RB_WorkSchedule', 'Gantt', 'view_timeline', 'Sequence.Toggle' ),
 		button( 'RB_ElementTasks', 'Element tasks', 'event_note', 'Sequence.ToggleTasks' ),
-		button( 'RB_TaskEditor', 'Task editor', 'edit_calendar', 'Sequence.ToggleEditor' ),
 	] ),
 	group( 'RG_PlanningObjects', 'Objects', 'Planning', [
 		button( 'RB_PlanningFocus', 'Focus', 'center_focus_strong', 'Viewer.FrameSelection' ),

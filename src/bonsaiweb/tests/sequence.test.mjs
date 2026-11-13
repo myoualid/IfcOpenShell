@@ -246,8 +246,7 @@ test( 'Activate, AddTask placement and toggles go through signals', () => {
 		toggled.length = 0;
 		ops.Sequence.Toggle();
 		ops.Sequence.ToggleTasks();
-		ops.Sequence.ToggleEditor();
-		assert.deepEqual( toggled.map( ( request ) => request.id ), [ 'sequence-panel', 'sequence-tasks-panel', 'sequence-editor-panel' ] );
+		assert.deepEqual( toggled.map( ( request ) => request.id ), [ 'sequence-panel', 'sequence-tasks-panel' ] );
 
 	} finally {
 

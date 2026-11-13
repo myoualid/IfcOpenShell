@@ -106,20 +106,6 @@ class SequenceToggleTasks extends Operator {
 
 }
 
-class SequenceToggleEditor extends Operator {
-
-	static operatorName = 'Sequence.ToggleEditor';
-	static operatorLabel = 'Toggle Task Editor';
-
-	execute() {
-
-		this.context.signals.panelToggled.dispatch( { id: 'sequence-editor-panel' } );
-		return { status: 'FINISHED' };
-
-	}
-
-}
-
 // STATE
 
 // Make a model, schedule and task active: options.model, .schedule, .task
@@ -218,6 +204,30 @@ class SequenceProductTasks extends Operator {
 
 		const product = Ifc.byGuid( this.pick?.sourceId, this.pick?.guid );
 		const result = product ? Sequence.productTasks( product ) : { outputs: [], inputs: [] };
+		return { status: 'FINISHED', result };
+
+	}
+
+}
+
+// The products selected in the viewport, in the active model (or
+// options.model): [ { guid, name, type } ]. The task dialog stages them.
+class SequenceSelectedProducts extends SequenceOperator {
+
+	static operatorName = 'Sequence.SelectedProducts';
+	static operatorLabel = 'Selected Products';
+	static operatorArgs = [ OPTIONS ];
+
+	async execute() {
+
+		const result = [];
+		for ( const guid of await Viewer.selectedGuids( this.model ) ) {
+
+			const product = Ifc.byGuid( this.model, guid );
+			if ( product?.isA( 'IfcProduct' ) ) result.push( { guid, name: product.Name ?? '', type: product.isA() } );
+
+		}
+
 		return { status: 'FINISHED', result };
 
 	}
@@ -595,10 +605,10 @@ export {
 	SequenceRemoveWorkSchedule,
 	SequenceSchedules,
 	SequenceSelectTask,
+	SequenceSelectedProducts,
 	SequenceTaskDetails,
 	SequenceTasks,
 	SequenceToggle,
-	SequenceToggleEditor,
 	SequenceToggleTasks,
 	SequenceUnassignPredecessor,
 	SequenceUnassignProducts,
@@ -607,13 +617,13 @@ export {
 export default [
 	SequenceToggle,
 	SequenceToggleTasks,
-	SequenceToggleEditor,
 	SequenceActivate,
 	SequenceSchedules,
 	SequenceTasks,
 	SequenceTaskDetails,
 	SequenceProductTasks,
 	SequenceSelectTask,
+	SequenceSelectedProducts,
 	SequenceAddWorkSchedule,
 	SequenceEditWorkSchedule,
 	SequenceRemoveWorkSchedule,
