@@ -201,6 +201,27 @@ export const str = {
   islower: (text: string) => /\p{Ll}/u.test(text) && text === text.toLowerCase(),
 };
 
+/** Python `str(float)`: whole numbers keep `.0`, and exponents start at 1e+16 and 1e-05 as in repr. */
+export function floatStr(value: number): string {
+  if (Number.isNaN(value)) return 'nan';
+  if (!Number.isFinite(value)) return value > 0 ? 'inf' : '-inf';
+  if (value === 0) return Object.is(value, -0) ? '-0.0' : '0.0';
+  const [mantissa, exponentText] = value.toExponential().split('e') as [string, string];
+  const exponent = Number(exponentText);
+  if (exponent < -4 || exponent >= 16) {
+    return `${mantissa}e${exponent < 0 ? '-' : '+'}${String(Math.abs(exponent)).padStart(2, '0')}`;
+  }
+  const text = String(value);
+  return text.includes('.') ? text : `${text}.0`;
+}
+
+/** Python `str(entity.wrappedValue)`: a REAL value prints as a float, which a JS number does not record. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function strWrapped(entity: any): string {
+  const value = entity.wrappedValue;
+  return typeof value === 'number' && entity.attributeType(0) === 'DOUBLE' ? floatStr(value) : String(value);
+}
+
 /** Python `format(value, spec)`: [[fill]align][sign][#][0][width][,|_][.precision][type]. */
 export function formatValue(value: unknown, spec: string): string {
   const match = /^(?:(.)?([<>=^]))?([+\- ])?(#)?(0)?(\d+)?([,_])?(?:\.(\d+))?([bcdeEfFgGnosxX%])?$/s.exec(spec);
