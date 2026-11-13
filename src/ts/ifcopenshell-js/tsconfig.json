@@ -27,5 +27,5 @@
   },
   "include": ["src/**/*.ts"],
   // Transpiled from ifcopenshell.util and ifcopenshell.api; built by tsconfig.python.json.
-  "exclude": ["src/python"]
+  "exclude": ["src/util", "src/api", "src/helpers/datetime.ts", "src/helpers/dateutil.ts", "src/helpers/geom.ts", "src/helpers/isodate.ts", "src/helpers/itertools.ts", "src/helpers/lang.ts", "src/helpers/numpy.ts", "src/helpers/os.ts"]
 }

@@ -144,9 +144,10 @@ CLAUDE.local.md
 
 # Python-to-TypeScript transpilation (src/transpiler): written by generate.py and
 # parity/record.py; not committed.
-/src/ts/ifcopenshell-js/src/python/util/
-/src/ts/ifcopenshell-js/src/python/api/
-/src/ts/ifcopenshell-js/src/python/transpile.json
+/src/ts/ifcopenshell-js/src/util/
+/src/ts/ifcopenshell-js/src/api/
+/src/transpiler/transpile.json
+/src/transpiler/types.json
 /src/transpiler/parity/golden/
 /src/transpiler/parity/results.json
 /src/transpiler/TRACKING.md

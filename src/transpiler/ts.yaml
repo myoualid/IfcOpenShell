@@ -12,16 +12,16 @@ unsupported: |
 header: |-
   // This file was generated with the assistance of an AI coding tool.
   // SPDX-License-Identifier: LGPL-3.0-or-later
-  // Transpiled from ifcopenshell/{{ this_module | replace(".", "/") }}.py by src/transpiler; see that file for copyright.
+  // Counterpart of ifcopenshell/{{ this_module | replace(".", "/") }}.py; see that file for copyright.
 
-  import * as ifcopenshell from "{{ "../" * (this_module.split(".") | length) }}index.js";{% if this_module in overridable %}
+  import * as ifcopenshell from "{{ "../" * (this_module.split(".") | length - 1) }}index.js";{% if this_module in overridable %}
 
   /** Replace these functions as Python code assigns to ifcopenshell.{{ this_module }}. */
   export const overrides: { [name: string]: ((...args: any[]) => any) | undefined } = {};{% endif %}
-# Generated modules live in src/python/{util,api} of the ifcopenshell package, next to the runtime
-# (src/python/_*.ts): util.x is util/x.ts, api.p.u is api/p/u.ts and api.p is api/p/index.ts.
+# Generated modules live in src/util and src/api of the ifcopenshell package; the runtime is in
+# src/helpers: util.x is util/x.ts, api.p.u is api/p/u.ts and api.p is api/p/index.ts.
 import: |-
-  {% set there = target.split(".") %}{% set path = there[1] ~ ".js" if there[1].startswith("_") else there | join("/") ~ ".js" if there[0] == "util" or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ "../" * (this_module.split(".") | length - 1) }}{{ path }}";
+  {% set there = target.split(".") %}{% set path = there | join("/") ~ ".js" if there[0] in ["util", "helpers"] or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ "../" * (this_module.split(".") | length - 1) }}{{ path }}";
 # Classes of ifcopenshell_wrapper, as exported by ifcopenshell.wrapper.
 wrapper_classes:
   attribute: IfcOpenshellAttribute
@@ -46,7 +46,7 @@ builtin_values:
   bool: Boolean
   bytes: '((v: any) => v)'
   dict: '((v: any = {}) => ({ ...v }))'
-  set: '((v: any = []) => new Set(v))'
+  set: '((v: any = []) => new Set<any>(v))'
 math_functions:
   sqrt: Math.sqrt
   sin: Math.sin
@@ -118,20 +118,31 @@ calls:
   list: Array.from<any>
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
+# Declare locals where they are first bound, when their uses allow it.
+inline_locals: true
+# Take the kind of an expression from mypy_types when it is proven there.
+proven_types: true
+# Initializers Python treats as dynamic, so their locals are `any` rather than inferred: dicts and schema reflection.
+dynamic_initializers: ['\(?\{', '.*\.declaration\(\)', '.*schemaByName\(', '.*declarationByName\(', '.*\.typeOfAttribute\(', '.*\.walk\(']
 # JS reserved words that are valid Python names get a trailing underscore.
 reserved: [new, class, function, var, default, delete, this, switch, case, const, let, enum, export, import, typeof, void, with, package, interface, private, protected, public, static, arguments, eval, instanceof, do, catch, extends, super, debugger, implements]
-# Python modules with a hand-written counterpart in src/ts/ifcopenshell-js/src/python: `import x as y` and
+# Python modules with a hand-written counterpart in src/ts/ifcopenshell-js/src/helpers: `import x as y` and
 # `from x import z` refer to `alias.member` of that module, with camelCase members.
 # math has no module; its names map through math_functions and math_constants.
 runtime_modules:
   math: {module: null}
-  datetime: {module: util._datetime, alias: datetime}
-  isodate: {module: util._isodate, alias: isodate}
-  dateutil: {module: util._dateutil, alias: dateutil}
-  numpy: {module: util._numpy, alias: np}
-  os: {module: util._os, alias: os}
-  re: {module: util._py, alias: py, prefix: re, plain_import: false}
-  itertools: {module: util._itertools, alias: itertools}
+  datetime: {module: helpers.datetime, alias: datetime}
+  isodate: {module: helpers.isodate, alias: isodate}
+  dateutil: {module: helpers.dateutil, alias: dateutil}
+  numpy: {module: helpers.numpy, alias: np}
+  os: {module: helpers.os, alias: os}
+  re: {module: helpers.lang, alias: lang, prefix: re, plain_import: false}
+  itertools: {module: helpers.itertools, alias: itertools}
+# Functions of src/helpers/geom.ts, which rules call since `import ifcopenshell.geom` binds no local name.
+geom_functions:
+  ifcopenshell.geom.create_shape: createShape
+  ifcopenshell_wrapper.map_shape: mapShape
+  ifcopenshell_wrapper.function_item_evaluator: functionItemEvaluator
 # Runtime modules whose objects overload Python operators; in modules importing them,
 # operators and subscripts on values of unknown type dispatch at runtime.
 overloading_modules: [datetime, isodate, dateutil, numpy]
@@ -190,10 +201,10 @@ types:
       node: Subscript
       value: $array
     when: array | source in ["npt.NDArray", "NDArray"]
-    output: '{{ "util._numpy" | use("np") }}.NDArray'
+    output: '{{ "helpers.numpy" | use("np") }}.NDArray'
   - input: $value
     when: value | source in ["npt.NDArray", "NDArray", "np.ndarray", "numpy.ndarray"]
-    output: '{{ "util._numpy" | use("np") }}.NDArray'
+    output: '{{ "helpers.numpy" | use("np") }}.NDArray'
   - input: $value
     when: value | source in ["npt.ArrayLike", "npt.DTypeLike"] or (value | source).startswith("ifcopenshell.geom.") or (value | source).startswith("ifcopenshell.ifcopenshell_wrapper.")
     output: any
@@ -205,7 +216,7 @@ types:
     output: '{{ value | alias_value | type }}'
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module == "numpy"
-    output: '{% set name = (value | runtime_path).parts[-1] %}{{ ("util._numpy" | use("np")) ~ ".NDArray" if name in ["ndarray", "NDArray", "array"] else "boolean" if name == "bool_" else "number" }}'
+    output: '{% set name = (value | runtime_path).parts[-1] %}{{ ("helpers.numpy" | use("np")) ~ ".NDArray" if name in ["ndarray", "NDArray", "array"] else "boolean" if name == "bool_" else "number" }}'
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module in runtime_kinds
     output: '{% set path = value | runtime_path %}{{ runtime_modules[path.module].module | use(runtime_modules[path.module].alias) }}{% for part in path.parts %}.{{ part }}{% endfor %}'
@@ -335,11 +346,11 @@ rules:
   - input: $value
     context: condition
     when: value | kind == "array"
-    output: '({{ value | emit }}?.length ?? 0) > 0'
+    output: '{{ value | emit }}{{ "?" if value | nullable }}.length > 0'
   - input: $value
     context: condition
     when: value | kind == "dict"
-    output: Object.keys({{ value | emit }} ?? {}).length > 0
+    output: '{% set object = value | emit %}Object.keys({{ object if object.endswith("?? {})") else object ~ " ?? {}" }}).length > 0'
   - input:
       node: BoolOp
       op: $op
@@ -348,7 +359,7 @@ rules:
     output: ({% for value in values %}{{ value | condition }}{% if not loop.last %} {{ "||" if op.__class__.__name__ == "Or" else "&&" }} {% endif %}{% endfor %})
   - input: $value
     context: condition
-    when: value.__class__.__name__ in ["Compare", "UnaryOp", "Constant"] or value | kind in ["boolean", "number", "string", "entity", "file", "set-nonempty"]
+    when: value.__class__.__name__ in ["Compare", "UnaryOp", "Constant"] or value | kind in ["boolean", "number", "string", "entity", "file", "scalar", "set-nonempty"]
     output: '{{ value | emit }}'
   - input: $value
     context: condition
@@ -356,7 +367,7 @@ rules:
     output: '({{ value | emit }}?.size ?? 0) > 0'
   - input: $value
     context: condition
-    output: '{{ "util._py" | use("py") }}.truthy({{ value | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.truthy({{ value | emit }})'
   - input: $value
     context: iterable
     when: value | kind == "dict"
@@ -431,6 +442,26 @@ rules:
       keywords: []
     when: method in ["all_attributes", "all_inverse_attributes", "attribute_count", "attribute_index", "attribute_by_index", "derived", "is_abstract", "supertype", "subtypes"]
     output: '{{ value | emit }}.declaration().asEntity().{{ method | camel }}({{ args | map("emit") | join(", ") }})'
+  # ifcopenshell.geom and the ifcopenshell_wrapper functions around it, in src/helpers/geom.ts.
+  - input:
+      node: Call
+      func: $callee
+      args: []
+      keywords: []
+    when: callee | source == "ifcopenshell.geom.settings"
+    output: 'new {{ "helpers.geom" | use("geom") }}.Settings()'
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: []
+    when: callee | source in geom_functions
+    output: '{{ "helpers.geom" | use("geom") }}.{{ geom_functions[callee | source] }}({{ args | map("emit") | join(", ") }})'
+  - input:
+      node: Attribute
+      attr: $name
+    when: name in ["CURVES", "SURFACES_AND_SOLIDS", "CURVES_SURFACES_AND_SOLIDS"] and "ifcopenshell_wrapper" in node | source
+    output: '{{ "helpers.geom" | use("geom") }}.{{ name }}'
   # Runtime modules (see runtime_modules): calls pass keyword arguments as a trailing options object.
   - input:
       node: Call
@@ -463,7 +494,7 @@ rules:
           slice: $index
       value: $value
     when: container | kind == "ndarray" or overloading and container | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and container | kind not in ["dict", "map"]
-    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ value | emit }});'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ value | emit }});'
   - input:
       node: AugAssign
       target:
@@ -473,14 +504,14 @@ rules:
       op: $op
       value: $value
     when: op.__class__.__name__ in dunder_operators and (container | kind == "ndarray" or overloading and container | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string))
-    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ py }}.i{{ dunder_operators[op.__class__.__name__] }}({{ py }}.getitem({{ container | emit }}, {{ key(index) }}), {{ value | emit }}));'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ py }}.i{{ dunder_operators[op.__class__.__name__] }}({{ py }}.getitem({{ container | emit }}, {{ key(index) }}), {{ value | emit }}));'
   - input:
       node: AugAssign
       target: $target
       op: $op
       value: $value
     when: op.__class__.__name__ in dunder_operators and (target | kind in ["ndarray", "pyobject"] or value | kind in ["ndarray", "pyobject"] or op.__class__.__name__ == "MatMult" or overloading and target | kind in ["unknown", "number"] and value | kind not in ["string", "array"] and not (target | kind == "number" and value | kind == "number"))
-    output: '{{ target | emit }} = {{ "util._py" | use("py") }}.i{{ dunder_operators[op.__class__.__name__] }}({{ target | emit }}, {{ value | emit }});'
+    output: '{{ target | emit }} = {{ "helpers.lang" | use("lang") }}.i{{ dunder_operators[op.__class__.__name__] }}({{ target | emit }}, {{ value | emit }});'
   - input:
       node: Assign
       targets:
@@ -505,7 +536,7 @@ rules:
       returns: $returns
     when: (arguments.vararg is none or not arguments.defaults and not arguments.kwonlyargs) and arguments.kwarg is none and not arguments.posonlyargs and node.decorator_list | map("source") | reject("in", ignored_decorators) | list | length == 0
     output: |
-      {% set required = arguments.args[:arguments.args | length - arguments.defaults | length] %}{% set optional = arguments.args[required | length:] %}{% set keyword_only = arguments.kwonlyargs %}{% if top_level %}export {% endif %}function {{ name | camel if top_level else name }}({% for arg in required %}{{ arg | emit }}{% if not loop.last or optional or keyword_only or arguments.vararg %}, {% endif %}{% endfor %}{% if arguments.vararg %}...{{ arguments.vararg.arg | ident }}: any[]{% endif %}{% if optional or keyword_only %}options: { {% for arg in optional + keyword_only %}{{ arg.arg | camel }}?: {{ arg | emit("parameter_types") }}; {% endfor %}} = {}{% endif %}): {{ 'any[]' if node | is_generator else 'void' if returns is not none and returns.value is defined and returns.value is none else 'any' if not top_level and returns is not none and returns | emit("annotation_kinds") == "unknown" else returns | type }} {
+      {% set required = arguments.args[:arguments.args | length - arguments.defaults | length] %}{% set optional = arguments.args[required | length:] %}{% set keyword_only = arguments.kwonlyargs %}{% if top_level %}export {% endif %}function {{ name | camel if top_level else name | ident }}({% for arg in required %}{{ arg | emit }}{% if not loop.last or optional or keyword_only or arguments.vararg %}, {% endif %}{% endfor %}{% if arguments.vararg %}...{{ arguments.vararg.arg | ident }}: any[]{% endif %}{% if optional or keyword_only %}options: { {% for arg in optional + keyword_only %}{{ arg.arg | camel }}?: {{ arg | emit("parameter_types") }}; {% endfor %}} = {}{% endif %}): {{ 'any[]' if node | is_generator else 'void' if returns is not none and returns.value is defined and returns.value is none else 'any' if not top_level and returns is not none and returns | emit("annotation_kinds") == "unknown" else returns | type }} {
       {% if optional or keyword_only %}  let { {% for arg in optional %}{{ arg.arg | camel }}: {{ arg.arg | ident }} = {{ arguments.defaults[loop.index0] | emit }}, {% endfor %}{% for arg in keyword_only %}{{ arg.arg | camel }}: {{ arg.arg | ident }}{% if arguments.kw_defaults[loop.index0] is not none %} = {{ arguments.kw_defaults[loop.index0] | emit }}{% endif %}, {% endfor %}} = options;
       {% endif %}{% if top_level and this_module in overridable %}  if (overrides.{{ name | camel }} && overrides.{{ name | camel }} !== {{ name | camel }}) return overrides.{{ name | camel }}({{ (required | map(attribute="arg") | list + (["options"] if optional or keyword_only else [])) | join(", ") }});
       {% endif %}{% if locals %}  let {{ locals | map("ident") | join(': any, ') }}: any;
@@ -564,7 +595,7 @@ rules:
         - $target
       value: $empty
     when: target | kind == "map" and (empty.__class__.__name__ == "Dict" and not empty.keys or empty.__class__.__name__ == "Call" and empty.func.id is defined and empty.func.id == "dict" and not empty.args)
-    output: '{% set declare = top_level and target.__class__.__name__ == "Name" %}{% if declare %}export const {% endif %}{{ target | emit }}{% if declare %}: any{% endif %} = new {{ "util._py" | use("py") }}.PyDict();'
+    output: '{% set declare = top_level and target.__class__.__name__ == "Name" %}{% if declare %}export const {% endif %}{{ target | emit }}{% if declare %}: any{% endif %} = new {{ "helpers.lang" | use("lang") }}.Dict();'
   - input:
       node: Assign
       targets:
@@ -640,7 +671,7 @@ rules:
         node: Dict
         keys: []
     when: annotation | emit("annotation_kinds") == "map"
-    output: '{% if top_level %}export const {% endif %}{{ target | emit }}{% if top_level %}: any{% endif %} = new {{ "util._py" | use("py") }}.PyDict();'
+    output: '{% if top_level %}export const {% endif %}{{ target | emit }}{% if top_level %}: any{% endif %} = new {{ "helpers.lang" | use("lang") }}.Dict();'
   - input:
       node: AnnAssign
       target: $target
@@ -671,7 +702,7 @@ rules:
       op: $op
       value: $value
     when: op.__class__.__name__ in ["BitOr", "Sub", "BitAnd"] and (target | kind == "set" or value | kind == "set")
-    output: '{% if op.__class__.__name__ == "BitOr" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.add(v));{% elif op.__class__.__name__ == "Sub" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.delete(v));{% else %}((keep: Set<any>) => [...{{ target | emit }}].forEach((v: any) => keep.has(v) || {{ target | emit }}.delete(v)))(new Set({{ value | iterable }}));{% endif %}'
+    output: '{% if op.__class__.__name__ == "BitOr" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.add(v));{% elif op.__class__.__name__ == "Sub" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.delete(v));{% else %}((keep: Set<any>) => [...{{ target | emit }}].forEach((v: any) => keep.has(v) || {{ target | emit }}.delete(v)))(new Set<any>({{ value | iterable }}));{% endif %}'
   - input:
       node: AugAssign
       target: $target
@@ -687,7 +718,7 @@ rules:
         node: Add
       value: $value
     when: target | kind not in ["number", "string"] and value | kind not in ["number", "string"] and value.__class__.__name__ not in ["Constant", "JoinedStr"]
-    output: '{{ target | emit }} = {{ "util._py" | use("py") }}.iadd({{ target | emit }}, {{ value | emit }});'
+    output: '{{ target | emit }} = {{ "helpers.lang" | use("lang") }}.iadd({{ target | emit }}, {{ value | emit }});'
   - input:
       node: AugAssign
       target: $target
@@ -856,7 +887,7 @@ rules:
       body: $body
     output: |-
       {
-        const {{ name | ident }} = {{ "util._py" | use("py") }}.open({{ args | map("emit") | join(", ") }});
+        const {{ name | ident }} = {{ "helpers.lang" | use("lang") }}.open({{ args | map("emit") | join(", ") }});
       {{ body | emit | indent(2, true) }}
       }
   - input:
@@ -888,7 +919,7 @@ rules:
       args:
         - $file
       keywords: []
-    output: 'JSON.parse({% if file.__class__.__name__ == "Call" and file.func.id is defined and file.func.id == "open" %}{{ "util._py" | use("py") }}.open({{ file.args | map("emit") | join(", ") }}){% else %}{{ file | emit }}{% endif %}.read())'
+    output: 'JSON.parse({% if file.__class__.__name__ == "Call" and file.func.id is defined and file.func.id == "open" %}{{ "helpers.lang" | use("lang") }}.open({{ file.args | map("emit") | join(", ") }}){% else %}{{ file | emit }}{% endif %}.read())'
   - input:
       node: Global
     output: ''
@@ -983,7 +1014,7 @@ rules:
       elt: $clause
       generators: $generators
     when: node.__class__.__name__ in ["ListComp", "GeneratorExp", "SetComp"] and generators | length > 1 and generators | selectattr("is_async") | list | length == 0
-    output: '{% set kind = node.__class__.__name__ %}{% macro chain(items) %}{% set g = items[0] %}Array.from<any>({{ g.iter | iterable }}){% for filter in g.ifs %}.filter(({{ g.target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if items | length > 1 %}.flatMap(({{ g.target | emit }}: any) => {{ chain(items[1:]) }}){% else %}.map(({{ g.target | emit }}: any) => ({{ clause | emit }})){% endif %}{% endmacro %}{% if kind == "SetComp" %}new Set({{ chain(generators) }}){% else %}{{ chain(generators) }}{% endif %}'
+    output: '{% set kind = node.__class__.__name__ %}{% macro chain(items) %}{% set g = items[0] %}Array.from<any>({{ g.iter | iterable }}){% for filter in g.ifs %}.filter(({{ g.target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if items | length > 1 %}.flatMap(({{ g.target | emit }}: any) => {{ chain(items[1:]) }}){% else %}.map(({{ g.target | emit }}: any) => ({{ clause | emit }})){% endif %}{% endmacro %}{% if kind == "SetComp" %}new Set<any>({{ chain(generators) }}){% else %}{{ chain(generators) }}{% endif %}'
   - input:
       node: ListComp
       elt: $clause
@@ -1015,7 +1046,7 @@ rules:
           ifs: $filters
           is_async: 0
     when: node | kind == "map"
-    output: 'new {{ "util._py" | use("py") }}.PyDict(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}.map(({{ target | emit }}: any) => [{{ key | emit }}, {{ value | emit }}]))'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Dict(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}.map(({{ target | emit }}: any) => [{{ key | emit }}, {{ value | emit }}]))'
   - input:
       node: DictComp
       key: $key
@@ -1098,7 +1129,7 @@ rules:
       args:
         - $values
       keywords: $keywords
-    output: '{{ "util._py" | use("py") }}.sorted({{ values | iterable }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.sorted({{ values | iterable }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1107,7 +1138,7 @@ rules:
         attr: sort
       args: []
       keywords: $keywords
-    output: '{{ "util._py" | use("py") }}.sort({{ values | emit }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.sort({{ values | emit }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1115,7 +1146,7 @@ rules:
         id: round
       args: $args
       keywords: []
-    output: '{{ "util._py" | use("py") }}.round({{ args | map("emit") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.round({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1124,7 +1155,7 @@ rules:
       args:
         - $values
       keywords: []
-    output: 'Array.from<any>({{ values | iterable }}).every((v: any) => {{ "util._py" | use("py") }}.truthy(v))'
+    output: 'Array.from<any>({{ values | iterable }}).every((v: any) => {{ "helpers.lang" | use("lang") }}.truthy(v))'
   - input:
       node: Call
       func:
@@ -1156,7 +1187,7 @@ rules:
         - $separator
       keywords: []
     when: method in ["partition", "rpartition"]
-    output: '{{ "util._py" | use("py") }}.{{ method }}({{ value | emit }}, {{ separator | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.{{ method }}({{ value | emit }}, {{ separator | emit }})'
   # by_type(cls, include_subtypes=...): the bindings have a separate method without subtypes.
   - input:
       node: Call
@@ -1221,7 +1252,7 @@ rules:
         id: zip
       args: $args
     when: '"zip" not in shadowed and args | selectattr("__class__.__name__", "equalto", "Starred") | list | length == 0'
-    output: '{{ "util._py" | use("py") }}.zip({{ args | map("iterable") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.zip({{ args | map("iterable") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1230,7 +1261,7 @@ rules:
       args: $args
       keywords: []
     when: '"slice" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.slice({{ args | map("emit") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.slice({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1242,7 +1273,7 @@ rules:
         - $step
       keywords: []
     when: '"range" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.range({{ start | emit }}, {{ stop | emit }}, {{ step | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.range({{ start | emit }}, {{ stop | emit }}, {{ step | emit }})'
   - input:
       node: Call
       func:
@@ -1261,7 +1292,7 @@ rules:
       args: []
       keywords: []
     when: method in ["isdigit", "isalpha", "isalnum", "isspace", "isupper", "islower", "isnumeric", "isdecimal"]
-    output: '{{ "util._py" | use("py") }}.str.{{ method }}({{ value | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.str.{{ method }}({{ value | emit }})'
   - input:
       node: Call
       func:
@@ -1283,7 +1314,7 @@ rules:
       args: $args
       keywords: $keywords
     when: text is string and not (text.count("{}") == args | length and "{" not in text.replace("{}", "") and not keywords)
-    output: '{{ "util._py" | use("py") }}.format({{ text | literal }}{% for arg in args %}, {{ arg | emit }}{% endfor %}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg | literal }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.format({{ text | literal }}{% for arg in args %}, {{ arg | emit }}{% endfor %}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg | literal }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1329,7 +1360,7 @@ rules:
           arg: $kind
           value: $value
     when: kind in ["default", "default_factory"]
-    output: '{% if kind == "default" %}{{ value | emit }}{% elif value.id is defined and value.id in ["list", "dict", "set"] %}{{ {"list": "[]", "dict": "{}", "set": "new Set()"}[value.id] }}{% else %}{{ value | emit }}(){% endif %}'
+    output: '{% if kind == "default" %}{{ value | emit }}{% elif value.id is defined and value.id in ["list", "dict", "set"] %}{{ {"list": "[]", "dict": "{}", "set": "new Set<any>()"}[value.id] }}{% else %}{{ value | emit }}(){% endif %}'
   - input:
       node: Call
       func: $callee
@@ -1348,7 +1379,7 @@ rules:
       args:
         - $value
       keywords: []
-    output: '{{ "util._py" | use("py") }}.asdict({{ value | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.asdict({{ value | emit }})'
   - input:
       node: Call
       func:
@@ -1386,7 +1417,7 @@ rules:
       args:
         - $names
         - $values
-    output: '{{ "util._py" | use("py") }}.positionalOptions({{ names.elts | map(attribute="value") | map("camel") | list | literal }}, {{ values | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.positionalOptions({{ names.elts | map(attribute="value") | map("camel") | list | literal }}, {{ values | emit }})'
   - input:
       node: Call
       func:
@@ -1396,7 +1427,7 @@ rules:
         - $values
       keywords: []
     when: '"dict" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.dict({{ values | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.dict({{ values | emit }})'
   - input:
       node: Call
       func:
@@ -1428,7 +1459,7 @@ rules:
         - $b
       keywords: []
     when: '"divmod" not in shadowed'
-    output: '[{{ "util._py" | use("py") }}.floordiv({{ a | emit }}, {{ b | emit }}), {{ "util._py" | use("py") }}.mod({{ a | emit }}, {{ b | emit }})]'
+    output: '[{{ "helpers.lang" | use("lang") }}.floordiv({{ a | emit }}, {{ b | emit }}), {{ "helpers.lang" | use("lang") }}.mod({{ a | emit }}, {{ b | emit }})]'
   - input:
       node: Call
       func:
@@ -1449,7 +1480,7 @@ rules:
         - $values
       keywords: []
     when: '"iter" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.iter({{ values | iterable }})'
+    output: '{{ "helpers.lang" | use("lang") }}.iter({{ values | iterable }})'
   - input:
       node: Call
       func:
@@ -1459,7 +1490,7 @@ rules:
         - $values
       keywords: []
     when: '"next" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.next({{ values | iterable }})'
+    output: '{{ "helpers.lang" | use("lang") }}.next({{ values | iterable }})'
   - input:
       node: Call
       func:
@@ -1514,7 +1545,7 @@ rules:
       args:
         - $factory
       keywords: []
-    output: 'new {{ "util._py" | use("py") }}.PyDict(null, () => {{ {"list": "[]", "dict": "({})", "set": "new Set()", "int": "0", "float": "0", "str": "\"\""}.get(factory.id, (factory | emit) ~ "()") if factory.id is defined else (factory | emit) ~ "()" }})'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Dict(null, () => {{ {"list": "[]", "dict": "({})", "set": "new Set<any>()", "int": "0", "float": "0", "str": "\"\""}.get(factory.id, (factory | emit) ~ "()") if factory.id is defined else (factory | emit) ~ "()" }})'
   - input:
       node: Call
       func:
@@ -1525,7 +1556,7 @@ rules:
         attr: $method
       args: $args
       keywords: $keywords
-    output: '{{ "util._py" | use("py") }}.re.{{ method }}({{ args | map("emit") | join(", ") }}{% for keyword in keywords %}, {{ keyword.value | emit }}{% endfor %})'
+    output: '{{ "helpers.lang" | use("lang") }}.re.{{ method }}({{ args | map("emit") | join(", ") }}{% for keyword in keywords %}, {{ keyword.value | emit }}{% endfor %})'
   - input:
       node: Call
       func:
@@ -1536,7 +1567,7 @@ rules:
         attr: Path
       args: $args
       keywords: []
-    output: 'new {{ "util._py" | use("py") }}.Path({{ args | map("emit") | join(", ") }})'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Path({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1605,7 +1636,7 @@ rules:
       args:
         - $value
       keywords: []
-    output: '{% set k = value | kind %}{% if k in ["array", "string"] %}{{ value | emit }}.length{% elif k in ["set", "map"] %}{{ value | emit }}.size{% elif k == "dict" %}Object.keys({{ value | emit }}).length{% else %}{{ "util._py" | use("py") }}.len({{ value | emit }}){% endif %}'
+    output: '{% set k = value | kind %}{% if k in ["array", "string"] %}{{ value | emit }}.length{% elif k in ["set", "map"] %}{{ value | emit }}.size{% elif k == "dict" %}Object.keys({{ value | emit }}).length{% else %}{{ "helpers.lang" | use("lang") }}.len({{ value | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1613,7 +1644,7 @@ rules:
         id: set
       args: $args
       keywords: []
-    output: 'new Set({{ args | map("emit") | join(", ") }})'
+    output: 'new Set<any>({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1650,7 +1681,7 @@ rules:
         - $values
       keywords: $keywords
     when: name in ["min", "max"] and name not in shadowed
-    output: '{{ "util._py" | use("py") }}.{{ name }}({{ values | iterable }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.{{ name }}({{ values | iterable }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1659,7 +1690,7 @@ rules:
       args: $values
       keywords: $keywords
     when: name in ["min", "max"] and values | length > 1 and name not in shadowed
-    output: '{{ "util._py" | use("py") }}.{{ name }}([{{ values | map("emit") | join(", ") }}]{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.{{ name }}([{{ values | map("emit") | join(", ") }}]{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1698,7 +1729,7 @@ rules:
       args: $args
       keywords: []
     when: value | kind == "map" and method in ["get", "setdefault", "pop", "items", "keys", "values", "update", "copy", "clear"]
-    output: '{% set py = "util._py" | use("py") %}{% macro default(arg) %}{% if arg.__class__.__name__ == "Dict" and not arg.keys and symbols.get((node | path) ~ "") == "map" %}new {{ py }}.PyDict(){% else %}{{ arg | emit }}{% endif %}{% endmacro %}{% if method == "get" %}{{ py }}.dictGet({{ value | emit }}{% for arg in args %}, {{ default(arg) }}{% endfor %}){% elif method == "setdefault" %}{{ py }}.dictSetdefault({{ value | emit }}, {{ args[0] | emit }}, {{ default(args[1]) }}){% elif method == "pop" %}{{ py }}.dictPop({{ value | emit }}, {{ args | map("emit") | join(", ") }}){% elif method == "items" %}[...{{ value | emit }}.entries()]{% elif method == "keys" %}[...{{ value | emit }}.keys()]{% elif method == "values" %}[...{{ value | emit }}.values()]{% elif method == "update" %}{% if args[0] | kind == "map" %}{{ args[0] | emit }}.forEach((v: any, k: any) => {{ value | emit }}.set(k, v)){% else %}{{ "Object.entries(" if args[0] | kind == "dict" else "Array.from<any>(" }}{{ args[0] | emit }}).forEach(([k, v]: any) => {{ value | emit }}.set(k, v)){% endif %}{% elif method == "copy" %}new {{ py }}.PyDict({{ value | emit }}){% else %}{{ value | emit }}.clear(){% endif %}'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% macro default(arg) %}{% if arg.__class__.__name__ == "Dict" and not arg.keys and symbols.get((node | path) ~ "") == "map" %}new {{ py }}.Dict(){% else %}{{ arg | emit }}{% endif %}{% endmacro %}{% if method == "get" %}{{ py }}.dictGet({{ value | emit }}{% for arg in args %}, {{ default(arg) }}{% endfor %}){% elif method == "setdefault" %}{{ py }}.dictSetdefault({{ value | emit }}, {{ args[0] | emit }}, {{ default(args[1]) }}){% elif method == "pop" %}{{ py }}.dictPop({{ value | emit }}, {{ args | map("emit") | join(", ") }}){% elif method == "items" %}[...{{ value | emit }}.entries()]{% elif method == "keys" %}[...{{ value | emit }}.keys()]{% elif method == "values" %}[...{{ value | emit }}.values()]{% elif method == "update" %}{% if args[0] | kind == "map" %}{{ args[0] | emit }}.forEach((v: any, k: any) => {{ value | emit }}.set(k, v)){% else %}{{ "Object.entries<any>(" if args[0] | kind == "dict" else "Array.from<any>(" }}{{ args[0] | emit }}).forEach(([k, v]: any) => {{ value | emit }}.set(k, v)){% endif %}{% elif method == "copy" %}new {{ py }}.Dict({{ value | emit }}){% else %}{{ value | emit }}.clear(){% endif %}'
   - input:
       node: Call
       func:
@@ -1717,7 +1748,7 @@ rules:
         attr: copy
       args: []
       keywords: []
-    output: '{% set k = value | kind %}{% if k == "set" %}new Set({{ value | emit }}){% elif k == "dict" %}({ ...{{ value | emit }} }){% elif k == "array" %}[...{{ value | emit }}]{% else %}{{ "util._py" | use("py") }}.copy({{ value | emit }}){% endif %}'
+    output: '{% set k = value | kind %}{% if k == "set" %}new Set<any>({{ value | emit }}){% elif k == "dict" %}({ ...{{ value | emit }} }){% elif k == "array" %}[...{{ value | emit }}]{% else %}{{ "helpers.lang" | use("lang") }}.copy({{ value | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1791,7 +1822,7 @@ rules:
   - input:
       node: Set
       elts: $elements
-    output: 'new Set([{{ elements | map("emit") | join(", ") }}])'
+    output: 'new Set<any>([{{ elements | map("emit") | join(", ") }}])'
   - input:
       node: SetComp
       elt: $clause
@@ -1801,7 +1832,7 @@ rules:
           iter: $iterable
           ifs: $filters
           is_async: 0
-    output: 'new Set(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if clause | emit != target | emit %}.map(({{ target | emit }}: any) => ({{ clause | emit }})){% endif %})'
+    output: 'new Set<any>(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if clause | emit != target | emit %}.map(({{ target | emit }}: any) => ({{ clause | emit }})){% endif %})'
   - input:
       node: Call
       func:
@@ -1831,7 +1862,7 @@ rules:
         attr: pop
       args: $args
       keywords: []
-    output: '{% if value | kind == "dict" %}((v: any) => (delete {{ value | emit }}[{{ args[0] | emit }}], v))({{ value | emit }}[{{ args[0] | emit }}]{% if args | length > 1 %} ?? {{ args[1] | emit }}{% endif %}){% elif not args and value | kind == "array" %}{{ value | emit }}.pop(){% elif not args %}{{ "util._py" | use("py") }}.pop({{ value | emit }}){% elif args[0].value is defined and args[0].value == 0 %}{{ value | emit }}.shift(){% else %}{{ value | emit }}.splice({{ args[0] | emit }}, 1)[0]{% endif %}'
+    output: '{% if value | kind == "dict" %}((v: any) => (delete {{ value | emit }}[{{ args[0] | emit }}], v))({{ value | emit }}[{{ args[0] | emit }}]{% if args | length > 1 %} ?? {{ args[1] | emit }}{% endif %}){% elif not args and value | kind == "array" %}{{ value | emit }}.pop(){% elif not args %}{{ "helpers.lang" | use("lang") }}.pop({{ value | emit }}){% elif args[0].value is defined and args[0].value == 0 %}{{ value | emit }}.shift(){% else %}{{ value | emit }}.splice({{ args[0] | emit }}, 1)[0]{% endif %}'
   - input:
       node: Call
       func:
@@ -1841,7 +1872,7 @@ rules:
       args:
         - $item
       keywords: []
-    output: '{% set k = value | kind %}{% if k == "file" %}{{ value | emit }}.remove({{ item | emit }}){% elif k == "set" %}{{ value | emit }}.delete({{ item | emit }}){% else %}{{ "util._py" | use("py") }}.remove({{ value | emit }}, {{ item | emit }}){% endif %}'
+    output: '{% set k = value | kind %}{% if k == "file" %}{{ value | emit }}.remove({{ item | emit }}){% elif k == "set" %}{{ value | emit }}.delete({{ item | emit }}){% elif k == "array" %}if ({{ value | emit }}.includes({{ item | emit }})) {{ value | emit }}.splice({{ value | emit }}.indexOf({{ item | emit }}), 1){% else %}{{ "helpers.lang" | use("lang") }}.remove({{ value | emit }}, {{ item | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1852,7 +1883,7 @@ rules:
         - $items
       keywords: []
     when: method in ["difference_update", "intersection_update"]
-    output: '{% if method == "difference_update" %}Array.from<any>({{ items | iterable }}).forEach((v: any) => {{ value | emit }}.delete(v)){% else %}((keep: Set<any>) => [...{{ value | emit }}].forEach((v: any) => keep.has(v) || {{ value | emit }}.delete(v)))(new Set({{ items | iterable }})){% endif %}'
+    output: '{% if method == "difference_update" %}Array.from<any>({{ items | iterable }}).forEach((v: any) => {{ value | emit }}.delete(v)){% else %}((keep: Set<any>) => [...{{ value | emit }}].forEach((v: any) => keep.has(v) || {{ value | emit }}.delete(v)))(new Set<any>({{ items | iterable }})){% endif %}'
   - input:
       node: Call
       func:
@@ -1956,7 +1987,7 @@ rules:
       args: []
       keywords: []
     when: method in ['keys', 'items']
-    output: Object.{{ "keys" if method == "keys" else "entries" }}({{ value | emit }})
+    output: Object.{{ "keys" if method == "keys" else "entries<any>" }}({{ value | emit }})
   - input:
       node: Call
       func:
@@ -2061,7 +2092,7 @@ rules:
       value: $value
       slice: $index
     when: value | kind == "ndarray" or overloading and value | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and value | kind not in ["dict", "map"]
-    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.getitem({{ value | emit }}, {{ key(index) }})'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.getitem({{ value | emit }}, {{ key(index) }})'
   - input:
       node: Subscript
       value: $value
@@ -2119,13 +2150,13 @@ rules:
       node: BoolOp
       op: $op
       values: $values
-    when: values | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file"]) | list | length == 0 or values[-1].__class__.__name__ == "Constant" and values[:-1] | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file"]) | list | length == 0
+    when: values | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file", "scalar"]) | list | length == 0 or values[-1].__class__.__name__ == "Constant" and values[:-1] | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file", "scalar"]) | list | length == 0
     output: ({% for value in values %}{{ value | emit }}{% if not loop.last %} {{ "||" if op.__class__.__name__ == "Or" else "&&" }} {% endif %}{% endfor %})
   - input:
       node: BoolOp
       op: $op
       values: $values
-    output: '{% set py = "util._py" | use("py") %}{% set negate = "!" if op.__class__.__name__ == "And" else "" %}{% macro chain(items) %}{% if items | length == 1 %}{{ items[0] | emit }}{% else %}((__t: any) => {{ negate }}{{ py }}.truthy(__t) ? __t : {{ chain(items[1:]) }})({{ items[0] | emit }}){% endif %}{% endmacro %}{{ chain(values) }}'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% set negate = "!" if op.__class__.__name__ == "And" else "" %}{% macro chain(items) %}{% if items | length == 1 %}{{ items[0] | emit }}{% else %}((__t: any) => {{ negate }}{{ py }}.truthy(__t) ? __t : {{ chain(items[1:]) }})({{ items[0] | emit }}){% endif %}{% endmacro %}{{ chain(values) }}'
   - input:
       node: UnaryOp
       op:
@@ -2138,7 +2169,7 @@ rules:
         node: USub
       operand: $value
     when: value | kind in ["ndarray", "pyobject"] or overloading and value | kind == "unknown"
-    output: '{{ "util._py" | use("py") }}.neg({{ value | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.neg({{ value | emit }})'
   - input:
       node: UnaryOp
       op:
@@ -2152,14 +2183,14 @@ rules:
       op: $op
       right: $right
     when: op.__class__.__name__ in dunder_operators and (left | kind in ["ndarray", "pyobject"] or right | kind in ["ndarray", "pyobject"] or op.__class__.__name__ == "MatMult" or overloading and left | kind in ["unknown", "number"] and right | kind in ["unknown", "number"] and not (left | kind == "number" and right | kind == "number") or op.__class__.__name__ == "Mult" and (left.__class__.__name__ in ["List", "Tuple"] or right.__class__.__name__ in ["List", "Tuple"] or left | kind in ["string", "array"] or right | kind in ["string", "array"]))
-    output: '{{ "util._py" | use("py") }}.{{ dunder_operators[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.{{ dunder_operators[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
   - input:
       node: BinOp
       left: $left
       op: $op
       right: $right
     when: op.__class__.__name__ in ["BitOr", "Sub", "BitAnd"] and (left | kind == "set" or right | kind == "set")
-    output: 'new Set({{ left | emit }}).{{ {"BitOr": "union", "Sub": "difference", "BitAnd": "intersection"}[op.__class__.__name__] }}(new Set({{ right | iterable }}))'
+    output: 'new Set<any>({{ left | emit }}).{{ {"BitOr": "union", "Sub": "difference", "BitAnd": "intersection"}[op.__class__.__name__] }}(new Set<any>({{ right | iterable }}))'
   - input:
       node: BinOp
       left: $left
@@ -2175,7 +2206,7 @@ rules:
         node: Add
       right: $right
     when: left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant" and left.__class__.__name__ not in ["JoinedStr", "BinOp"] and right.__class__.__name__ != "JoinedStr"
-    output: '{{ "util._py" | use("py") }}.add({{ left | emit }}, {{ right | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.add({{ left | emit }}, {{ right | emit }})'
   - input:
       node: BinOp
       left: $left
@@ -2205,7 +2236,7 @@ rules:
     output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{{ right | emit }}.has({{ left | emit }})'
   - input: *id001
     when: op.__class__.__name__ in ["In", "NotIn"]
-    output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{{ "util._py" | use("py") }}.contains({{ right | emit }}, {{ left | emit }})'
+    output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{{ "helpers.lang" | use("lang") }}.contains({{ right | emit }}, {{ left | emit }})'
   - input: *id001
     when: op.__class__.__name__ in ["Is", "Eq"] and left.__class__.__name__ == "Call" and left.func.id is defined and left.func.id == "type" and left.args | length == 1 and right | source in ["ifcopenshell.file", "ifcopenshell.entity_instance"]
     output: '({{ left.args[0] | emit }} instanceof ifcopenshell.{{ "File" if right.attr == "file" else "EntityInstance" }})'
@@ -2214,7 +2245,7 @@ rules:
     output: ({{ left | emit }} {{ "==" if op.__class__.__name__ in ["Is", "Eq"] else "!=" }} null)
   - input: *id001
     when: op.__class__.__name__ in ["Eq", "NotEq"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant" and (left | kind in ["ndarray", "pyobject"] or right | kind in ["ndarray", "pyobject"] or overloading and left | kind == "unknown" and right | kind == "unknown")
-    output: '{{ "!" if op.__class__.__name__ == "NotEq" else "" }}{{ "util._py" | use("py") }}.eq({{ left | emit }}, {{ right | emit }})'
+    output: '{{ "!" if op.__class__.__name__ == "NotEq" else "" }}{{ "helpers.lang" | use("lang") }}.eq({{ left | emit }}, {{ right | emit }})'
   - input: *id001
     when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "array" or right | kind == "array")
     output: '{% if op.__class__.__name__ == "NotEq" %}!{% endif %}({{ left | emit }}.length === {{ right | emit }}.length && {{ left | emit }}.every((value: any, index: number) => value === {{ right | emit }}[index]))'
@@ -2239,7 +2270,7 @@ rules:
       keys: $keys
       values: $values
     when: node | kind == "map"
-    output: 'new {{ "util._py" | use("py") }}.PyDict([{% for key in keys %}[{{ key | emit }}, {{ values[loop.index0] | emit }}]{% if not loop.last %}, {% endif %}{% endfor %}])'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Dict([{% for key in keys %}[{{ key | emit }}, {{ values[loop.index0] | emit }}]{% if not loop.last %}, {% endif %}{% endfor %}])'
   - input:
       node: Dict
       keys: $keys
@@ -2291,7 +2322,7 @@ rules:
         id: re
       attr: $flag
     when: flag in ["I", "IGNORECASE", "M", "MULTILINE", "S", "DOTALL"]
-    output: '{{ "util._py" | use("py") }}.re.{{ flag }}'
+    output: '{{ "helpers.lang" | use("lang") }}.re.{{ flag }}'
   # In overridable modules, a function read as a value is its override, if one is set.
   - input:
       node: Name

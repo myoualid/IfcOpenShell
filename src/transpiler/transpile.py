@@ -4,12 +4,16 @@
 
 import argparse
 import ast
+import collections
 import copy
 import json
+import re
 import sys
 from pathlib import Path
 
 import yaml
+
+import mypy_types
 from jinja2 import Environment, StrictUndefined, pass_context
 
 PACKAGE = Path(__file__).parent.parent / "ifcopenshell-python" / "ifcopenshell"
@@ -156,8 +160,58 @@ def camel(name):
     return name[: len(name) - len(stripped)] + head + "".join(part[:1].upper() + part[1:] for part in rest)
 
 
+COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+
+def declaration_sites(function):
+    """Where each local of a function can be declared, rather than at the top of the function.
+
+    Maps a name to "const" or "let" for an assignment, to ("for", keyword) for a loop target and to
+    None for a name only comprehensions use. A name qualifies when that binding is its first use and
+    every other use follows it in the same block, or is inside the loop.
+    """
+    uses, stores = collections.defaultdict(set), collections.Counter()
+    for name in ast.walk(function):
+        if isinstance(name, ast.Name):
+            uses[name.id].add(id(name))
+            stores[name.id] += isinstance(name.ctx, ast.Store)
+    sites = {}
+
+    def names_in(nodes, name):
+        return {id(n) for node in nodes for n in ast.walk(node) if isinstance(n, ast.Name) and n.id == name}
+
+    def visit(block):
+        for index, statement in enumerate(block):
+            if isinstance(statement, (ast.FunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
+                target = statement.targets[0]
+                if target.id not in sites and uses[target.id] <= names_in(block[index + 1 :], target.id) | {id(target)}:
+                    sites[target.id] = "const" if stores[target.id] == 1 else "let"
+            elif isinstance(statement, ast.For) and not statement.orelse:
+                targets = statement.target.elts if isinstance(statement.target, ast.Tuple) else [statement.target]
+                if all(isinstance(t, ast.Name) and uses[t.id] <= names_in([statement], t.id) for t in targets):
+                    keyword = "let" if any(stores[t.id] > 1 for t in targets) else "const"
+                    sites.update({t.id: ("for", keyword) for t in targets})
+            for field in ("body", "orelse", "finalbody"):
+                visit(getattr(statement, field, []))
+            for handler in getattr(statement, "handlers", []):
+                visit(handler.body)
+
+    visit(function.body)
+    inside = {id(n) for node in ast.walk(function) if isinstance(node, COMPREHENSIONS) for n in ast.walk(node)}
+    for node in ast.walk(function):
+        if isinstance(node, COMPREHENSIONS):
+            for generator in node.generators:
+                for target in ast.walk(generator.target):
+                    if isinstance(target, ast.Name) and uses[target.id] <= inside:
+                        sites.setdefault(target.id, None)
+    return sites
+
+
 class Transpiler:
-    def __init__(self, rules, index=None, precomputed=None):
+    def __init__(self, rules, index=None, precomputed=None, types=None):
+        self.types = types or {}
         self.rules = yaml.safe_load(Path(rules).read_text(encoding="utf-8"))
         self.index = index or {}
         self.precomputed = precomputed or {}
@@ -190,7 +244,8 @@ class Transpiler:
             emit=self.emit,
             emit_in=lambda n, context: self.emit(n, context=context),
             type=lambda n: self.emit(n, "types"),
-            kind=lambda n: self.emit(n, "inference"),
+            kind=self.kind,
+            nullable=self.nullable,
             condition=lambda n: self.emit(n, context="condition"),
             iterable=lambda n: self.emit(n, context="iterable"),
             literal=json.dumps,
@@ -201,7 +256,7 @@ class Transpiler:
             module_alias=lambda name: self.import_aliases.get(name),
             camel=camel,
             is_type=is_type,
-            ident=lambda name: f"{name}_" if name in self.rules.get("reserved", ()) else name,
+            ident=self.ident,
             resolve=self.resolve,
             defining_module=self.defining_module,
             signature=self.signature,
@@ -543,7 +598,10 @@ class Transpiler:
                     self.generator = isinstance(node, ast.FunctionDef) and self.is_generator(node)
                 self.depth += 1
                 try:
-                    return self.render(rule["output"], captures)
+                    output = self.render(rule["output"], captures)
+                    if isinstance(node, ast.FunctionDef) and self.rules.get("inline_locals"):
+                        output = self.inline_locals(output, node, captures["locals"])
+                    return output
                 finally:
                     self.depth -= 1
                     self.current_class = outer_class
@@ -557,6 +615,62 @@ class Transpiler:
                         self.nested = outer_nested
         code = ast.unparse(node) if isinstance(node, ast.AST) else repr(node)
         raise ValueError(f"No {mode} rule at line {getattr(node, 'lineno', '?')}: {code[:180]}")
+
+    def proven(self, node):
+        """[kind, nullable] of an expression, from mypy_types; None if it is not proven."""
+        if not self.rules.get("proven_types") or getattr(node, "lineno", None) is None:
+            return None
+        position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}"
+        return self.types.get(self.module, {}).get(position)
+
+    def kind(self, node):
+        proven = self.proven(node)
+        return proven[0] if proven else self.emit(node, "inference")
+
+    def nullable(self, node):
+        proven = self.proven(node)
+        return not proven or proven[1]
+
+    def ident(self, name):
+        # points_ avoids clashing with points, so it keeps its underscore.
+        stripped = name.rstrip("_")
+        name = camel(stripped) + name[len(stripped) :] if stripped else name
+        return f"{name}_" if name in self.rules.get("reserved", ()) else name
+
+    def inline_locals(self, code, function, names):
+        """Move declarations from the top of a rendered function to where locals are first bound.
+
+        A local whose binding did not render as a plain assignment or loop stays declared at the top.
+        """
+        declared = re.search(r"^ *let \w+: any(?:, \w+: any)*;\r?\n", code, re.M)
+        if not declared:
+            return code
+        sites = declaration_sites(function)
+        start, end = declared.span()
+        head, body = code[:start], code[end:]
+        remaining = []
+        for name in names:
+            local = re.escape(self.ident(name))
+            site = sites.get(name, "top")
+            if site is None:
+                continue
+            if site in ("const", "let"):
+                dynamic = "|".join(self.rules.get("dynamic_initializers", ()))
+                assignment = re.search(rf"^( *){local} = (?=({dynamic})?)", body, re.M)
+                found = assignment is not None
+                if found:
+                    annotation = ": any" if assignment[2] is not None else ""
+                    declaration = f"{assignment[1]}{site} {self.ident(name)}{annotation} = "
+                    body = body[: assignment.start()] + declaration + body[assignment.end() :]
+            elif site != "top":
+                pattern = rf"^( *)for \(((?:const |let )?)({local}|\[[\w, ]*\b{local}\b[\w, ]*\]) of "
+                body, found = re.subn(pattern, rf"\g<1>for ({site[1]} \g<3> of ", body, count=1, flags=re.M)
+            else:
+                found = 0
+            if not found:
+                remaining.append(self.ident(name))
+        declaration = "  let " + ", ".join(f"{name}: any" for name in remaining) + ";\n" if remaining else ""
+        return head + declaration + body
 
     def discover_imports(self, module):
         """Local names bound by imports of other ifcopenshell modules."""
@@ -658,6 +772,13 @@ class Transpiler:
             for n in ast.walk(node):
                 if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
                     self.annotate(n.target.id, n.annotation, values_only=True)
+            # A parameter defaulting to True or False is a flag, whatever its annotation says.
+            for function in functions:
+                arguments = function.args
+                positional = arguments.args[len(arguments.args) - len(arguments.defaults) :]
+                for argument, default in [*zip(positional, arguments.defaults), *zip(arguments.kwonlyargs, arguments.kw_defaults)]:
+                    if isinstance(default, ast.Constant) and isinstance(default.value, bool):
+                        self.symbols[argument.arg] = "boolean"
             for function in functions:
                 self.symbols.update(
                     {
@@ -787,7 +908,7 @@ if __name__ == "__main__":
     parser.add_argument("--rules", type=Path, default=Path(__file__).with_name("ts.yaml"))
     parser.add_argument("-o", "--output", type=Path)
     args = parser.parse_args()
-    compiler = Transpiler(args.rules, build_index())
+    compiler = Transpiler(args.rules, build_index(), types=mypy_types.load())
     source = args.source.resolve()
     name = module_name(source) if source.is_relative_to(PACKAGE) else None
     result = compiler.translate(source.read_text(encoding="utf-8"), name)

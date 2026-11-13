@@ -83,7 +83,7 @@ def add_profile_representation(
 
 class Usecase:
     file: ifcopenshell.file
-    clippings: list[Clipping]
+    clippings: list[Union[ifcopenshell.entity_instance, Clipping]]
 
     def execute(
         self,

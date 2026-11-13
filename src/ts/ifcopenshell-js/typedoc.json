@@ -5,7 +5,7 @@
     "src/index.ts",
     "src/geom/index.ts",
     "src/serializers/index.ts",
-    "src/util/index.ts"
+    "src/helpers/index.ts"
   ],
   "entryPointStrategy": "resolve",
   "tsconfig": "tsconfig.json",

@@ -1,6 +1,6 @@
 {
-  // src/python: ifcopenshell.util and ifcopenshell.api, transpiled from Python by
-  // src/transpiler/generate.py, and their hand-written runtime (src/python/_*.ts).
+  // src/util and src/api: ifcopenshell.util and ifcopenshell.api, transpiled from Python by
+  // src/transpiler/generate.py, and their hand-written runtime (src/helpers).
   // Python does not track None, so this code is checked without strict null checks.
   "extends": "./tsconfig.json",
   "compilerOptions": {
@@ -11,6 +11,6 @@
     "noImplicitOverride": false,
     "declarationMap": false
   },
-  "include": ["src/python/**/*.ts"],
+  "include": ["src/util/**/*.ts", "src/api/**/*.ts", "src/helpers/datetime.ts", "src/helpers/dateutil.ts", "src/helpers/geom.ts", "src/helpers/isodate.ts", "src/helpers/itertools.ts", "src/helpers/lang.ts", "src/helpers/numpy.ts", "src/helpers/os.ts"],
   "exclude": []
 }

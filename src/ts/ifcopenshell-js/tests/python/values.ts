@@ -7,10 +7,10 @@
 // "$duration": [years, months, d, s, us]} (isodate.Duration).
 
 import * as ifcopenshell from 'ifcopenshell';
-import { PyDict } from '../../dist/python/_py.js';
-import { NDArray, array } from '../../dist/python/_numpy.js';
-import * as datetime from '../../dist/python/_datetime.js';
-import * as isodate from '../../dist/python/_isodate.js';
+import { Dict } from '../../dist/helpers/lang.js';
+import { NDArray, array } from '../../dist/helpers/numpy.js';
+import * as datetime from '../../dist/helpers/datetime.js';
+import * as isodate from '../../dist/helpers/isodate.js';
 
 export type Encoded = null | boolean | number | string | Encoded[] | { [key: string]: Encoded };
 
@@ -102,7 +102,7 @@ export function decode(value: Encoded, files: ifcopenshell.File[]): unknown {
   if ('$dict' in value) {
     const entries = (value.$dict as [Encoded, Encoded][]).map(([k, v]) => [decode(k, files), decode(v, files)] as const);
     // String-keyed dicts are plain objects in generated code; anything else is a Map.
-    return entries.every(([k]) => typeof k === 'string') ? Object.fromEntries(entries) : new PyDict(entries);
+    return entries.every(([k]) => typeof k === 'string') ? Object.fromEntries(entries) : new Dict(entries);
   }
   throw new Unreplayable(`cannot decode argument ${JSON.stringify(value).slice(0, 80)}`);
 }

@@ -8,14 +8,14 @@ package (`src/ts/ifcopenshell-js`), as `ifcopenshell/util/<module>` and
 what remains. From the repository root (Python dependencies: `requirements.txt`):
 
 ```shell
-python src/transpiler/generate.py            # write src/ts/ifcopenshell-js/src/python/{util,api}
+python src/transpiler/generate.py            # write src/ts/ifcopenshell-js/src/{util,api}
 python src/transpiler/generate.py --report   # also write TRACKING.md: per module, what remains, what is tested, what is done
 python src/transpiler/transpile.py src/ifcopenshell-python/ifcopenshell/util/unit.py   # one module to stdout
 ```
 
 The generated code is build output and not committed. Unsupported functions become
 throwing stubs, listed with the first unsupported construct in
-`src/ts/ifcopenshell-js/src/python/transpile.json`. Unsupported module-level code makes
+`src/transpiler/transpile.json`. Unsupported module-level code makes
 the whole file a module of throwing functions rather than disappearing.
 `precomputed.json` holds the results of the functions listed under `precomputed` in
 `ts.yaml`; refresh it with `generate.py --precompute`, which needs an installed
@@ -80,13 +80,21 @@ string/enum decoding, attribute writes, caches and schema-specific casts also
 need decisions. Dynamic attribute types currently come from a small explicit
 YAML table. No C++ compilation or runtime validation was attempted.
 
+## Types
+
+`mypy_types.py` proves the types of expressions with mypy, and `ts.yaml` asks for them through the
+`kind` and `nullable` filters. A plugin gives IFC attributes their types from `attributes.json`,
+which `generate.py --precompute` refreshes. Results are cached in `types.json` (not committed) and
+recomputed when the Python source changes; that takes a minute or two. `requirements.txt` installs
+the pure Python build of mypy, since `mypy_types.py` subclasses its visitors.
+
 ## Runtime modules
 
 Python libraries without a direct JS equivalent are ported by hand once, in
-`src/ts/ifcopenshell-js/src/python/_*.ts`, and `ts.yaml` maps imports of them there
-(`runtime_modules`): `_py.ts` (Python semantics: truthiness, operators, indexing,
-`str.format`, ...), `_numpy.ts`, `_datetime.ts`, `_isodate.ts`, `_dateutil.ts`,
-`_os.ts` and `_itertools.ts`. They contain what the generated code uses, and are
+`src/ts/ifcopenshell-js/src/helpers`, and `ts.yaml` maps imports of them there
+(`runtime_modules`): `lang.ts` (truthiness, operators, indexing,
+`str.format`, ...), `numpy.ts`, `datetime.ts`, `isodate.ts`, `dateutil.ts`,
+`os.ts`, `itertools.ts` and `geom.ts`. They contain what the generated code uses, and are
 checked against values computed with Python in
 `src/ts/ifcopenshell-js/tests/python/runtime.test.ts`.
 
@@ -118,8 +126,8 @@ The tests are part of `src/ts/ifcopenshell-js` and run against its build (`dist/
 ```shell
 cd src/ts/ifcopenshell-js
 npm ci
-npm run generate   # transpile into src/python/util and src/python/api
-npm run build      # type-checks and compiles the generated code into dist/python
+npm run generate   # transpile into src/util and src/api
+npm run build      # type-checks and compiles the generated code into dist/util and dist/api
 npm run record     # run the Python tests, write src/transpiler/parity/golden/*.json
 npm test           # all tests of the package, including tests/python
 ```

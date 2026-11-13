@@ -6,7 +6,7 @@
 // Classes can be called without `new`, as in Python. Hand-written, unlike the
 // transpiled util/ and api/ next to it.
 
-import { NotImplemented as NOT_IMPLEMENTED } from './_py.js';
+import { NotImplemented as NOT_IMPLEMENTED } from './lang.js';
 
 type Options = Record<string, unknown>;
 

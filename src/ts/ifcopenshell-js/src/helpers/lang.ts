@@ -67,7 +67,7 @@ export function remove(container: unknown, item: unknown): void {
 }
 
 /** Python `container.pop()` without arguments: the last list item, or any set member. */
-export function pop(container: unknown): unknown {
+export function pop(container: unknown): any {
   if (Array.isArray(container)) {
     if (!container.length) throw new Error('pop from empty list');
     return container.pop();
@@ -166,12 +166,12 @@ export function rpartition(text: string, separator: string): [string, string, st
   return index < 0 ? ['', '', text] : [text.slice(0, index), separator, text.slice(index + separator.length)];
 }
 
-/** Python `dict(values)` from pairs or a mapping: a plain object for string keys, else a PyDict. */
+/** Python `dict(values)` from pairs or a mapping: a plain object for string keys, else a Dict. */
 export function dict(values: unknown): any {
-  if (values instanceof Map) return new PyDict(values);
+  if (values instanceof Map) return new Dict(values);
   if (isDict(values)) return { ...values };
   const pairs = Array.from(values as Iterable<[unknown, unknown]>, pair => Array.from(pair) as [unknown, unknown]);
-  return pairs.every(([key]) => typeof key === 'string') ? Object.fromEntries(pairs) : new PyDict(pairs);
+  return pairs.every(([key]) => typeof key === 'string') ? Object.fromEntries(pairs) : new Dict(pairs);
 }
 
 /** Options object for `f(a, *values)`: values fill the optional parameters `names` in order. */
@@ -384,19 +384,19 @@ export class Path {
 }
 
 /** Python `zip(...)`: tuples up to the shortest input. */
-export function zip(...iterables: Iterable<unknown>[]): unknown[][] {
+export function zip(...iterables: Iterable<any>[]): any[][] {
   const arrays = iterables.map(values => Array.from(values));
   const length = arrays.length ? Math.min(...arrays.map(values => values.length)) : 0;
   return Array.from({ length }, (_, i) => arrays.map(values => values[i]));
 }
 
 /** Python `iter(values)`. */
-export function iter<T>(values: Iterable<T>): Iterator<T> {
+export function iter<T>(values: Iterable<T>): any {
   return values[Symbol.iterator]();
 }
 
 /** Python `next(iterator)` on an iterator, or the first item of an iterable; StopIteration when exhausted. */
-export function next<T>(values: Iterator<T> | Iterable<T>, ...otherwise: [T?]): T {
+export function next<T>(values: Iterator<T> | Iterable<T>, ...otherwise: [T?]): any {
   const iterator = typeof (values as Iterator<T>).next === 'function' ? values as Iterator<T> : iter(values as Iterable<T>);
   const result = iterator.next();
   if (!result.done) return result.value;
@@ -418,7 +418,7 @@ export function asdict(value: unknown): Record<string, unknown> {
 /** Python `x.copy()` of a list, dict, set or object with a `copy` method. */
 export function copy<T>(value: T): T {
   if (Array.isArray(value)) return [...value] as T;
-  if (value instanceof PyDict) return new PyDict(value) as T;
+  if (value instanceof Dict) return new Dict(value) as T;
   if (value instanceof Map) return new Map(value) as T;
   if (value instanceof Set) return new Set(value) as T;
   if (isDict(value)) return { ...value };
@@ -615,7 +615,7 @@ export function getitem(container: any, key: any): any {
   }
   if (container instanceof Map) {
     if (!container.has(key)) throw new Error(`KeyError: ${String(key)}`);
-    return container instanceof PyDict ? container.lookup(key) : container.get(key);
+    return container instanceof Dict ? container.lookup(key) : container.get(key);
   }
   if (isDict(container) && !Object.hasOwn(container, key)) throw new Error(`KeyError: ${String(key)}`);
   return container[key];
@@ -667,7 +667,7 @@ function keyOf(key: unknown): unknown {
  * Python `dict` (or `defaultdict`) with keys other than strings: tuples compare by value,
  * entities by identity, and numbers stay numbers.
  */
-export class PyDict<K = any, V = any> extends Map<K, V> {
+export class Dict<K = any, V = any> extends Map<K, V> {
   private readonly keys_ = new Map<unknown, K>();
 
   constructor(entries?: Iterable<readonly [K, V]> | null, private readonly factory?: () => V) {
@@ -731,18 +731,18 @@ export class PyDict<K = any, V = any> extends Map<K, V> {
   }
 }
 
-/** Python `d.get(key, default)` on a Map or PyDict, without creating defaultdict entries. */
+/** Python `d.get(key, default)` on a Map or Dict, without creating defaultdict entries. */
 export function dictGet<K, V>(dict: Map<K, V>, key: K, otherwise: V | null = null): V | null {
-  return dict instanceof PyDict ? dict.lookup(key, otherwise) : dict.has(key) ? dict.get(key)! : otherwise;
+  return dict instanceof Dict ? dict.lookup(key, otherwise) : dict.has(key) ? dict.get(key)! : otherwise;
 }
 
-/** Python `d.setdefault(key, value)` on a Map or PyDict. */
+/** Python `d.setdefault(key, value)` on a Map or Dict. */
 export function dictSetdefault<K, V>(dict: Map<K, V>, key: K, value: V): V {
   if (!dict.has(key)) dict.set(key, value);
   return dictGet(dict, key) as V;
 }
 
-/** Python `d.pop(key[, default])` on a Map or PyDict. */
+/** Python `d.pop(key[, default])` on a Map or Dict. */
 export function dictPop<K, V>(dict: Map<K, V>, key: K, ...otherwise: [V?]): V {
   if (!dict.has(key)) {
     if (otherwise.length) return otherwise[0] as V;

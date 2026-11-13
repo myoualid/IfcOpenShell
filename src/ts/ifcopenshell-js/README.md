@@ -49,7 +49,10 @@ const unit = getProjectUnit(file, 'LENGTHUNIT');
 const wall = createEntity(file, { ifcClass: 'IfcWall', name: 'Wall' });
 ```
 
-`src/python` holds the generated code (not committed) and its hand-written runtime.
+Functions that use geometry, such as `getPlacement`, need the `mapping` and `kernel` plugins loaded first.
+
+`src/util` and `src/api` hold the generated code (not committed), and `src/helpers` its hand-written runtime.
+Each generated file names its Python counterpart, which is where a lasting change goes.
 See `src/transpiler/README.md` for how it is generated and tested.
 
 ## Examples

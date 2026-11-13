@@ -25,17 +25,17 @@
       "types": "./dist/serializers/index.d.ts",
       "import": "./dist/serializers/index.js"
     },
-    "./util": {
-      "types": "./dist/util/index.d.ts",
-      "import": "./dist/util/index.js"
+    "./helpers": {
+      "types": "./dist/helpers/index.d.ts",
+      "import": "./dist/helpers/index.js"
     },
     "./util/*": {
-      "types": "./dist/python/util/*.d.ts",
-      "import": "./dist/python/util/*.js"
+      "types": "./dist/util/*.d.ts",
+      "import": "./dist/util/*.js"
     },
     "./api/*": {
-      "types": "./dist/python/api/*/index.d.ts",
-      "import": "./dist/python/api/*/index.js"
+      "types": "./dist/api/*/index.d.ts",
+      "import": "./dist/api/*/index.js"
     }
   },
   "files": [
@@ -44,7 +44,7 @@
   "scripts": {
     "clean": "node scripts/clean.mjs",
     "build": "npm run clean && tsc && node scripts/copy-python-data.mjs && tsc -p tsconfig.python.json",
-    "generate": "python ../../transpiler/generate.py",
+    "generate": "python ../../transpiler/generate.py && prettier --write --single-quote --print-width 120 --log-level warn src/util src/api",
     "record": "python ../../transpiler/parity/record.py",
     "docs": "typedoc",
     "docs:sphinx": "typedoc --options typedoc.sphinx.jsonc && node scripts/prepare-sphinx-docs.mjs",
@@ -65,6 +65,7 @@
     "@vitest/browser-playwright": "^4.1.10",
     "eslint": "^10.12.0",
     "playwright": "^1.55.1",
+    "prettier": "^3.3.3",
     "typedoc": "^0.28.20",
     "typedoc-plugin-markdown": "4.13.1",
     "typescript": "^5.6.0",

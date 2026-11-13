@@ -28,20 +28,23 @@ The api calls util heavily (`util.element`, `util.unit`, `util.date`,
 
 | Topic | Decision |
 |---|---|
-| Output | `generate.py` writes `src/ts/ifcopenshell-js/src/python/util/<module>.ts` and `src/python/api/<package>/<usecase>.ts` (plus an `index.ts` per api package), and `src/python/transpile.json` with each file's stubs or module-level error. They are build output and not committed. A file that cannot be transpiled becomes a module of throwing functions, so its importers still load. |
+| Output | `generate.py` writes `src/ts/ifcopenshell-js/src/util/<module>.ts` and `src/api/<package>/<usecase>.ts` (plus an `index.ts` per api package), and `src/transpiler/transpile.json` with each file's stubs or module-level error. They are build output and not committed. A file that cannot be transpiled becomes a module of throwing functions, so its importers still load. |
 | Imports | `ifcopenshell/util/unit` and `ifcopenshell/api/root`, through the package's `./util/*` and `./api/*` exports. Generated modules import the core and each other by relative path. |
-| Build | `npm run build` compiles the core strictly, then `src/python` with `tsconfig.python.json` (`strict: false`, as Python does not track None), and copies the data files (`Pset_*.ifc`, JSON tables) next to the generated modules. |
-| Inputs | The Python source, `ts.yaml`, the hand-written runtime `src/python/_*.ts`, and `precomputed.json` (results of the functions listed under `precomputed` in `ts.yaml`, refreshed with `generate.py --precompute`). `generate.py` needs only `requirements.txt`. |
+| Build | `npm run build` compiles the core strictly, then `src/util`, `src/api` and the runtime in `src/helpers` with `tsconfig.python.json` (`strict: false`, as Python does not track None), and copies the data files (`Pset_*.ifc`, JSON tables) next to the generated modules. |
+| Inputs | The Python source, `ts.yaml`, the hand-written runtime `src/helpers`, and `precomputed.json` (results of the functions listed under `precomputed` in `ts.yaml`, refreshed with `generate.py --precompute`). `generate.py` needs only `requirements.txt`. |
 | Types | Annotations become TS types where TypeScript can check them as Python uses them. String `Literal` parameters accept `string` and `set` parameters any `Iterable`, as callers pass `file.schema()` and lists. A parameter the function rebinds to another kind of value, or narrows with `isinstance`/`hasattr` when it is a union, is `any`; so are the return types of `@overload` implementations and of nested functions returning unions, and names the module does not declare (`TYPE_CHECKING` imports such as `mathutils.Vector`). |
-| Naming | camelCase functions and module data (`getProjectUnit`); CONSTANT_CASE and `_private` names are kept. Locals keep their Python names; JS reserved words get a trailing `_`. |
+| Naming | camelCase functions and module data (`getProjectUnit`); CONSTANT_CASE and `_private` names are kept. Locals are camelCase too; JS reserved words get a trailing `_`, and a trailing `_` in Python is kept. |
 | Arguments | Required parameters stay positional; parameters with defaults and keyword-only parameters go into a trailing options object with camelCase keys, as in the core (`getInfo({ recursive })`). `f(a, *rest)` fills optional parameters at runtime. |
 | Calls | A project-wide index of util and api functions and classes resolves `ifcopenshell.util.x.f(...)`, `from ... import f`, local and nested calls, and binds their arguments with Python semantics. `ifcopenshell.api.run("pkg.usecase", ...)` becomes a direct call. |
 | Classes | Classes (the `Usecase` pattern), dataclasses (`fromKwargs` for `Cls(**kwargs)`), classmethods (static, `cls` bound to the class), context managers (`__enter__`/`__exit__` in try/finally) and TypedDicts (object types). |
-| Runtime modules | `runtime_modules` in `ts.yaml` maps `numpy`, `datetime`, `isodate`, `dateutil`, `os` and `itertools` onto `src/python/_numpy.ts`, `_datetime.ts`, ... Members are camelCase (`np.zeros_like` is `np.zerosLike`). `math` maps onto `Math`. `_py.ts` holds Python semantics used where a value's type is not known: truthiness, `len`, `in`, operators, indexing, `str.format`, `re`. |
-| Python data model | Arrays and dates overload operators, so `+ - * / // % ** @`, unary `-`, `==` and subscripts dispatch at runtime (`py.add`, `py.getitem`, ...) to `__add__`/`__radd__`, `__getitem__` and so on, for values inferred as arrays or dates and for values of unknown type in modules importing numpy or datetime. |
+| Runtime modules | `runtime_modules` in `ts.yaml` maps `numpy`, `datetime`, `isodate`, `dateutil`, `os` and `itertools` onto `src/helpers/numpy.ts`, `datetime.ts`, ... Members are camelCase (`np.zeros_like` is `np.zerosLike`). `math` maps onto `Math`. `lang.ts` holds Python semantics used where a value's type is not known: truthiness, `len`, `in`, operators, indexing, `str.format`, `re`. |
+| Python data model | Arrays and dates overload operators, so `+ - * / // % ** @`, unary `-`, `==` and subscripts dispatch at runtime (`lang.add`, `lang.getitem`, ...) to `__add__`/`__radd__`, `__getitem__` and so on, for values inferred as arrays or dates and for values of unknown type in modules importing numpy or datetime. |
 | numpy | `NDArray` has shape, strides and offset, so slices and rows are views, as in numpy. Broadcasting, integer and boolean array indices and `np.newaxis` are supported, with the functions the generated code calls. Functions returning a numpy scalar return a JS number. |
 | Dates | `date`, `datetime`, `time`, `timedelta` and fixed-offset `timezone` follow Python's arithmetic, comparison, `str()`, `isoformat()` and `strftime()`; naive datetimes are local time. `isodate` durations and `dateutil.parser` follow the installed versions. |
 | Data files | `json.load(open(path))`, `with open(path) as f`, `os.path` and `ifcopenshell.open(path)` read through the core's `readResource`, which uses Node's file system or bytes given to `registerResource()` (browsers). |
+| Readable output | Generated code should read as hand-written, so changes can be tried in JS and carried back to the Python: `const`/`let` where a local is first bound (`inline_locals`), hoisted only when its uses cross blocks; parameters defaulting to `True`/`False` are plain conditions; `npm run generate` formats with Prettier. Each file names its Python counterpart. The output is still regenerated, so a change made in JS must reach the Python to last. |
+| Types | `mypy_types.py` runs mypy over util and api, with a plugin giving IFC attributes their types from `attributes.json` (refreshed by `generate.py --precompute`), and caches the kinds of expressions in `types.json` (not committed). The `kind` filter takes a proven kind first; the `inference` rules in `ts.yaml` remain only for what is not proven yet. JS and Python agree on the truthiness of `None`, numbers, strings and entities, so only containers need more than `if (x)`. |
+| Geometry | `helpers/geom.ts` gives `geom.Settings`, `createShape`, `mapShape` and `functionItemEvaluator` their Python result shapes. Callers load the `mapping` and `kernel` plugins first, since generated code is synchronous. Placements other than `IfcLocalPlacement` and `IfcAxis2Placement*` throw: the bindings cannot read a mapped `MATRIX4`, which needs a binding such as `taxonomy_matrix4` from `taxonomy::item`. |
 | Overridable modules | `ifcopenshell.api.owner.settings` gets an `overrides` object, since Python users assign to its functions. |
 | Core fixes | In `ifcopenshell`: one canonical wrapper per entity (so `===`, `Set` and `Map` follow Python entity equality), `entity.file()`, iterating and indexing entities and files, `entity.walk`, `file.create(cls, attrs, id)`, `File.fromString`, `file.stepHeader`, `guid`, `version`, `File.units`, downcast schema declarations with Python `str()`, `openPath`/`readResource`/`registerResource`. |
 
@@ -53,7 +56,7 @@ The api calls util heavily (`util.element`, `util.unit`, `util.date`,
 | 2 | Dates and scheduling: `date`, `sequence` | Transpiler + date runtime |
 | 3 | Math: `placement`, `representation`, `geolocation`, `shape_builder`, `data` | Transpiler + numpy runtime |
 | 4 | Grammars: `selector`, `cost`, `mvd_info` | Lark grammars ported by hand; rest transpiled |
-| 5 | Geometry kernel: `util.shape`, api files using `ifcopenshell.geom` | By hand on top of `ifcopenshell/geom` |
+| 5 | Geometry kernel: `util.shape`, api files using `ifcopenshell.geom` | Transpiler, on `helpers/geom.ts` over `ifcopenshell/geom` |
 | api | All api packages; `geometry`, `alignment` and `cogo` last, as they depend on tier 3 | Transpiler |
 | skip | `doc`, `ifc4x3dev_scrape_data_for_docs`, `generate_pset_templates`, `profiler` | Not ported (`SKIP` in `generate.py`) |
 
@@ -97,8 +100,8 @@ Comparison:
 
 ## Status
 
-util 336/383 (88%) and api 506/531 (95%) functions and classes translate. 7610 recorded calls match
-Python, 226 fail and 10630 are skipped (recorded against ifcopenshell 0.9.0.post1).
+util 337/383 (88%) and api 514/531 (97%) functions and classes translate. 7665 recorded calls match
+Python, 190 fail and 10625 are skipped (recorded against ifcopenshell 0.9.0.post1).
 The generated code type-checks.
 
 | Module | Passed | Failed | Skipped |
@@ -132,12 +135,22 @@ The generated code type-checks.
 | `util.brick` | 4 | 0 | 0 |
 | `util.attribute` | 0 | 0 | 10548 |
 
+## Removing `lang`
+
+`lang` exists because rules did not know types. Each phase replaces a guess with a proven type:
+
+1. **Done:** `mypy_types.py`; conditions, `and`/`or`, `len`, `in` and `.remove()` use proven kinds.
+2. Fail generation with `file:line` where an operation has no proven type, and fix those with Python annotations. Retire the `inference` rules.
+3. Proven numbers use JS operators; arrays and dates get methods on `NDArray` and the date classes.
+4. Replace what is left with native JS (`toSorted`, template literals, `RegExp`, `Map`) or focused modules, then delete `lang.ts`.
+
+Python raises on a missing key, index or list item; plain JS does not. Parity flags any recorded call relying on that.
+
 ## What remains
 
 Largest first:
 
-1. **Failing calls.** `ifcopenshell.geom` (55: `util.placement.get_placement` builds the
-   matrix with the geometry kernel, tier 5); `type()` as a value (114, `api.project`);
+1. **Failing calls.** `type()` as a value (114, `api.project`);
    `create_file` finds no schema named IFC4X3 (17); a call with both `**kwargs`
    and keywords in one ShapeBuilder method (14); networkx in `recalculate_schedule` (9, by hand).
 2. **Dates set from the current day.** IFC2X3 cost and sequence usecases write today's

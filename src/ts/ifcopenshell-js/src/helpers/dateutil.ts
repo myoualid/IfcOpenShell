@@ -4,7 +4,7 @@
 // Python `dateutil.parser` for generated code: ISO 8601 parsing and a lenient parser for common
 // day/month/year formats. Hand-written, unlike the transpiled util/ and api/ next to it.
 
-import { bindArguments, datetime } from './_datetime.js';
+import { bindArguments, datetime } from './datetime.js';
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 

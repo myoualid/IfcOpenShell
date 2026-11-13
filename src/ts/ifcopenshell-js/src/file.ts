@@ -28,6 +28,8 @@ export class File extends IfcOpenshellFile {
   /** Entities queued for removal by `ifcopenshell/util/element`, as Python `file.to_delete`. */
   to_delete: Set<EntityInstance> | null = null;
 
+  private transactionStart: number | null = null;
+
   /** @internal The File wrapping a native file pointer, if it is still open. */
   static fromPointer(pointer: number): File | null {
     return (pointer && openFiles.get(pointer)?.deref()) || null;
@@ -130,6 +132,19 @@ export class File extends IfcOpenshellFile {
 
   get maxId(): number {
     return this.getMaxId();
+  }
+
+  /** Start tracking entities to discard, as Python `file.begin_transaction`. Attribute changes are not tracked. */
+  beginTransaction(): void {
+    this.transactionStart ??= this.maxId;
+  }
+
+  /** Remove the entities created since {@link beginTransaction}, as Python `file.discard_transaction`. */
+  discardTransaction(): void {
+    if (this.transactionStart === null) return;
+    const start = this.transactionStart;
+    for (const id of [...this.ids].filter(id => id > start).reverse()) this.remove(this.byId(id));
+    this.transactionStart = null;
   }
 
   get ids(): number[] {

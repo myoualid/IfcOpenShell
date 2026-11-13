@@ -7,7 +7,7 @@
 // Function names are camelCase (np.zeros_like is zerosLike); keyword arguments are a trailing
 // options object. Hand-written, unlike the transpiled util/ and api/ next to it.
 
-import { hooks, IndexList, NotImplemented, Slice } from './_py.js';
+import { hooks, IndexList, NotImplemented, Slice } from './lang.js';
 
 type DType = 'float64' | 'int64' | 'bool' | 'object';
 type Options = Record<string, any>;

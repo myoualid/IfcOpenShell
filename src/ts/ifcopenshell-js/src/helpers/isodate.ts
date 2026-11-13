@@ -4,8 +4,8 @@
 // Python `isodate` (0.7) for generated code: ISO 8601 durations.
 // Hand-written, unlike the transpiled util/ and api/ next to it.
 
-import { bindArguments, date as pydate, datetime as pydatetime, pyclass, timedelta } from './_datetime.js';
-import { NotImplemented } from './_py.js';
+import { bindArguments, date as pydate, datetime as pydatetime, pyclass, timedelta } from './datetime.js';
+import { NotImplemented } from './lang.js';
 
 export class ISO8601Error extends Error {}
 

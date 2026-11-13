@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """Transpile ifcopenshell.util and ifcopenshell.api into the ifcopenshell npm package.
 
-Writes src/python/util and src/python/api of src/ts/ifcopenshell-js, which are build output
+Writes src/util and src/api of src/ts/ifcopenshell-js, which are build output
 and not committed, from this checkout's Python source, the rules and precomputed.json.
-src/python/transpile.json lists each module's untranslated functions; `--report` also writes
+transpile.json lists each module's untranslated functions; `--report` also writes
 TRACKING.md (not committed), with the results of the last `npm run test:report`. Needs only
 PyYAML and Jinja2 (requirements.txt). `--precompute` refreshes precomputed.json, which needs
 an installed ifcopenshell close to this checkout.
@@ -21,10 +21,12 @@ from pathlib import Path
 
 import yaml
 
+import mypy_types
 from transpile import PACKAGE, Transpiler, build_index, camel, module_name
 
 HERE = Path(__file__).parent
-OUTPUT = HERE.parent / "ts" / "ifcopenshell-js" / "src" / "python"
+OUTPUT = HERE.parent / "ts" / "ifcopenshell-js" / "src"
+MANIFEST = HERE / "transpile.json"
 PRECOMPUTED = HERE / "precomputed.json"
 RESULTS = HERE / "parity" / "results.json"
 TRACKING = HERE / "TRACKING.md"
@@ -40,6 +42,13 @@ def sources():
     for path in sorted(PACKAGE.glob("api/*/*.py")):
         if path.stem != "__init__":
             yield path, Path("api") / path.parent.name / f"{path.stem}.ts"
+
+
+def polish(code):
+    """Spellings a rule cannot choose: object shorthand, and filter for a copy with one item removed."""
+    code = re.sub(r"\b(\w+): \1\b(?= *[,}=])", r"\1", code)
+    removed = r"^( *)((?:const |let )?)(\w+)((?:: any)?) = (.+);\n *if \(\3\.includes\((.+)\)\) \3\.splice\(\3\.indexOf\(\6\), 1\);;?$"
+    return re.sub(removed, r"\1\2\3\4 = \5.filter((item: any) => item !== \6);", code, flags=re.M)
 
 
 def stub_module(source, reason):
@@ -182,13 +191,14 @@ def main():
     rules = yaml.safe_load(args.rules.read_text(encoding="utf-8"))
     if args.precompute:
         PRECOMPUTED.write_text(json.dumps(precompute(rules), sort_keys=True) + "\n", encoding="utf-8")
-        print(f"Wrote {PRECOMPUTED}")
+        mypy_types.ATTRIBUTES.write_text(json.dumps(mypy_types.schema_attributes(), indent=0) + "\n", encoding="utf-8")
+        print(f"Wrote {PRECOMPUTED} and {mypy_types.ATTRIBUTES}")
         return
     precomputed = json.loads(PRECOMPUTED.read_text(encoding="utf-8"))
     missing = set(rules.get("precomputed", {})) - set(precomputed)
     if missing:
         raise SystemExit(f"{PRECOMPUTED.name} lacks {', '.join(sorted(missing))}; run generate.py --precompute")
-    compiler = Transpiler(args.rules, build_index(), precomputed)
+    compiler = Transpiler(args.rules, build_index(), precomputed, mypy_types.load())
     manifest = {}
     modules = set()  # API modules that are not a usecase (no function of their name), as settings.
     for scope in ("util", "api"):
@@ -214,7 +224,7 @@ def main():
             except Exception as error:  # Module-level constructs stop the whole file.
                 entry["error"] = str(error).splitlines()[0]
                 code = stub_module(source, entry["error"])
-        output.write_text(code, encoding="utf-8")
+        output.write_text(polish(code), encoding="utf-8")
         manifest[relative.with_suffix("").as_posix()] = entry
 
     # Data files that generated code opens next to itself, as the Python modules do.
@@ -231,7 +241,7 @@ def main():
         lines += [f'export * as {u} from "./{u}.js";' for u in usecases if f"api/{package}/{u}" in modules]
         (OUTPUT / "api" / package / "index.ts").write_text(HEADER + "\n" + "\n".join(lines) + "\n", encoding="utf-8")
 
-    (OUTPUT / "transpile.json").write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    MANIFEST.write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     for scope in ("util", "api"):
         entries = [e for k, e in manifest.items() if k.startswith(f"{scope}/")]
         functions = sum(e["functions"] for e in entries)
