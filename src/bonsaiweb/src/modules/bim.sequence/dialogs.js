@@ -3,30 +3,29 @@
 // The Gantt's dialogs: task details and work schedule settings. Each one
 // keeps its edits until Save, then runs the Sequence.* operators in order.
 
-import { Container, InputDropdown, StackPanel, Text } from '@aeco-dev/gui';
+import { InputDropdown, StackPanel, Text } from '@aeco-dev/gui';
 
 import ops from '../../ops.js';
-import { confirmDialog, FormDialog } from '../../util/dialog.js';
+import {
+	confirmDialog,
+	enumLabel,
+	FormDialog,
+	listLine,
+	row,
+	runSteps,
+	section,
+	stepFailure,
+	suggestInput,
+} from '../../util/dialog.js';
 import {
 	checkboxInput,
 	dropdownInput,
-	element,
 	field,
-	iconButton,
 	plural,
 	setDropdown,
 	textButton,
 	textInput,
 } from '../../util/sheet.js';
-
-// 'NOTDEFINED' → 'Not defined', 'CONSTRUCTION' → 'Construction'.
-export function enumLabel( value ) {
-
-	const words = { NOTDEFINED: 'Not defined', USERDEFINED: 'User defined', NOTSTARTED: 'Not started' };
-	if ( words[ value ] ) return words[ value ];
-	return value.charAt( 0 ) + value.slice( 1 ).toLowerCase();
-
-}
 
 const SCHEDULE_TYPES = [ 'PLANNED', 'ACTUAL', 'BASELINE', 'NOTDEFINED' ];
 const TASK_TYPES = [
@@ -54,80 +53,6 @@ export function durationDays( value ) {
 function taskLabel( task ) {
 
 	return [ task.identification, task.name ].filter( Boolean ).join( '  ' ) || 'Unnamed task';
-
-}
-
-function section( title, ...children ) {
-
-	return new StackPanel( { isVertical: true } ).addClass( 'bonsai-dialog-section' ).add(
-		new Text( title ).addClass( 'bonsai-dialog-heading' ),
-		...children,
-	);
-
-}
-
-function row( ...children ) {
-
-	return new StackPanel( { isVertical: false } ).addClass( 'bonsai-dialog-row' ).add( ...children );
-
-}
-
-// A text input that suggests values, still taking any text.
-function suggestInput( id, values, placeholder ) {
-
-	const input = textInput( () => {}, { placeholder } );
-	const list = element( 'datalist' );
-	list.id = id;
-	list.append( ...values.map( ( value ) => {
-
-		const option = element( 'option' );
-		option.value = value;
-		option.label = enumLabel( value );
-		return option;
-
-	} ) );
-	input.dom.setAttribute( 'list', id );
-	input.list = list;
-	return input;
-
-}
-
-// Run operators one after another; stop at the first that is refused or
-// throws. Resolves { done, failed, message }.
-export async function runSteps( steps ) {
-
-	let done = 0;
-	for ( const step of steps ) {
-
-		let result;
-		try {
-
-			result = await step.run();
-
-		} catch ( error ) {
-
-			result = { status: 'CANCELLED', message: error?.message || String( error ) };
-
-		}
-
-		if ( result?.status === 'CANCELLED' ) {
-
-			return { done, failed: step.label, message: result.message || 'it was refused' };
-
-		}
-
-		done ++;
-
-	}
-
-	return { done, failed: '', message: '' };
-
-}
-
-export function stepFailure( outcome ) {
-
-	const saved = outcome.done ? ` The ${ plural( outcome.done, 'change' ) } before it ${ outcome.done === 1 ? 'was' : 'were' } saved.` : '';
-	return `Could not ${ outcome.failed }: ${ outcome.message }.${ saved }`;
 
 }
 
@@ -268,7 +193,7 @@ export class TaskDialog {
 			for ( const product of existing ) {
 
 				const removed = staged.remove.has( product.guid );
-				list.add( this._line( product.name || product.type, product.type, {
+				list.add( listLine( product.name || product.type, product.type, {
 					state: removed ? 'removed' : '',
 					action: removed
 						? [ 'undo', 'Keep this element', () => staged.remove.delete( product.guid ) ]
@@ -280,7 +205,7 @@ export class TaskDialog {
 
 			for ( const [ guid, label ] of staged.add ) {
 
-				list.add( this._line( label, 'to add', {
+				list.add( listLine( label, 'to add', {
 					state: 'added',
 					action: [ 'close', 'Do not add', () => staged.add.delete( guid ) ],
 					after: () => this._renderProducts(),
@@ -305,7 +230,7 @@ export class TaskDialog {
 		for ( const link of this.task.predecessors ) {
 
 			const removed = staged.remove.has( link.id );
-			this._links.add( this._line( taskLabel( link ), SEQUENCE_TYPES.find( ( type ) => type.value === link.sequenceType )?.label ?? link.sequenceType, {
+			this._links.add( listLine( taskLabel( link ), SEQUENCE_TYPES.find( ( type ) => type.value === link.sequenceType )?.label ?? link.sequenceType, {
 				state: removed ? 'removed' : '',
 				action: removed
 					? [ 'undo', 'Keep this link', () => staged.remove.delete( link.id ) ]
@@ -317,7 +242,7 @@ export class TaskDialog {
 
 		for ( const [ id, link ] of staged.add ) {
 
-			this._links.add( this._line( link.label, SEQUENCE_TYPES.find( ( type ) => type.value === link.sequenceType )?.label, {
+			this._links.add( listLine( link.label, SEQUENCE_TYPES.find( ( type ) => type.value === link.sequenceType )?.label, {
 				state: 'added',
 				action: [ 'close', 'Do not add', () => staged.add.delete( id ) ],
 				after: () => this._renderLinks(),
@@ -336,23 +261,6 @@ export class TaskDialog {
 			.filter( ( task ) => ! taken.has( task.id ) )
 			.map( ( task ) => ( { value: String( task.id ), label: `${ INDENT.repeat( task.depth ) }${ taskLabel( task ) }` } ) );
 		setDropdown( this._linkPick, [ { value: '', label: 'Choose a task…' }, ...options ], '' );
-
-	}
-
-	// One list line: label, a muted detail, and one action button.
-	_line( label, detail, { state, action, after } ) {
-
-		const line = new Container().addClass( 'bonsai-dialog-line' );
-		if ( state ) line.addClass( `is-${ state }` );
-		line.dom.append( element( 'span', 'bonsai-dialog-line-label', label ), element( 'span', 'bonsai-dialog-line-detail', detail ?? '' ) );
-		const [ icon, title, run ] = action;
-		line.add( iconButton( icon, title, () => {
-
-			run();
-			after();
-
-		} ) );
-		return line;
 
 	}
 
