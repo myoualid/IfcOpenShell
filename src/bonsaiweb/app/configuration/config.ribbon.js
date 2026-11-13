@@ -15,6 +15,7 @@ export const workModes = [
 	{ id: 'Project', name: 'Project' },
 	{ id: 'Navigate', name: 'Navigate' },
 	{ id: 'View', name: 'View' },
+	{ id: 'Planning', name: 'Planning' },
 	{ id: 'Panels', name: 'Panels' },
 ];
 
@@ -73,6 +74,15 @@ export const ribbonButtons = [
 		button( 'RB_Dropbox', 'Dropbox', 'cloud', 'Dropbox.Toggle' ),
 		button( 'RB_Settings', 'Settings', 'settings', 'Settings.Toggle' ),
 	] ),
+	group( 'RG_Planning', 'Schedule', 'Planning', [
+		button( 'RB_WorkSchedule', 'Gantt', 'view_timeline', 'Sequence.Toggle' ),
+		button( 'RB_ElementTasks', 'Element tasks', 'event_note', 'Sequence.ToggleTasks' ),
+	] ),
+	group( 'RG_PlanningObjects', 'Objects', 'Planning', [
+		button( 'RB_PlanningFocus', 'Focus', 'center_focus_strong', 'Viewer.FrameSelection' ),
+		button( 'RB_PlanningShowAll', 'Show all', 'visibility', 'Viewer.ShowAll' ),
+	] ),
+
 	group( 'RG_Views', 'Views', 'Navigate', [
 		button( 'RB_ViewFront', 'Front', 'filter_center_focus', 'Viewer.SetStandardView', [ 'FRONT' ] ),
 		button( 'RB_ViewBack', 'Back', 'flip_to_back', 'Viewer.SetStandardView', [ 'BACK' ] ),

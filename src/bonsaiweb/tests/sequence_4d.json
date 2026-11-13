@@ -1,0 +1,200 @@
+{
+	"schedules": [
+		{
+			"id": 15,
+			"name": "Construction",
+			"roots": [
+				17
+			],
+			"tasks": [
+				{
+					"id": 17,
+					"name": "Construction",
+					"identification": "C",
+					"nested": [
+						19,
+						26,
+						28,
+						30
+					],
+					"start": "2024-01-08T08:00:00",
+					"finish": "2024-02-12T09:00:00",
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": [
+						"0m0_pcLaXFHxQMgoLNAFpl",
+						"1IK5v12DfBHefV7NEtF1Xn",
+						"3oxjLrKyj0Gf_h_mgO003Z"
+					]
+				},
+				{
+					"id": 19,
+					"name": "Shell",
+					"identification": "C.1",
+					"nested": [
+						21,
+						24
+					],
+					"start": "2024-01-08T08:00:00",
+					"finish": "2024-01-26T17:00:00",
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": [
+						"0m0_pcLaXFHxQMgoLNAFpl",
+						"1IK5v12DfBHefV7NEtF1Xn"
+					]
+				},
+				{
+					"id": 21,
+					"name": "Excavation",
+					"identification": "C.1.1",
+					"nested": [],
+					"start": "2024-01-08T08:00:00",
+					"finish": "2024-01-12T17:00:00",
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": []
+				},
+				{
+					"id": 24,
+					"name": "Walls",
+					"identification": "C.1.2",
+					"nested": [],
+					"start": "2024-01-15T08:00:00",
+					"finish": "2024-01-26T17:00:00",
+					"outputs": [
+						"0m0_pcLaXFHxQMgoLNAFpl",
+						"1IK5v12DfBHefV7NEtF1Xn"
+					],
+					"inputs": [],
+					"deepOutputs": [
+						"0m0_pcLaXFHxQMgoLNAFpl",
+						"1IK5v12DfBHefV7NEtF1Xn"
+					]
+				},
+				{
+					"id": 26,
+					"name": "Roof",
+					"identification": "C.2",
+					"nested": [],
+					"start": "2024-01-29T08:00:00",
+					"finish": "2024-02-09T17:00:00",
+					"outputs": [
+						"3oxjLrKyj0Gf_h_mgO003Z"
+					],
+					"inputs": [
+						"1IK5v12DfBHefV7NEtF1Xn"
+					],
+					"deepOutputs": [
+						"3oxjLrKyj0Gf_h_mgO003Z"
+					]
+				},
+				{
+					"id": 28,
+					"name": "Handover",
+					"identification": "C.3",
+					"nested": [],
+					"start": "2024-02-12T09:00:00",
+					"finish": "2024-02-12T09:00:00",
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": []
+				},
+				{
+					"id": 30,
+					"name": "Snagging",
+					"identification": "C.4",
+					"nested": [],
+					"start": null,
+					"finish": null,
+					"outputs": [],
+					"inputs": [],
+					"deepOutputs": []
+				}
+			]
+		},
+		{
+			"id": 35,
+			"name": "Fit-out",
+			"roots": [],
+			"tasks": []
+		}
+	],
+	"products": {
+		"1IK5v12DfBHefV7NEtF1Xn": {
+			"inputs": [
+				26
+			],
+			"outputs": [
+				24
+			]
+		},
+		"0m0_pcLaXFHxQMgoLNAFpl": {
+			"inputs": [],
+			"outputs": [
+				24
+			]
+		},
+		"3oxjLrKyj0Gf_h_mgO003Z": {
+			"inputs": [],
+			"outputs": [
+				26
+			]
+		},
+		"0mMcloZGr3xeE8ZZ9Sxf2y": {
+			"inputs": [],
+			"outputs": []
+		}
+	},
+	"authoring": {
+		"schedules": [
+			"Construction",
+			"Interiors"
+		],
+		"tasks": [
+			{
+				"name": "Partitions",
+				"identification": "F",
+				"status": null,
+				"predefinedType": "NOTDEFINED",
+				"start": null,
+				"finish": null,
+				"duration": null,
+				"predecessors": [],
+				"outputs": [],
+				"inputs": []
+			},
+			{
+				"name": "Studs",
+				"identification": "F.1",
+				"status": "STARTED",
+				"predefinedType": "CONSTRUCTION",
+				"start": "2024-04-01T09:00:00",
+				"finish": "2024-04-05T17:00:00",
+				"duration": "P5D",
+				"predecessors": [],
+				"outputs": [
+					"Wall 4"
+				],
+				"inputs": []
+			},
+			{
+				"name": "Boards",
+				"identification": "F.2",
+				"status": null,
+				"predefinedType": "NOTDEFINED",
+				"start": "2024-04-06T09:00:00",
+				"finish": "2024-04-08T17:00:00",
+				"duration": "P3D",
+				"predecessors": [
+					"Studs"
+				],
+				"outputs": [],
+				"inputs": [
+					"Wall 1"
+				]
+			}
+		],
+		"handoverIsMilestone": false
+	}
+}

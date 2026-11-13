@@ -60,10 +60,21 @@ const host = {
 };
 
 // The convert worker and its main-thread twin are loaded by URL, one file each.
+// The worker inlines ifcopenshell: es-module-shims, which resolves the worker's
+// bare imports, loads a second copy of a module in an import cycle, and the
+// local ifcopenshell build has one (init, entity_instance, file). Only the
+// wasm package stays a bare import there.
 const pipeline = {
 	...common,
 	entryPoints: {
 		'convert-worker': 'src/pipeline/worker.js',
+	},
+	packages: 'bundle',
+	external: [ '@ifcopenshell/wasm', '@ifcopenshell/wasm/*' ],
+};
+const pipelineMain = {
+	...common,
+	entryPoints: {
 		'convert-main': 'src/pipeline/main-thread.js',
 	},
 };
@@ -99,8 +110,10 @@ const wasmRootStub = {
 const builds = [
 	host,
 	pipeline,
+	pipelineMain,
 	{ ...host, ...inline, plugins: [ ...host.plugins, wasmRootStub ] },
 	{ ...pipeline, ...inline, plugins: [ wasmRootStub ] },
+	{ ...pipelineMain, ...inline, plugins: [ wasmRootStub ] },
 ];
 
 if ( watch ) {

@@ -9,8 +9,9 @@ import { Loader } from './Loader.js';
 import { Element } from './Element.js';
 import { Pset } from './Pset.js';
 import { Scene } from './Scene.js';
+import { Sequence } from './Sequence.js';
 import { Terminal } from './Terminal.js';
 import { Viewer } from './Viewer.js';
 
-export { Ifc, Loader, Federation, Element, Pset, Scene, Terminal, Viewer };
-export default { Ifc, Loader, Federation, Element, Pset, Scene, Terminal, Viewer };
+export { Ifc, Loader, Federation, Element, Pset, Scene, Sequence, Terminal, Viewer };
+export default { Ifc, Loader, Federation, Element, Pset, Scene, Sequence, Terminal, Viewer };

@@ -24,7 +24,7 @@ src/
     <id>/operators.js   operator classes for one module
     <id>/ui.js          panel classes for one module
     viewer/events.js    viewer picks, selection changes and model loads → signals
-  tool/                 Ifc, Loader, Federation, Element, Pset, Scene, Terminal, Viewer
+  tool/                 Ifc, Loader, Federation, Element, Pset, Scene, Sequence, Terminal, Viewer
   pipeline/             convert worker, zip, .ifcview sidecar writer
   util/log.js           timestamped logger
 vendor/                 gitignored local copies; the page loads its dependencies from jsDelivr
@@ -40,7 +40,7 @@ new Shell( bonsai, configuration );
 bonsai.start();
 ```
 
-1. **Session.** `new Bonsai(container, configuration)` applies `config.geometry`, sets `context.dom` to the container, creates its own `.bonsai-viewport` element (`bonsai.viewport`, `context.viewport`) inside it, registers operators into the ops singleton, and binds the keyboard. js-signals is bundled, and `ifcopenshell` is only ever imported dynamically, so nothing here waits on a download.
+1. **Session.** `new Bonsai(container, configuration)` applies `config.geometry`, sets `context.dom` to the container, creates its own `.bonsai-viewport` element (`bonsai.viewport`, `context.viewport`) inside it, registers operators into the ops singleton, and binds the keyboard. js-signals is bundled. The `ifcopenshell` runtime is imported dynamically, so the session never waits on the wasm. `tool.Sequence` imports the transpiled `ifcopenshell/util/*` and `ifcopenshell/api/*` modules statically; with the local build those are files next to the page.
 2. **Shell.** `new Shell(bonsai, configuration)` builds the gui2 `World` from `config.ui` inside `context.dom`, wraps it in a `Layout`, and moves `context.viewport` into its `#Viewport` region. The element is moved, never replaced, so every reference to it stays valid.
 3. **Chrome.** `bindRibbon` and `mountUi` take `bonsai.context`. Panels are constructed with `{ context }`. Progress listens on `context.signals`.
 
@@ -122,10 +122,11 @@ Operators and panels receive that object, and panels may hang their own state on
 | Group | Signals |
 |-------|---------|
 | Session | `appReady`, `viewerReady`, `viewportResized` |
-| Model | `modelLoadStarted`, `modelLoaded`, `modelCleared`, `modelLoadedToGPU`, `modelUnloaded`, `modelNameChanged`, `liveIfcReady` |
+| Model | `modelLoadStarted`, `modelLoaded`, `modelCleared`, `modelLoadedToGPU`, `modelUnloaded`, `modelNameChanged`, `liveIfcReady`, `scheduleChanged`, `scheduleActivated` |
 | Scene | `objectPicked`, `selectionChanged`, `selectionCleared`, `visibilityChanged`, `viewerToolsChanged`, `colorsChanged`, `backgroundChanged` |
 | Camera and controls | `cameraChanged`, `standardViewSet`, `navPresetChanged` |
 | History | `historyChanged` |
+| Panels | `panelToggled` |
 
 `bonsai.addSignal(name)` adds a `Signal` if that name is missing. Boot also attaches a logger to every signal so boot and load phases print timings.
 
@@ -139,9 +140,10 @@ Operators and panels receive that object, and panels may hang their own state on
 | `Scene` | Background, federation unit, false origin, and model transforms: applied to the viewer and recorded for the store and the project file. |
 | `Federation` | The in-memory `.ifcfed` project. |
 | `Loader` | Add, convert, pair, and clear sources. Drag-and-drop. |
-| `Ifc` | The model list, view versus edit, the live file, the entity for a pick. |
+| `Ifc` | The model list, view versus edit, the live file, the entity for a pick, and `byId` / `byGuid` lookups in a model's live file. |
 | `Element` | Scalar attributes and display names. |
 | `Pset` | Property sets and quantity sets, with type inheritance, formatted for a table cell. |
+| `Sequence` | Work schedules, task rows with derived dates, and the products a task builds or uses; authoring of schedules, tasks, task times, assignments and sequence links. Calls `ifcopenshell/util/sequence` and `ifcopenshell/api/sequence` from the local ifcopenshell build. |
 | `Terminal` | In-memory JavaScript REPL sessions. |
 
 `Element` and `Pset` need an edit-mode entity. In view mode the properties panel uses the strings on the viewer pick instead.
@@ -185,6 +187,7 @@ A panel class has a static `id` (the module id) and a static `spec` (group, posi
 | `properties` | None. The panel follows the selection. | Right: attributes, relationships, psets, qtos |
 | `viewer` | Camera, navigation, visibility, colour, federation | None. The ribbon and other modules call these. |
 | `code.terminal` | Show, new session, clear, close session | Bottom: a JavaScript REPL |
+| `bim.sequence` | Panel toggles, schedules, tasks, tasks for a pick, select a task's products, and authoring | Bottom: a Gantt of one work schedule. Right: the tasks that build or use the picked element. The Gantt edits cells in place and opens task and schedule dialogs |
 
 Addons are modules that live outside the package. `configuration.app.Addons` lists them as `{ id, operators, ui, ribbon }`. `src/addons.js` registers their operators from `new Bonsai`, and `Shell` merges their ribbon into its configuration and mounts their panels after the built-in ones. See [api-structure.md](api-structure.md#addons).
 

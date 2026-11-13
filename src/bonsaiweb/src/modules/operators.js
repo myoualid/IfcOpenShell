@@ -1,4 +1,5 @@
 import ops from '../ops.js';
+import sequence from './bim.sequence/operators.js';
 import terminal from './code.terminal/operators.js';
 import dropbox from './dropbox/operators.js';
 import georeferencing from './georeferencing/operators.js';
@@ -17,6 +18,7 @@ export const operatorModules = new Map( [
 	[ 'georeferencing', georeferencing ],
 	[ 'spatial-hierarchy', spatial ],
 	[ 'properties', properties ],
+	[ 'bim.sequence', sequence ],
 	[ 'viewer', viewer ],
 	[ 'profiling', profiling ],
 	[ 'code.terminal', terminal ],
