@@ -607,6 +607,11 @@ void ViewportCore::setCamera(float tx, float ty, float tz,
     host_->requestFrame();
 }
 
+void ViewportCore::setCameraFovY(float fov_deg) {
+    camera_fov_y_deg_ = std::clamp(fov_deg, 1.0f, 120.0f);
+    host_->requestFrame();
+}
+
 void ViewportCore::setStandardView(float yaw_deg, float pitch_deg) {
     // Bypass the orbit-pitch clamp so top/bottom land exactly at ±90°.
     // buildViewProj picks the up vector based on |pitch| so lookAt

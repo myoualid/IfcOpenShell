@@ -248,6 +248,11 @@ public:
     bool viewModels(const std::vector<uint32_t>& session_model_ids);
     void setCamera(float tx, float ty, float tz,
                    float dist, float yaw_deg, float pitch_deg);
+    // Vertical field of view in degrees, clamped to [1, 120]. Orthographic
+    // views size themselves by distance × tan(fov/2), so animating fov and
+    // distance together gives a continuous dolly-zoom in either projection.
+    void setCameraFovY(float fov_deg);
+    float cameraFovY() const { return camera_fov_y_deg_; }
     void setStandardView(float yaw_deg, float pitch_deg);
 
     // Named axis-aligned views. Front/Back/Left/Right pin yaw at 0/180/270/90

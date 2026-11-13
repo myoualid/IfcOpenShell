@@ -857,6 +857,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_camera_c(float tx, float ty, float
     if (!g_app || !g_app->ready) return;
     g_app->core.setCamera(tx, ty, tz, dist, yaw, pitch);
 }
+// Vertical field of view in degrees; see ViewportCore::setCameraFovY.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_fov_c(float fov_deg) {
+    if (!g_app || !g_app->ready) return;
+    g_app->core.setCameraFovY(fov_deg);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE float ifcv_get_fov_c() {
+    if (!g_app || !g_app->ready) return 45.0f;
+    return g_app->core.cameraFovY();
+}
 // toggleProjection is the only projection mutator in the core; drive it to the
 // requested state so JS doesn't have to read-then-toggle.
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_ortho_c(int on) {
