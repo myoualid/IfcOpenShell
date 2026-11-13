@@ -26,12 +26,16 @@
       "import": "./dist/serializers/index.js"
     },
     "./util": {
-      "types": "./dist/util/index.d.ts",
-      "import": "./dist/util/index.js"
+      "types": "./dist/python/util/index.d.ts",
+      "import": "./dist/python/util/index.js"
     },
     "./util/*": {
       "types": "./dist/python/util/*.d.ts",
       "import": "./dist/python/util/*.js"
+    },
+    "./api": {
+      "types": "./dist/python/api/index.d.ts",
+      "import": "./dist/python/api/index.js"
     },
     "./api/*": {
       "types": "./dist/python/api/*/index.d.ts",

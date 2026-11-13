@@ -212,6 +212,11 @@ Object.setPrototypeOf(EntityInstance.prototype, new Proxy(IfcOpenshellInstance.p
   get(target, key, receiver) {
     // entity[0] reads the first attribute, as Python entity indexing.
     if (typeof key === 'string' && /^\d+$/.test(key)) return (receiver as EntityInstance).getArgument(Number(key));
+    if (key === 'Dim' && !(key in target)) {
+      // Derived attribute of geometric items, which Python computes from the schema's EXPRESS rules.
+      const dim = dimensionCount(receiver as EntityInstance);
+      if (dim !== null) return dim;
+    }
     if (typeof key === 'string' && /^[A-Z]/.test(key) && !(key in target)) throw noAttribute(receiver, key);
     return Reflect.get(target, key, receiver);
   },
@@ -224,6 +229,29 @@ Object.setPrototypeOf(EntityInstance.prototype, new Proxy(IfcOpenshellInstance.p
     return Reflect.set(target, key, value, receiver);
   },
 }));
+
+/** The derived `Dim` (IfcDimensionCount) of a geometric representation item, or null where it has none. */
+function dimensionCount(entity: EntityInstance): number | null {
+  const e = entity as unknown as Record<string, unknown>;
+  const first = (values: unknown) => (values ? Array.from(values as Iterable<unknown>)[0] : undefined);
+  const of = (item: unknown): number | null => (item ? dimensionCount(item as EntityInstance) : null);
+  const is = (name: string) => entity.isA(name);
+  if (is('IfcCartesianPoint')) return Array.from(e.Coordinates as Iterable<unknown>).length;
+  if (is('IfcDirection')) return Array.from(e.DirectionRatios as Iterable<unknown>).length;
+  if (is('IfcCartesianPointList2D') || is('IfcAxis2Placement2D') || is('IfcCartesianTransformationOperator2D') || is('IfcOffsetCurve2D')) return 2;
+  if (is('IfcCartesianPointList3D') || is('IfcAxis2Placement3D') || is('IfcAxis1Placement') || is('IfcCartesianTransformationOperator3D') || is('IfcOffsetCurve3D') || is('IfcSurface') || is('IfcSolidModel')) return 3;
+  if (is('IfcPlacement')) return of(e.Location);
+  if (is('IfcVector')) return of(e.Orientation);
+  if (is('IfcPolyline')) return of(first(e.Points));
+  if (is('IfcIndexedPolyCurve')) return of(e.Points);
+  if (is('IfcLine')) return of(e.Pnt);
+  if (is('IfcConic')) return of(e.Position);
+  if (is('IfcTrimmedCurve') || is('IfcOffsetCurve') || is('IfcPointOnCurve')) return of(e.BasisCurve);
+  if (is('IfcCompositeCurve')) return of(first(e.Segments));
+  if (is('IfcCompositeCurveSegment')) return of(e.ParentCurve);
+  if (is('IfcBSplineCurve')) return of(first(e.ControlPointsList));
+  return null;
+}
 
 function noAttribute(entity: EntityInstance, name: string): IfcOpenShellError {
   return new IfcOpenShellError(`entity instance of type '${entity.className(true)}' has no attribute '${name}'`);

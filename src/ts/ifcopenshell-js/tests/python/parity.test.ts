@@ -61,6 +61,7 @@ function generated(module: string, fn: string): string {
 /** Fail with the first difference in full; vitest truncates long values in its own messages. */
 function same(actual: Encoded, expected: Encoded, label: string): void {
   const found = difference(actual, expected);
+  if (found && process.env.PARITY_VERBOSE) console.log(JSON.stringify({ actual, expected }, null, 1));
   if (found) throw new Error(`${label}: ${found}`);
 }
 

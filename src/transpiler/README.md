@@ -90,6 +90,21 @@ Python libraries without a direct JS equivalent are ported by hand once, in
 checked against values computed with Python in
 `src/ts/ifcopenshell-js/tests/python/runtime.test.ts`.
 
+Two more cover what Python gets from libraries without rules:
+
+- `_geom.ts`: `ifcopenshell.geom.map_shape(ifcopenshell.geom.settings(), placement).components`
+  (the matrix `util.placement.get_placement` builds) is composed in JS from the
+  IfcLocalPlacement / IfcAxis2Placement chain, grid and linear placements and
+  transformation operators, without the geometry kernel. A rule in `ts.yaml` maps the call.
+- `_cost.ts`: the Lark grammar of cost formulas (`util.cost.CostValueUnserialiser`).
+  `hand_written` in `ts.yaml` lists such classes and functions; the generated module imports
+  and re-exports them in place of a stub.
+
+`generate.py` also writes `api/index.ts` and `util/index.ts`, which export every package and
+module as a namespace (`ifcopenshell/api`, `ifcopenshell/util`; the latter re-exports the
+hand-written `src/util` helpers, which used to be the whole `ifcopenshell/util` entry).
+`tests/python/transpiled.test.ts` checks calls that once failed against Python's results.
+
 ## Running the tests
 
 The tests are part of `src/ts/ifcopenshell-js` and run against its build (`dist/`):

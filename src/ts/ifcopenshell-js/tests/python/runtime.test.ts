@@ -144,3 +144,52 @@ describe('numpy', () => {
     expect(np.round(np.array([0.5, 1.5, 2.25]), 1).tolist()).toEqual([0.5, 1.5, 2.2]);
   });
 });
+
+describe('numpy additions', () => {
+  it('indexes with one integer array among basic indices', () => {
+    const a = np.array([[1, 2, 3], [4, 5, 6]]);
+    expect(py.getitem(a, [py.slice(null, null, null), new py.IndexList([0, 2])]).tolist()).toEqual([[1, 3], [4, 6]]);
+    expect(py.getitem(a, [new py.IndexList([1, 0]), 1]).tolist()).toEqual([5, 2]);
+  });
+
+  it('matches numpy for tile, roll, linspace, column_stack, sign, abs, zeros_like, multiply and comparisons', () => {
+    expect(np.tile([1, 2], [3, 1]).tolist()).toEqual([[1, 2], [1, 2], [1, 2]]);
+    expect(np.roll(np.array([[1, 2], [3, 4], [5, 6]]), -1, { axis: 0 }).tolist()).toEqual([[3, 4], [5, 6], [1, 2]]);
+    expect(np.linspace(0, 1, 4, { endpoint: false }).tolist()).toEqual([0, 0.25, 0.5, 0.75]);
+    expect(np.linspace(0, 1, 3).tolist()).toEqual([0, 0.5, 1]);
+    expect(np.columnStack([[1, 2], [3, 4]]).tolist()).toEqual([[1, 3], [2, 4]]);
+    expect(py.gt(np.array([1, -1]), 0).tolist()).toEqual([true, false]);
+    expect(np.sign(np.array([-2, 0, 3])).tolist()).toEqual([-1, 0, 1]);
+    expect(np.abs(np.array([-2, 3])).tolist()).toEqual([2, 3]);
+    expect(np.zerosLike(np.array([1.5, 2])).tolist()).toEqual([0, 0]);
+    expect(np.multiply([1, 2], 3).tolist()).toEqual([3, 6]);
+  });
+});
+
+describe('Python semantics additions', () => {
+  it('passes **kwargs as camelCase options', () => {
+    expect(py.kwargs({ position_x_axis: [1, 0, 0], extrusion_vector: [0, 0, 1], start: 1 }, ['start']))
+      .toEqual({ positionXAxis: [1, 0, 0], extrusionVector: [0, 0, 1] });
+  });
+
+  it('counts items and substrings', () => {
+    expect([py.count([0, 1, 0], 0), py.count('abab', 'ab')]).toEqual([2, 2]);
+  });
+
+  it('prints named tuples as Python does', () => {
+    const value = py.namedtuple('Point', ['x', 'label'], [1, "it's"]);
+    expect([value.x, value[1], String(value)]).toEqual([1, "it's", `Point(x=1, label="it's")`]);
+    expect(String(py.namedtuple('Point', ['x', 'label'], [null, 'a']))).toBe("Point(x=None, label='a')");
+  });
+
+  it('gives isodate durations the total_seconds of their timedelta', () => {
+    expect(isodate.Duration({ hours: 8, months: 1 }).total_seconds()).toBe(28800);
+  });
+});
+
+describe('json', () => {
+  it('dumps as Python json.dumps does by default', () => {
+    // json.dumps({"a": [1, 2.5], "é": None, "b": True})
+    expect(py.jsonDumps({ a: [1, 2.5], 'é': null, b: true })).toBe('{"a": [1, 2.5], "\\u00e9": null, "b": true}');
+  });
+});

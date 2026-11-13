@@ -4,6 +4,7 @@
 
 import argparse
 import ast
+import collections
 import copy
 import json
 import sys
@@ -70,6 +71,27 @@ def build_index(package=PACKAGE):
                 special = any(ast.unparse(b).endswith(("NamedTuple", "TypedDict")) for b in node.bases)
                 index[f"{name}.{node.name}"] = None if special else node
     return index
+
+
+def list_constants(package=PACKAGE):
+    """Module-level names of util and api assigned once, to a list literal (NP_XY = [0, 1]), by qualified name."""
+    names = set()
+    for path in sorted([*package.glob("util/*.py"), *package.glob("api/*/*.py")]):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        assigned = collections.Counter(
+            t.id for n in tree.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)
+        )
+        module = module_name(path, package)
+        names |= {
+            f"{module}.{n.targets[0].id}"
+            for n in tree.body
+            if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)
+            and isinstance(n.value, ast.List) and assigned[n.targets[0].id] == 1
+        }
+    return names
 
 
 TYPE_NAMES = {"Union", "Optional", "tuple", "list", "dict", "set", "Literal", "Callable", "Sequence", "Iterable", "Any"}
@@ -202,6 +224,8 @@ class Transpiler:
         self.generator = False
         self.loops = []
         self.declared = []
+        self.list_names = set()
+        self.list_constants = list_constants()
         self.env = Environment(undefined=StrictUndefined, keep_trailing_newline=True)
         self.cache = {}
         self.env.tests["startswith"] = lambda value, prefix: str(value).startswith(prefix)
@@ -262,6 +286,8 @@ class Transpiler:
             runtime_names=self.runtime_names,
             reassigned=self.reassigned,
             typed_dicts=self.typed_dicts,
+            list_names=self.list_names,
+            list_constants=self.list_constants,
             # Python operators may dispatch to runtime objects (arrays, dates) in this module.
             overloading=any(m in self.rules.get("overloading_modules", ()) for m, _ in self.runtime_names.values()),
             **captures,
@@ -368,6 +394,15 @@ class Transpiler:
                 owner = kind.removeprefix("class:")
             if owner in self.classes:
                 return self.method(owner, node.attr)
+            if isinstance(self.index.get(owner), ast.ClassDef):
+                return self.method(self.index[owner], node.attr)
+        if isinstance(node, ast.Attribute) and value_path(node.value) and value_path(node.value).startswith("self."):
+            # self.builder.extrude(...) for an attribute annotated with a util or api class.
+            owner = self.symbols.get(value_path(node.value), "").removeprefix("class:")
+            if isinstance(self.index.get(owner), ast.ClassDef):
+                return self.method(self.index[owner], node.attr)
+            if owner in self.classes:
+                return self.method(owner, node.attr)
         qualified = self.resolve(node)
         found = self.index.get(qualified) if qualified else None
         if isinstance(found, ast.ClassDef):
@@ -418,19 +453,36 @@ class Transpiler:
             head = call.args[:-1]
             count = ast.Constant(len(required) - len(head))
             return {"positional": head + [ast.Starred(ast.Call(ast.Name("__fixed_tuple__", ast.Load()), [starred[0].value, count], []), ast.Load())], "options": [], "error": None}
+        if starred and starred == call.args[-1:] and call.keywords and not function.args.vararg and len(call.args) - 1 < len(required):
+            # f(*xy, k=v) for def f(x, y, k=0): the starred value fills the remaining required parameters.
+            head = call.args[:-1]
+            missing = [ast.Name(f"__starred{i}__", ast.Load()) for i in range(len(required) - len(head))]
+            result = self.bind(ast.Call(call.func, head + missing, call.keywords), function)
+            if result["error"] is None:
+                count = ast.Constant(len(missing))
+                fixed = ast.Starred(ast.Call(ast.Name("__fixed_tuple__", ast.Load()), [starred[0].value, count], []), ast.Load())
+                result["positional"] = result["positional"][: len(head)] + [fixed]
+            return result
         if function.args.vararg or starred:
             return {"positional": [], "options": [], "error": "variadic call"}
         if len(call.args) > len(parameters):
             return {"positional": [], "options": [], "error": "too many arguments"}
         given = dict(zip((p.arg for p in parameters), call.args))
+        # f(**d, k=v): d's keys are Python names; at runtime they become the camelCase option keys.
+        splats = [k.value for k in call.keywords if k.arg is None]
         for keyword in call.keywords:
             if keyword.arg == "should_run_listeners" and "should_run_listeners" not in [a.arg for a in parameters + function.args.kwonlyargs]:
                 continue  # Accepted by ifcopenshell.api's wrapper, not by the usecase; there are no listeners in TS.
-            if keyword.arg is None:
-                return {"positional": [], "options": [], "error": "**kwargs call"}
-            given[keyword.arg] = keyword.value
+            if keyword.arg is not None:
+                given[keyword.arg] = keyword.value
+        from_splat = []
         for parameter in required:
             if parameter.arg not in given:
+                # A required parameter only d can supply is read from d, which must be a plain name (read twice).
+                if len(splats) == 1 and isinstance(splats[0], ast.Name):
+                    positional.append(ast.Subscript(splats[0], ast.Constant(parameter.arg), ast.Load()))
+                    from_splat.append(parameter.arg)
+                    continue
                 return {"positional": [], "options": [], "error": f"missing {parameter.arg}"}
             positional.append(given.pop(parameter.arg))
         optional = [p.arg for p in parameters[len(required) :]] + [a.arg for a in function.args.kwonlyargs]
@@ -440,6 +492,9 @@ class Transpiler:
         if given and not function.args.kwarg:
             return {"positional": [], "options": [], "error": f"unknown argument {next(iter(given))}"}
         options += list(given.items())
+        for splat in splats:
+            names = ast.List([ast.Constant(n) for n in from_splat], ast.Load())
+            options.append((None, ast.Call(ast.Name("__kwargs__", ast.Load()), [splat, names], [])))
         return {"positional": positional, "options": options, "error": None}
 
     @staticmethod
@@ -664,6 +719,14 @@ class Transpiler:
             }
             globals_ = self.symbols.copy()
             imports = dict(self.imports)
+            # Names only ever bound to list literals: as a numpy index they select several items (np_XZ = [0, 2]).
+            bound = collections.defaultdict(set)
+            for n in ast.walk(node):
+                for target in n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(n, (ast.AnnAssign, ast.AugAssign, ast.For)) else []:
+                    for name in ast.walk(target):
+                        if isinstance(name, ast.Name):
+                            bound[name.id].add(isinstance(n, ast.Assign) and target is name and isinstance(n.value, ast.List))
+            self.list_names = {name for name, kinds in bound.items() if kinds == {True}}
             self.declared = []
             self.shadowed = set()
             self.return_annotation = node.returns if isinstance(node, ast.FunctionDef) else None
@@ -757,18 +820,27 @@ class Transpiler:
             # one of unknown kind (a union) that the function narrows, by rebinding it (thickness = [thickness] * 4)
             # or with isinstance/hasattr, which TypeScript does not follow.
             for function in functions:
-                narrowed = {n.id for n in ast.walk(function) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)} | {
+                rebound = {n.id for n in ast.walk(function) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+                checked = {
                     n.args[0].id
                     for n in ast.walk(function)
                     if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in ("isinstance", "hasattr")
                     and n.args and isinstance(n.args[0], ast.Name)
                 }
+                narrowed = rebound | checked
                 for a in function.args.args + function.args.kwonlyargs:
                     annotated = self.emit(a.annotation, "annotation_kinds") if a.annotation else None
-                    if a.annotation and (self.symbols.get(a.arg) != annotated or a.arg in narrowed and annotated == "unknown"):
+                    # Checked with isinstance, then rebound (x = [x]): the value is not of its annotated type.
+                    if a.annotation and (self.symbols.get(a.arg) != annotated or a.arg in narrowed and annotated == "unknown" or a.arg in rebound & checked):
                         a.widened = True
+                    if a.annotation and a.arg in rebound & checked and self.symbols.get(a.arg) == annotated:
+                        self.symbols[a.arg] = "unknown"  # Its truthiness, length and items are checked at runtime.
             qualified = f"{module}.{getattr(node, 'name', '')}"
             try:
+                if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and qualified in self.rules.get("hand_written", {}):
+                    target = self.rules["hand_written"][qualified]
+                    output.append(self.render(self.rules["hand_written_import"], {"name": node.name, "target": target}).rstrip())
+                    continue
                 if isinstance(node, ast.FunctionDef) and qualified in self.precomputed:
                     parameter = node.args.args[0].arg
                     data = self.precomputed[qualified]

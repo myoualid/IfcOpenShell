@@ -398,6 +398,18 @@ function indexList(key: unknown, length: number): number[] {
 }
 
 function advancedIndex(array: NDArray, key: unknown): NDArray | null {
+  if (Array.isArray(key)) {
+    // One integer array among basic indices (a[:, [0, 2]]): its axis is gathered, in place.
+    const arrays = key.map((k, i) => (isIndexArray(k) ? i : -1)).filter(i => i >= 0);
+    if (arrays.length > 1) throw new Error('IndexError: only one integer array index is supported');
+    if (arrays.length === 1) {
+      const at = arrays[0]!;
+      const axis = key.slice(0, at).filter(k => k === null || k instanceof Slice).length;
+      const length = array.shape[key.slice(0, at).filter(k => k !== null).length]!;
+      const parts = indexList(key[at], length).map(i => asarray(array.__getitem__(key.map((k, j) => (j === at ? i : k)))));
+      return moveAxisFromFront(stack(parts), axis).copy();
+    }
+  }
   const mask = asMask(array, key);
   if (mask) return new NDArray(array.values().filter((_, i) => mask[i]), [mask.filter(Boolean).length], undefined, 0, array.dtype);
   if (!isIndexArray(key)) return null;
@@ -454,6 +466,59 @@ export function full(shape: number | Iterable<number>, value: any, ...values: un
 
 export const zeros = (shape: number | Iterable<number>, ...values: unknown[]) => full(shape, 0, ...values);
 export const ones = (shape: number | Iterable<number>, ...values: unknown[]) => full(shape, 1, ...values);
+
+export function zerosLike(value: ArrayLike, ...values: unknown[]): NDArray {
+  const { dtype } = { ...options(values), ...(values.length ? { dtype: values[0] } : {}) } as Options;
+  const a = asarray(value);
+  return full(a.shape, 0, { dtype: dtype ?? a.dtype });
+}
+
+/** numpy.linspace(start, stop, num=50, endpoint=True). */
+export function linspace(start: number, stop: number, ...values: unknown[]): NDArray {
+  const { num = 50, endpoint = true } = { ...options(values), ...(values.length ? { num: values[0] } : {}) } as Options;
+  const step = (stop - start) / (endpoint ? Math.max(num - 1, 1) : num);
+  const data = Array.from({ length: num }, (_, i) => (endpoint && i === num - 1 && num > 1 ? stop : start + i * step));
+  return new NDArray(data, [num], undefined, 0, 'float64');
+}
+
+/** numpy.tile(value, reps) for reps as a number or a tuple. */
+export function tile(value: ArrayLike, reps: number | Iterable<number>): NDArray {
+  const r = shapeOf(reps);
+  let a = asarray(value);
+  while (a.ndim < r.length) a = a.reshape([1, ...a.shape]);
+  const full_ = [...Array(a.ndim - r.length).fill(1), ...r];
+  for (let axis = 0; axis < a.ndim; axis++) {
+    if (full_[axis] !== 1) a = concatenate(Array.from({ length: full_[axis]! }, () => a), axis);
+  }
+  return a.copy();
+}
+
+/** numpy.roll(value, shift, axis=None). */
+export function roll(value: ArrayLike, shift: number, ...values: unknown[]): NDArray {
+  const { axis = null } = { ...options(values), ...(values.length ? { axis: values[0] } : {}) } as Options;
+  const a = asarray(value);
+  if (axis === null) {
+    const items = a.values();
+    const n = items.length;
+    const k = n ? ((shift % n) + n) % n : 0;
+    return new NDArray([...items.slice(n - k), ...items.slice(0, n - k)], [n], undefined, 0, a.dtype).reshape([...a.shape]);
+  }
+  const ax = axis < 0 ? axis + a.ndim : axis;
+  const moved = moveAxisToFront(a, ax);
+  const rows = [...moved].map(row => asarray(row as ArrayLike));
+  const n = rows.length;
+  const k = n ? ((shift % n) + n) % n : 0;
+  return moveAxisFromFront(stack([...rows.slice(n - k), ...rows.slice(0, n - k)]), ax).copy();
+}
+
+/** numpy.column_stack: 1-D arrays become columns. */
+export function columnStack(arrays: Iterable<ArrayLike>): NDArray {
+  const items = Array.from(arrays, a => {
+    const x = asarray(a);
+    return x.ndim === 1 ? x.reshape([x.size, 1]) : x;
+  });
+  return concatenate(items, 1);
+}
 
 export function eye(n: number, ...values: unknown[]): NDArray {
   const { M } = options(values);
@@ -547,6 +612,20 @@ export const arcsin = elementwise(Math.asin);
 export const arccos = elementwise(Math.acos);
 export const arctan = elementwise(Math.atan);
 export const radians = elementwise(v => (v * Math.PI) / 180);
+
+/** numpy.abs and numpy.sign keep integer arrays integer. */
+export function abs(value: ArrayLike): any {
+  if (typeof value === 'number' || typeof value === 'boolean') return Math.abs(Number(value));
+  const a = asarray(value);
+  return unary(a, Math.abs, a.dtype === 'bool' ? 'bool' : a.dtype);
+}
+export function sign(value: ArrayLike): any {
+  const f = (v: number) => (Number.isNaN(v) ? NaN : v > 0 ? 1 : v < 0 ? -1 : 0);
+  if (typeof value === 'number' || typeof value === 'boolean') return f(Number(value));
+  const a = asarray(value);
+  return unary(a, f, a.dtype === 'bool' ? 'int64' : a.dtype);
+}
+export const multiply = (a: ArrayLike, b: ArrayLike) => binaryFunction((x, y) => x * y)(a, b);
 
 /** Python/numpy rounding: halves to even. */
 function roundHalfEven(value: number, decimals: number): number {

@@ -108,7 +108,6 @@ methods:
   issuperset: isSupersetOf
   id: id
   index: indexOf
-  count: count
   discard: delete
   to_string: toString
 calls:
@@ -116,6 +115,13 @@ calls:
   str: String
   tuple: Array.from<any>
   list: Array.from<any>
+# Classes and functions ported by hand into a runtime module (src/python/_*.ts), as they use Python
+# libraries without rules (Lark grammars): the generated module imports and re-exports them.
+hand_written:
+  util.cost.CostValueUnserialiser: util._cost
+hand_written_import: |-
+  import { {{ name }} } from "{{ "../" * (this_module.split(".") | length - 1) }}{{ target.split(".")[1] }}.js";
+  export { {{ name }} };
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
 # JS reserved words that are valid Python names get a trailing underscore.
@@ -142,7 +148,7 @@ runtime_kinds:
   isodate: pyobject
   dateutil: pyobject
 # numpy functions that return Python scalars or booleans rather than arrays.
-numpy_scalars: [norm, dot, allclose, isclose, any, all, sum, min, max, mean, argmax, argmin, sign, abs, round, isnan, isinf, cos, sin, arctan, arcsin, arccos, radians, degrees, float64, float32, int64, int32]
+numpy_scalars: [norm, dot, allclose, isclose, any, all, sum, min, max, mean, argmax, argmin, round, isnan, isinf, cos, sin, arctan, arcsin, arccos, radians, degrees, float64, float32, int64, int32]
 # Python arithmetic operators and their runtime functions for overloaded operands.
 dunder_operators:
   Add: add
@@ -332,6 +338,30 @@ types:
     when: kind in ['Any', 'Iterator', 'Generator', 'Callable']
     output: any
 rules:
+  # The matrix of a placement from the geometry kernel, composed by the runtime instead (_geom.ts).
+  - input:
+      node: Attribute
+      value:
+        node: Call
+        func: $map_shape
+        args:
+          - $settings
+          - $placement
+      attr: components
+    when: map_shape | source == "ifcopenshell.geom.map_shape" and settings | source == "ifcopenshell.geom.settings"
+    output: '{{ "util._geom" | use("geom") }}.placementComponents({{ placement | emit }})'
+  # str.count, list.count and tuple.count, through the runtime as JS has none of them.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: count
+      args:
+        - $item
+      keywords: []
+    when: value | runtime_path is none and value | resolve is none
+    output: '{{ "util._py" | use("py") }}.count({{ value | emit }}, {{ item | emit }})'
   - input: $value
     context: condition
     when: value | kind == "array"
@@ -438,7 +468,7 @@ rules:
       args: $args
       keywords: $keywords
     when: callee | runtime_path is not none
-    output: '{{ callee | emit }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ keyword.value | emit }}{% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ callee | emit }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "util._py" | use("py") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input: $value
     when: value.__class__.__name__ in ["Name", "Attribute"] and value | runtime_path is not none
     output: '{% set path = value | runtime_path %}{% if path.module == "math" %}{{ math_functions[path.parts[0]] if path.parts[0] in math_functions else math_constants[path.parts[0]] }}{% else %}{% set spec = runtime_modules[path.module] %}{{ spec.module | use(spec.alias) }}{% if spec.prefix is defined %}.{{ spec.prefix }}{% endif %}{% for part in path.parts %}.{{ part | camel }}{% endfor %}{% endif %}'
@@ -452,7 +482,7 @@ rules:
       args: $args
       keywords: $keywords
     when: value | kind in ["ndarray", "pyobject"] and not method.startswith("__")
-    output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ keyword.value | emit }}{% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "util._py" | use("py") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   # Subscripts of arrays, and of values of unknown type where operators are overloaded: Python
   # indexing (negative indices, slices, tuples of indices) through the runtime.
   - input:
@@ -463,7 +493,7 @@ rules:
           slice: $index
       value: $value
     when: container | kind == "ndarray" or overloading and container | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and container | kind not in ["dict", "map"]
-    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ value | emit }});'
+    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" or i.__class__.__name__ == "Name" and i.id in list_names or i.__class__.__name__ in ["Name", "Attribute"] and i | resolve in list_constants %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ value | emit }});'
   - input:
       node: AugAssign
       target:
@@ -473,7 +503,7 @@ rules:
       op: $op
       value: $value
     when: op.__class__.__name__ in dunder_operators and (container | kind == "ndarray" or overloading and container | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string))
-    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ py }}.i{{ dunder_operators[op.__class__.__name__] }}({{ py }}.getitem({{ container | emit }}, {{ key(index) }}), {{ value | emit }}));'
+    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" or i.__class__.__name__ == "Name" and i.id in list_names or i.__class__.__name__ in ["Name", "Attribute"] and i | resolve in list_constants %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ py }}.i{{ dunder_operators[op.__class__.__name__] }}({{ py }}.getitem({{ container | emit }}, {{ key(index) }}), {{ value | emit }}));'
   - input:
       node: AugAssign
       target: $target
@@ -548,7 +578,7 @@ rules:
   - input:
       node: Return
       value: $value
-    output: return {{ value | emit if value is not none else "null" }}{% if return_annotation is not none and return_annotation.id is defined and return_annotation.id in aliases and (value.value is not defined or value.value not in aliases[return_annotation.id]) %} as {{ return_annotation | type }}{% elif return_annotation is not none and return_annotation.id is defined and return_annotation.id == "DimensionalExponents" and value.__class__.__name__ == "Call" and value.func.id is defined and value.func.id == "tuple" %} as DimensionalExponents{% endif %};
+    output: return {{ value | emit if value is not none else "null" }}{% if return_annotation is not none and return_annotation.id is defined and return_annotation.id in aliases and (value.value is not defined or value.value not in aliases[return_annotation.id]) %} as {{ return_annotation | type }}{% elif return_annotation is not none and return_annotation.id is defined and return_annotation.id == "DimensionalExponents" and value.__class__.__name__ == "Call" and value.func.id is defined and value.func.id == "tuple" %} as DimensionalExponents{% elif return_annotation is not none and return_annotation.__class__.__name__ == "Subscript" and return_annotation.value.id is defined and return_annotation.value.id == "tuple" and value.__class__.__name__ == "Subscript" and value.slice.__class__.__name__ == "Slice" %} as any{% endif %};
   - input:
       node: Assign
       targets:
@@ -616,7 +646,7 @@ rules:
           - node: Constant
             value: $fields
         keywords: []
-    output: '{% if top_level %}export const {% endif %}{{ target | emit }} = (...values: any[]): any => Object.assign(values, { {% for field in fields.replace(",", " ").split() %}{{ field }}: values[{{ loop.index0 }}]{% if not loop.last %}, {% endif %}{% endfor %} });{% if top_level %} export type {{ target | emit }} = any;{% endif %}'
+    output: '{% if top_level %}export const {% endif %}{{ target | emit }} = (...values: any[]): any => {{ "util._py" | use("py") }}.namedtuple({{ target.id | literal }}, {{ fields.replace(",", " ").split() | list | literal }}, values);{% if top_level %} export type {{ target | emit }} = any;{% endif %}'
   # Assigning to a function of an overridable module (get_user = my_get_user) sets its override.
   - input:
       node: Assign
@@ -699,7 +729,7 @@ rules:
       name: $name
       body: $body
     when: node.bases | map("source") | select("in", ["NamedTuple", "typing.NamedTuple"]) | list
-    output: '{% set fields = body | selectattr("target", "defined") | map(attribute="target") | map(attribute="id") | list %}export const {{ name }} = (...values: any[]): any => Object.assign(values, { {% for field in fields %}{{ field }}: values[{{ loop.index0 }}]{% if not loop.last %}, {% endif %}{% endfor %} }); export type {{ name }} = any;'
+    output: '{% set fields = body | selectattr("target", "defined") | map(attribute="target") | map(attribute="id") | list %}export const {{ name }} = (...values: any[]): any => {{ "util._py" | use("py") }}.namedtuple({{ name | literal }}, {{ fields | literal }}, values); export type {{ name }} = any;'
   - input:
       node: ClassDef
       name: $name
@@ -1043,7 +1073,7 @@ rules:
       args: $args
       keywords: $keywords
     when: node.func | resolve is none
-    output: '{% set attributes = keywords | rejectattr("arg", "in", ["id", "type"]) | list %}{% set id = keywords | selectattr("arg", "equalto", "id") | list %}{% set type = args[0] if args else (keywords | selectattr("arg", "equalto", "type") | first).value %}{{ file | emit }}.create({{ type | emit }}{% if args | length > 1 %}, [{{ args[1:] | map("emit") | join(", ") }}]{% elif attributes %}, { {% for keyword in attributes %}{% if keyword.arg is none %}...{{ keyword.value | emit }}{% else %}{{ keyword.arg }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% elif id %}, {}{% endif %}{% if id %}, {{ id[0].value | emit }}{% endif %})'
+    output: '{% set attributes = keywords | rejectattr("arg", "in", ["id", "type"]) | list %}{% set id = keywords | selectattr("arg", "equalto", "id") | list %}{% set type = args[0] if args else (keywords | selectattr("arg", "equalto", "type") | first).value %}{{ file | emit }}.create({{ type | emit }}{% if args | length > 1 and attributes %}, { ...[{{ args[1:] | map("emit") | join(", ") }}], {% for keyword in attributes %}{% if keyword.arg is none %}...{{ keyword.value | emit }}{% else %}{{ keyword.arg }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% elif args | length > 1 %}, [{{ args[1:] | map("emit") | join(", ") }}]{% elif attributes %}, { {% for keyword in attributes %}{% if keyword.arg is none %}...{{ keyword.value | emit }}{% else %}{{ keyword.arg }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% elif id %}, {}{% endif %}{% if id %}, {{ id[0].value | emit }}{% endif %})'
   - input:
       node: Call
       func:
@@ -1053,7 +1083,7 @@ rules:
       args: $args
       keywords: $keywords
     when: method.startswith("createIfc") and node.func | resolve is none
-    output: '{{ file | emit }}.create({{ method[6:] | literal }}{% if args %}, [{{ args | map("emit") | join(", ") }}]{% elif keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ file | emit }}.create({{ method[6:] | literal }}{% if args and keywords %}, { ...[{{ args | map("emit") | join(", ") }}], {% for keyword in keywords %}{% if keyword.arg is none %}...{{ keyword.value | emit }}{% else %}{{ keyword.arg }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% elif args %}, [{{ args | map("emit") | join(", ") }}]{% elif keywords %}, { {% for keyword in keywords %}{% if keyword.arg is none %}...{{ keyword.value | emit }}{% else %}{{ keyword.arg }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1145,7 +1175,7 @@ rules:
         - $value
       keywords: []
     when: method in ["dumps", "loads"]
-    output: 'JSON.{{ "stringify" if method == "dumps" else "parse" }}({{ value | emit }})'
+    output: '{% if method == "dumps" %}{{ "util._py" | use("py") }}.jsonDumps({{ value | emit }}){% else %}JSON.parse({{ value | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1382,6 +1412,15 @@ rules:
       node: Call
       func:
         node: Name
+        id: __kwargs__
+      args:
+        - $values
+        - $consumed
+    output: '{{ "util._py" | use("py") }}.kwargs({{ values | emit }}{% if consumed.elts %}, {{ consumed.elts | map(attribute="value") | list | literal }}{% endif %})'
+  - input:
+      node: Call
+      func:
+        node: Name
         id: __positional_options__
       args:
         - $names
@@ -1407,7 +1446,7 @@ rules:
         - $values
       keywords: []
     when: '"map" not in shadowed'
-    output: 'Array.from<any>({{ values | iterable }}, (v: any) => ({{ function | emit }})(v))'
+    output: 'Array.from<any, any>({{ values | iterable }}, (v: any) => ({{ function | emit }})(v))'
   - input:
       node: Call
       func:
@@ -1599,7 +1638,7 @@ rules:
     # JS has one number type, so a float such as 85.0 arrives as 85. A float check guarding code that reads the
     # checked value (marked reads_checked) accepts any number; one that only picks between int and float
     # behaviour, such as IfcReal or IfcInteger, keeps testing for a non-integer.
-    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function"){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name in ["datetime", "date"] %}{{ value | emit }} instanceof Date{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ value | emit }} instanceof ifcopenshell.wrapper.{{ wrapper_classes[name] }}{% else %}{{ undefined_isinstance_type }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
+    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined or (value.attr is defined and value.attr == "wrappedValue") %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function" && !({{ value | emit }} instanceof ifcopenshell.EntityInstance)){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name in ["datetime", "date"] %}{{ value | emit }} instanceof Date{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ value | emit }} instanceof ifcopenshell.wrapper.{{ wrapper_classes[name] }}{% else %}{{ undefined_isinstance_type }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
   - input:
       node: Call
       func:
@@ -1643,7 +1682,7 @@ rules:
         - $values
         - $start
       keywords: []
-    output: 'Array.from<any>({{ values | iterable }}, (v: any, i: number) => [i + {{ start | emit }}, v])'
+    output: 'Array.from<any, any>({{ values | iterable }}, (v: any, i: number) => [i + {{ start | emit }}, v])'
   - input:
       node: Call
       func:
@@ -1781,12 +1820,12 @@ rules:
       args: $args
       keywords: $keywords
     when: method in methods and keywords and node.func | resolve is none
-    output: '{{ value | emit }}.{{ methods[method] }}({{ args | map("emit") | join(", ") }}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ keyword.value | emit }}{% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} })'
+    output: '{{ value | emit }}.{{ methods[method] }}({{ args | map("emit") | join(", ") }}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "util._py" | use("py") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} })'
   - input:
       node: Lambda
       args: $arguments
       body: $body
-    output: '(({{ arguments.args | map(attribute="arg") | map("regex_replace_any") | join(", ") if false else arguments.args | map(attribute="arg") | map("ident") | join(": any, ") }}{{ ": any" if arguments.args else "" }}) => {{ body | emit }})'
+    output: '(({% for a in arguments.args %}{{ a.arg | ident }}: any{% if not loop.last or arguments.vararg %}, {% endif %}{% endfor %}{% if arguments.vararg %}...{{ arguments.vararg.arg | ident }}: any[]{% endif %}) => {{ body | emit }})'
   - input:
       node: JoinedStr
       values: $values
@@ -1998,7 +2037,7 @@ rules:
       args: $args
       keywords: $keywords
     when: method not in python_methods and method not in methods and not method.startswith("_") and node.func | resolve is none and node.func | signature is none and value | resolve is none and (value.id is not defined or value.id not in ["ifcopenshell", "self"]) and (value.__class__.__name__ == "Call" or value | source | truncate(13, True, "", 0) != "ifcopenshell.")
-    output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ keyword.value | emit }}{% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "util._py" | use("py") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func: $callee
@@ -2076,7 +2115,7 @@ rules:
       value: $value
       slice: $index
     when: value | kind == "ndarray" or overloading and value | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and value | kind not in ["dict", "map"]
-    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.getitem({{ value | emit }}, {{ key(index) }})'
+    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" or i.__class__.__name__ == "Name" and i.id in list_names or i.__class__.__name__ in ["Name", "Attribute"] and i | resolve in list_constants %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.getitem({{ value | emit }}, {{ key(index) }})'
   - input:
       node: Subscript
       value: $value
@@ -2107,7 +2146,7 @@ rules:
       slice: $index
     when: value | kind == "map" and node.ctx.__class__.__name__ == "Load"
     output: '{{ value | emit }}.get({{ index | emit }})'
-  # Negative indices count from the end of a sequence; JS [] reads a missing property instead.
+  # Negative indices count from the end of a sequence; JS [] reads a missing property instead. Dictionaries keep the key.
   - input:
       node: Subscript
       value: $value
@@ -2118,8 +2157,8 @@ rules:
         operand:
           node: Constant
           value: $index
-    when: index is integer and node.ctx.__class__.__name__ == "Load" and value | kind not in ["dict", "map"]
-    output: '{{ "util._py" | use("py") }}.getitem({{ value | emit }}, -{{ index }})'
+    when: index is integer and value | kind not in ["dict", "map"]
+    output: '{% if node.ctx.__class__.__name__ == "Load" %}{{ "util._py" | use("py") }}.getitem({{ value | emit }}, -{{ index }}){% else %}{{ value | emit }}[{{ value | emit }}.length - {{ index }}]{% endif %}'
   - input:
       node: Subscript
       value: $value
@@ -2194,7 +2233,8 @@ rules:
       op:
         node: Add
       right: $right
-    when: left | kind == "array" or right | kind == "array"
+    # A list plus a value that may be a numpy array (an unknown subscript in a numpy module) adds at runtime.
+    when: (left | kind == "array" or right | kind == "array") and not (left | kind == "ndarray" or right | kind == "ndarray" or overloading and (left | kind == "unknown" or right | kind == "unknown"))
     output: '[...{{ left | emit }}, ...{{ right | emit }}]'
   - input:
       node: BinOp
@@ -2202,7 +2242,7 @@ rules:
       op:
         node: Add
       right: $right
-    when: left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant" and left.__class__.__name__ not in ["JoinedStr", "BinOp"] and right.__class__.__name__ != "JoinedStr"
+    when: left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant" and (left.__class__.__name__ not in ["JoinedStr", "BinOp"] or left | kind in ["array", "ndarray"]) and right.__class__.__name__ != "JoinedStr"
     output: '{{ "util._py" | use("py") }}.add({{ left | emit }}, {{ right | emit }})'
   - input:
       node: BinOp
@@ -2240,6 +2280,9 @@ rules:
   - input: *id001
     when: op.__class__.__name__ in ["Is", "IsNot", "Eq", "NotEq"] and right.value is defined and right.value is none and right.__class__.__name__ == "Constant"
     output: ({{ left | emit }} {{ "==" if op.__class__.__name__ in ["Is", "Eq"] else "!=" }} null)
+  - input: *id001
+    when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind == "ndarray" or right | kind == "ndarray")
+    output: '{{ "util._py" | use("py") }}.{{ {"Lt": "lt", "LtE": "le", "Gt": "gt", "GtE": "ge"}[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
   - input: *id001
     when: op.__class__.__name__ in ["Eq", "NotEq"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant" and (left | kind in ["ndarray", "pyobject"] or right | kind in ["ndarray", "pyobject"] or overloading and left | kind == "unknown" and right | kind == "unknown")
     output: '{{ "!" if op.__class__.__name__ == "NotEq" else "" }}{{ "util._py" | use("py") }}.eq({{ left | emit }}, {{ right | emit }})'
@@ -2362,6 +2405,10 @@ annotation_kinds:
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module in runtime_kinds
     output: '{% set path = value | runtime_path %}{{ "ndarray" if path.module == "numpy" and path.parts[-1] in ["ndarray", "NDArray", "array"] else "number" if path.module == "numpy" else runtime_kinds[path.module] }}'
+  # Instances of util and api classes, so their method calls bind to the method's parameters.
+  - input: $value
+    when: value.__class__.__name__ in ["Name", "Attribute"] and value | is_class
+    output: class:{{ value | resolve }}
   - input:
       node: Name
       id: $name
@@ -2506,6 +2553,11 @@ inference:
         id: $name
     when: name in classes
     output: class:{{ name }}
+  - input:
+      node: Call
+      func: $callee
+    when: callee.__class__.__name__ in ["Name", "Attribute"] and callee | is_class
+    output: class:{{ callee | resolve }}
   - input:
       node: Call
       func:
