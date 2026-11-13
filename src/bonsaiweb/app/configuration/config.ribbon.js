@@ -16,6 +16,7 @@ export const workModes = [
 	{ id: 'Navigate', name: 'Navigate' },
 	{ id: 'View', name: 'View' },
 	{ id: 'Planning', name: 'Planning' },
+	{ id: 'Costing', name: 'Costing' },
 	{ id: 'Panels', name: 'Panels' },
 ];
 
@@ -81,6 +82,14 @@ export const ribbonButtons = [
 	group( 'RG_PlanningObjects', 'Objects', 'Planning', [
 		button( 'RB_PlanningFocus', 'Focus', 'center_focus_strong', 'Viewer.FrameSelection' ),
 		button( 'RB_PlanningShowAll', 'Show all', 'visibility', 'Viewer.ShowAll' ),
+	] ),
+	group( 'RG_Costing', 'Cost', 'Costing', [
+		button( 'RB_CostSchedule', 'Cost sheet', 'payments', 'Cost.Toggle' ),
+		button( 'RB_ElementCost', 'Element cost', 'receipt_long', 'Cost.ToggleElement' ),
+	] ),
+	group( 'RG_CostingObjects', 'Objects', 'Costing', [
+		button( 'RB_CostingFocus', 'Focus', 'center_focus_strong', 'Viewer.FrameSelection' ),
+		button( 'RB_CostingShowAll', 'Show all', 'visibility', 'Viewer.ShowAll' ),
 	] ),
 
 	group( 'RG_Views', 'Views', 'Navigate', [

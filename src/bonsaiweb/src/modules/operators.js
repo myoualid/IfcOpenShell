@@ -1,4 +1,5 @@
 import ops from '../ops.js';
+import cost from './bim.cost/operators.js';
 import sequence from './bim.sequence/operators.js';
 import terminal from './code.terminal/operators.js';
 import dropbox from './dropbox/operators.js';
@@ -19,6 +20,7 @@ export const operatorModules = new Map( [
 	[ 'spatial-hierarchy', spatial ],
 	[ 'properties', properties ],
 	[ 'bim.sequence', sequence ],
+	[ 'bim.cost', cost ],
 	[ 'viewer', viewer ],
 	[ 'profiling', profiling ],
 	[ 'code.terminal', terminal ],

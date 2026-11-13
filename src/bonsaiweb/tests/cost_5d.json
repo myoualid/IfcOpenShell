@@ -1,0 +1,420 @@
+{
+	"currency": "EUR",
+	"schedules": [
+		{
+			"id": 16,
+			"name": "Rates",
+			"predefinedType": "SCHEDULEOFRATES",
+			"roots": [
+				17
+			],
+			"items": [
+				{
+					"id": 17,
+					"identification": "R1",
+					"name": "Kerb per 2 m",
+					"nested": [],
+					"quantity": null,
+					"unitSymbol": "-",
+					"values": [
+						{
+							"category": null,
+							"applied": 30.0,
+							"formula": "30.0"
+						}
+					],
+					"appliedValue": 30.0,
+					"unitBasis": 2.0,
+					"totalCost": 15.0,
+					"rateItem": null,
+					"products": [],
+					"deepProducts": []
+				}
+			]
+		},
+		{
+			"id": 21,
+			"name": "Bill",
+			"predefinedType": "PRICEDBILLOFQUANTITIES",
+			"roots": [
+				22
+			],
+			"items": [
+				{
+					"id": 22,
+					"identification": "B",
+					"name": "Building",
+					"nested": [
+						25,
+						33,
+						39,
+						43,
+						47
+					],
+					"quantity": null,
+					"unitSymbol": "-",
+					"values": [
+						{
+							"category": "*",
+							"applied": 16242.5,
+							"formula": "SUM()"
+						}
+					],
+					"appliedValue": 16242.5,
+					"unitBasis": null,
+					"totalCost": 16242.5,
+					"rateItem": null,
+					"products": [],
+					"deepProducts": [
+						"0CsBL1gtH5zeWqEPD1dJ2Y",
+						"18Hc58mInDSQVP48PA$gOa",
+						"2CnZOZ1rLFRP4lw6ok6PtF",
+						"3oy3Y0YhX0jPBzx1T3WEp4"
+					]
+				},
+				{
+					"id": 25,
+					"identification": "B.1",
+					"name": "Substructure",
+					"nested": [
+						28
+					],
+					"quantity": null,
+					"unitSymbol": "-",
+					"values": [
+						{
+							"category": "*",
+							"applied": 10242.5,
+							"formula": "SUM()"
+						}
+					],
+					"appliedValue": 10242.5,
+					"unitBasis": null,
+					"totalCost": 10242.5,
+					"rateItem": null,
+					"products": [],
+					"deepProducts": [
+						"2CnZOZ1rLFRP4lw6ok6PtF"
+					]
+				},
+				{
+					"id": 28,
+					"identification": "B.1.1",
+					"name": "Ground slab",
+					"nested": [],
+					"quantity": 120.5,
+					"unitSymbol": "m2",
+					"values": [
+						{
+							"category": null,
+							"applied": 85.0,
+							"formula": "85.0"
+						}
+					],
+					"appliedValue": 85.0,
+					"unitBasis": null,
+					"totalCost": 10242.5,
+					"rateItem": null,
+					"products": [
+						"2CnZOZ1rLFRP4lw6ok6PtF"
+					],
+					"deepProducts": [
+						"2CnZOZ1rLFRP4lw6ok6PtF"
+					]
+				},
+				{
+					"id": 33,
+					"identification": "B.2",
+					"name": "Walls",
+					"nested": [],
+					"quantity": 18.0,
+					"unitSymbol": "m3",
+					"values": [
+						{
+							"category": "Material",
+							"applied": 210.0,
+							"formula": "Material(210.0)"
+						},
+						{
+							"category": "Labour",
+							"applied": 90.0,
+							"formula": "Labour(90.0)"
+						}
+					],
+					"appliedValue": 300.0,
+					"unitBasis": null,
+					"totalCost": 5400.0,
+					"rateItem": null,
+					"products": [
+						"18Hc58mInDSQVP48PA$gOa",
+						"3oy3Y0YhX0jPBzx1T3WEp4"
+					],
+					"deepProducts": [
+						"18Hc58mInDSQVP48PA$gOa",
+						"3oy3Y0YhX0jPBzx1T3WEp4"
+					]
+				},
+				{
+					"id": 39,
+					"identification": "B.3",
+					"name": "Kerbs",
+					"nested": [],
+					"quantity": 40.0,
+					"unitSymbol": "mm",
+					"values": [
+						{
+							"category": null,
+							"applied": 30.0,
+							"formula": "30.0"
+						}
+					],
+					"appliedValue": 30.0,
+					"unitBasis": 2.0,
+					"totalCost": 600.0,
+					"rateItem": null,
+					"products": [],
+					"deepProducts": []
+				},
+				{
+					"id": 43,
+					"identification": "B.4",
+					"name": "Doors",
+					"nested": [],
+					"quantity": 3.0,
+					"unitSymbol": "U",
+					"values": [
+						{
+							"category": "",
+							"applied": 0.0,
+							"formula": "450.0"
+						}
+					],
+					"appliedValue": 0.0,
+					"unitBasis": null,
+					"totalCost": 0.0,
+					"rateItem": null,
+					"products": [
+						"0CsBL1gtH5zeWqEPD1dJ2Y"
+					],
+					"deepProducts": [
+						"0CsBL1gtH5zeWqEPD1dJ2Y"
+					]
+				},
+				{
+					"id": 47,
+					"identification": "B.5",
+					"name": "Provisional",
+					"nested": [],
+					"quantity": null,
+					"unitSymbol": "-",
+					"values": [],
+					"appliedValue": 0.0,
+					"unitBasis": null,
+					"totalCost": 0.0,
+					"rateItem": null,
+					"products": [],
+					"deepProducts": []
+				}
+			]
+		},
+		{
+			"id": 48,
+			"name": "Budget",
+			"predefinedType": "BUDGET",
+			"roots": [
+				49
+			],
+			"items": [
+				{
+					"id": 49,
+					"identification": "P",
+					"name": "Package with tax",
+					"nested": [
+						56,
+						60
+					],
+					"quantity": null,
+					"unitSymbol": "-",
+					"values": [
+						{
+							"category": null,
+							"applied": 20100.0,
+							"formula": "Labour()+(Material()*1.2)"
+						}
+					],
+					"appliedValue": 20100.0,
+					"unitBasis": null,
+					"totalCost": 20100.0,
+					"rateItem": null,
+					"products": [],
+					"deepProducts": []
+				},
+				{
+					"id": 56,
+					"identification": "P.1",
+					"name": "Labour",
+					"nested": [],
+					"quantity": 6.0,
+					"unitSymbol": "-",
+					"values": [
+						{
+							"category": "Labour",
+							"applied": 350.0,
+							"formula": "Labour(350.0)"
+						}
+					],
+					"appliedValue": 350.0,
+					"unitBasis": null,
+					"totalCost": 2100.0,
+					"rateItem": null,
+					"products": [],
+					"deepProducts": []
+				},
+				{
+					"id": 60,
+					"identification": "P.2",
+					"name": "Material",
+					"nested": [],
+					"quantity": 20.0,
+					"unitSymbol": "m2",
+					"values": [
+						{
+							"category": "Material",
+							"applied": 750.0,
+							"formula": "Material(750.0)"
+						}
+					],
+					"appliedValue": 750.0,
+					"unitBasis": null,
+					"totalCost": 15000.0,
+					"rateItem": null,
+					"products": [],
+					"deepProducts": []
+				}
+			]
+		}
+	],
+	"products": {
+		"2CnZOZ1rLFRP4lw6ok6PtF": [
+			28
+		],
+		"3oy3Y0YhX0jPBzx1T3WEp4": [
+			33
+		],
+		"18Hc58mInDSQVP48PA$gOa": [
+			33
+		],
+		"0CsBL1gtH5zeWqEPD1dJ2Y": [
+			43
+		]
+	},
+	"authoring": {
+		"schedules": [
+			"Bill",
+			"Rates",
+			"Tender pricing"
+		],
+		"items": [
+			{
+				"id": 64,
+				"identification": "T",
+				"name": "Works",
+				"nested": [
+					67,
+					74,
+					77
+				],
+				"quantity": null,
+				"unitSymbol": "-",
+				"values": [
+					{
+						"category": "*",
+						"applied": 3456.25,
+						"formula": "SUM()"
+					}
+				],
+				"appliedValue": 3456.25,
+				"unitBasis": null,
+				"totalCost": 3456.25,
+				"rateItem": null,
+				"products": [],
+				"deepProducts": [
+					"3oy3Y0YhX0jPBzx1T3WEp4"
+				],
+				"productNames": []
+			},
+			{
+				"id": 67,
+				"identification": "T.1",
+				"name": "Concrete",
+				"nested": [],
+				"quantity": 12.5,
+				"unitSymbol": "m3",
+				"values": [
+					{
+						"category": null,
+						"applied": 120.5,
+						"formula": "100.0+20.5"
+					}
+				],
+				"appliedValue": 120.5,
+				"unitBasis": null,
+				"totalCost": 1506.25,
+				"rateItem": null,
+				"products": [
+					"3oy3Y0YhX0jPBzx1T3WEp4"
+				],
+				"deepProducts": [
+					"3oy3Y0YhX0jPBzx1T3WEp4"
+				],
+				"productNames": [
+					"Wall 1"
+				]
+			},
+			{
+				"id": 74,
+				"identification": "T.2",
+				"name": "Kerbs",
+				"nested": [],
+				"quantity": 40.0,
+				"unitSymbol": "mm",
+				"values": [
+					{
+						"category": null,
+						"applied": 30.0,
+						"formula": "30.0"
+					}
+				],
+				"appliedValue": 30.0,
+				"unitBasis": 2.0,
+				"totalCost": 600.0,
+				"rateItem": 17,
+				"products": [],
+				"deepProducts": [],
+				"productNames": []
+			},
+			{
+				"id": 77,
+				"identification": "T.3",
+				"name": "Doors",
+				"nested": [],
+				"quantity": 3.0,
+				"unitSymbol": "U",
+				"values": [
+					{
+						"category": null,
+						"applied": 450.0,
+						"formula": "Material(300.0)+Labour(150.0)"
+					}
+				],
+				"appliedValue": 450.0,
+				"unitBasis": null,
+				"totalCost": 1350.0,
+				"rateItem": null,
+				"products": [],
+				"deepProducts": [],
+				"productNames": []
+			}
+		]
+	}
+}
