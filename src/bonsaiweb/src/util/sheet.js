@@ -94,12 +94,74 @@ export function bindPanelToggle( signals, id, getPanel ) {
 
 }
 
-// EDITORS — form controls for the schedule editors. Inputs commit on change
+// Edit a sheet cell in place, as in a spreadsheet. Enter or leaving the
+// cell commits, Escape puts the old value back, and Tab / Shift+Tab commit
+// and ask to move to the next / previous cell. `onCommit( text, move )`
+// runs only when the text changed; otherwise `onMove( move )` does when
+// there is a move. `move` is 1, -1 or 0.
+export function editCell( cell, { value = '', type = 'text', placeholder = '', onCommit, onMove = () => {} } ) {
+
+	const input = element( 'input', 'bonsai-sheet-input' );
+	input.type = type;
+	input.value = value;
+	if ( type === 'number' ) input.step = 'any';
+	if ( placeholder ) input.placeholder = placeholder;
+	input.setAttribute( 'aria-label', placeholder || 'Edit cell' );
+
+	const old = [ ...cell.childNodes ];
+	cell.classList.add( 'is-editing' );
+	cell.replaceChildren( input );
+	input.focus();
+	if ( type !== 'date' ) input.select();
+
+	let done = false;
+	const finish = ( commit, move = 0 ) => {
+
+		if ( done ) return;
+		done = true;
+		const text = input.value;
+		cell.classList.remove( 'is-editing' );
+		if ( input.isConnected ) cell.replaceChildren( ...old );
+		if ( commit && text !== String( value ) ) onCommit( text, move );
+		else if ( move ) onMove( move );
+
+	};
+
+	input.addEventListener( 'keydown', ( event ) => {
+
+		event.stopPropagation();
+		if ( event.key === 'Enter' ) {
+
+			event.preventDefault();
+			finish( true );
+			cell.closest( '[tabindex]' )?.focus();
+
+		} else if ( event.key === 'Escape' ) {
+
+			event.preventDefault();
+			finish( false );
+			cell.closest( '[tabindex]' )?.focus();
+
+		} else if ( event.key === 'Tab' ) {
+
+			event.preventDefault();
+			finish( true, event.shiftKey ? - 1 : 1 );
+
+		}
+
+	} );
+	input.addEventListener( 'blur', () => finish( true ) );
+	for ( const name of [ 'click', 'dblclick', 'mousedown' ] ) input.addEventListener( name, ( event ) => event.stopPropagation() );
+
+}
+
+// FORMS — controls for the schedule dialogs. Inputs report on change
 // (Enter or leaving the field), not on every keystroke.
 
-export function textButton( label, icon, onClick ) {
+export function textButton( label, icon, onClick, { title = '' } = {} ) {
 
 	const button = new Button( label );
+	if ( title ) button.dom.title = title;
 	if ( icon ) button.setIcon( icon );
 	button.dom.type = 'button';
 	button.addClass( 'bonsai-sheet-button' );
@@ -110,6 +172,14 @@ export function textButton( label, icon, onClick ) {
 
 	} );
 	return button;
+
+}
+
+// Change a textButton's label, keeping its icon.
+export function setButtonLabel( button, label ) {
+
+	const icon = button.dom.querySelector( '.Icon' );
+	button.dom.replaceChildren( ...( icon ? [ icon ] : [] ), label );
 
 }
 
