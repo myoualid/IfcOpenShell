@@ -104,6 +104,7 @@ struct FrameUniforms {
     float sky_zenith[4];       // rgb = linear zenith colour, w = sky on (0/1)
     float sky_horizon[4];      // rgb = linear horizon colour
     float sky_nadir[4];        // rgb = linear colour below the horizon
+    float schedule[4];         // x = time, y = on (0/1), z = ghost alpha, w = drop height
 };
 static_assert(sizeof(FrameUniforms)
                   == 16 * sizeof(float)
@@ -115,7 +116,7 @@ static_assert(sizeof(FrameUniforms)
                    + 16 * sizeof(float)
                    + 4 * 4 * sizeof(float)
                    + 16 * sizeof(float)
-                   + 3 * 4 * sizeof(float),
+                   + 4 * 4 * sizeof(float),
               "FrameUniforms must match WGSL layout");
 
 class ViewportCore {
@@ -911,6 +912,15 @@ public:
 
     // Number of active section planes (0..kMaxSectionPlanes).
     int sectionPlaneCount() const { return int(section_planes_.size()); }
+    const std::vector<SectionPlane>& sectionPlanes() const { return section_planes_; }
+
+    // Replace every section plane at once (up to kMaxSectionPlanes), each
+    // cutting away the side its normal points to. For scripted cutaways: a
+    // section box is six planes with outward normals, and moving them every
+    // frame animates the cut. `show_gizmo` false hides the planes' arrows,
+    // which a presentation does not want; the interactive section tool turns
+    // them back on.
+    void setSectionPlanes(const std::vector<SectionPlane>& planes, bool show_gizmo);
 
     // The selected section plane (drawn highlighted; the target of a delete), or
     // -1 for none. Index is kept valid as planes are added/removed/cleared.
@@ -1201,6 +1211,58 @@ public:
     // Same upload path as setObjectsColor.
     void setObjectsMaterial(const std::vector<std::uint32_t>& object_ids, std::uint32_t material);
     void clearObjectMaterials();
+
+    // Move objects by a world offset (metres) without touching their
+    // placement: an animation aid (an element lowered into place, a storey
+    // lifted apart). Held per object id in a GPU buffer the vertex shaders
+    // add, so moving thousands of objects every frame costs one buffer
+    // write, not an instance re-upload. Culling, picking and the shadow fit
+    // still use the unmoved bounds, so keep offsets modest or frame the
+    // moved result yourself.
+    void setObjectsOffset(const std::vector<std::uint32_t>& object_ids,
+                          float dx, float dy, float dz);
+    void clearObjectOffsets();
+
+    // ---- 4D construction schedule -------------------------------------------
+    //
+    // Each scheduled object has a start and a finish (any time unit; days in
+    // practice) and a kind. One time value then puts every object in a phase:
+    //
+    //   kind        before start        start .. finish     after finish
+    //   Construct   hidden (or ghost)   active              built (normal)
+    //   Demolish    normal              active              hidden
+    //   Temporary   hidden              active              hidden
+    //
+    // Active objects take `color` (rgba8, alpha = tint strength; 0 keeps the
+    // model colour). With a ghost alpha above 0, construction not yet started
+    // shows as a translucent ghost instead of nothing. The phase is worked
+    // out on the GPU from the time uniform, so scrubbing the time is one
+    // uniform write; the cull is redone only when an object crosses a start
+    // or a finish. Unscheduled objects are not affected.
+    //
+    // While active, an object can also move: Grow reveals it from its base
+    // up as the task runs (a demolition shrinks from the top down); Drop
+    // lowers it into place from `drop_height` above, easing in.
+    enum class ScheduleKind : std::uint8_t { None = 0, Construct = 1, Demolish = 2, Temporary = 3 };
+    enum class ScheduleEffect : std::uint8_t { None = 0, Grow = 1, Drop = 2 };
+    struct ScheduleEntry {
+        std::uint32_t object_id = 0;
+        float         start     = 0.0f;
+        float         finish    = 0.0f;
+        ScheduleKind  kind      = ScheduleKind::Construct;
+        std::uint32_t color     = 0;   // rgba8 like setObjectsColor
+        ScheduleEffect effect   = ScheduleEffect::None;
+    };
+    void setSchedule(const std::vector<ScheduleEntry>& entries);
+    void clearSchedule();
+    void setScheduleTime(float t);
+    float scheduleTime() const { return schedule_time_; }
+    struct ScheduleOptions {
+        float ghost_alpha = 0.0f;   // 0 = hide construction not yet started
+        float drop_height = 6.0f;   // metres a Drop starts above its place
+    };
+    void setScheduleOptions(const ScheduleOptions& o);
+    const ScheduleOptions& scheduleOptions() const { return schedule_options_; }
     // Global X-ray: translucent everything. Flips the frame uniform's alpha cap;
     // the cull classifier routes every instance through the transparent pass.
     void toggleXray();
@@ -1820,6 +1882,34 @@ private:
     void buildFrameBindGroup();
     WGPUBuffer    selection_flags_buffer_   = nullptr;
     uint32_t      selection_flags_capacity_ = 0;  // u32 entries
+
+    // Per-object animation state, indexed by object id like the selection
+    // flags and sized with them. Must match the WGSL ObjectState.
+    struct ObjectStateGpu {
+        float         offset[4];   // xyz = world offset (metres)
+        float         times[4];    // x = start, y = finish, z/w = object bounds in z
+        std::uint32_t info[4];     // x = kind | effect << 4, y = active colour (rgba8)
+    };
+    static_assert(sizeof(ObjectStateGpu) == 48, "ObjectStateGpu must match the WGSL ObjectState");
+
+    // Schedule phase per object id, as the cull needs it: the GPU works out
+    // the same phase from the same time.
+    enum : std::uint8_t { kPhaseNormal = 0, kPhaseHidden = 1, kPhaseGhost = 2, kPhaseActive = 3 };
+    std::vector<std::uint8_t> schedule_phase_;
+    bool                      schedule_on_   = false;
+    bool                      schedule_moves_ = false;   // some entry grows or drops
+    float                     schedule_time_ = 0.0f;
+    ScheduleOptions           schedule_options_;
+    std::uint8_t schedulePhaseOf(const ObjectStateGpu& s) const;
+    // Recompute schedule_phase_; true when any object changed phase.
+    bool updateSchedulePhases();
+    std::uint8_t schedulePhase(std::uint32_t object_id) const {
+        return object_id < schedule_phase_.size() ? schedule_phase_[object_id] : kPhaseNormal;
+    }
+    WGPUBuffer                  object_state_buffer_ = nullptr;
+    std::vector<ObjectStateGpu> object_state_;
+    bool                        object_state_dirty_  = false;
+    void flushObjectState();
     std::vector<uint32_t> selection_flags_scratch_;
 
     // X-ray marquee hit bits: one bit per object_id, written by fs_boxpick and
@@ -1836,6 +1926,7 @@ private:
     // removeSectionPlane (still Qt-bound — they wire into the input
     // path). Reading happens here.
     std::vector<SectionPlane> section_planes_;
+    bool                      section_gizmo_visible_ = true;
     // Section-gizmo drag state (shared): which plane, its press-time origin, and
     // the press point (logical px) so update can slide it along the normal.
     bool            section_drag_active_       = false;

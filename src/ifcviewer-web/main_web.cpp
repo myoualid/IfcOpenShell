@@ -1112,6 +1112,44 @@ extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_material_c(const std::uint32_t* id
 extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_clear_materials_c() {
     if (g_app && g_app->ready) g_app->core.clearObjectMaterials();
 }
+// World offset in metres; see ViewportCore::setObjectsOffset.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_offset_c(const std::uint32_t* ids, int n,
+                                                       float dx, float dy, float dz) {
+    if (!g_app || !g_app->ready) return;
+    g_app->core.setObjectsOffset(idsFrom(ids, n), dx, dy, dz);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_clear_offsets_c() {
+    if (g_app && g_app->ready) g_app->core.clearObjectOffsets();
+}
+// 4D schedule: `count` records of five 32-bit words each:
+//   object id (u32), start (f32), finish (f32), kind | effect << 4 (u32),
+//   colour (rgba8 u32).
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_schedule_c(const std::uint32_t* words, int count) {
+    if (!g_app || !g_app->ready) return;
+    std::vector<ViewportCore::ScheduleEntry> entries(std::size_t(std::max(count, 0)));
+    for (int i = 0; i < count; ++i) {
+        const std::uint32_t* w = words + std::size_t(i) * 5;
+        ViewportCore::ScheduleEntry& e = entries[std::size_t(i)];
+        e.object_id = w[0];
+        std::memcpy(&e.start, &w[1], 4);
+        std::memcpy(&e.finish, &w[2], 4);
+        e.kind   = ViewportCore::ScheduleKind(std::min<std::uint32_t>(w[3] & 0xFu, 3u));
+        e.effect = ViewportCore::ScheduleEffect(std::min<std::uint32_t>((w[3] >> 4) & 0xFu, 2u));
+        e.color  = w[4];
+    }
+    g_app->core.setSchedule(entries);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_schedule_time_c(float t) {
+    if (g_app && g_app->ready) g_app->core.setScheduleTime(t);
+}
+// A negative value keeps that option as it is.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_schedule_options_c(float ghost_alpha, float drop_height) {
+    if (!g_app || !g_app->ready) return;
+    ViewportCore::ScheduleOptions o = g_app->core.scheduleOptions();
+    if (ghost_alpha >= 0.0f) o.ghost_alpha = ghost_alpha;
+    if (drop_height >= 0.0f) o.drop_height = drop_height;
+    g_app->core.setScheduleOptions(o);
+}
 
 // ---- Federation ---------------------------------------------------------
 //
@@ -1265,6 +1303,32 @@ extern "C" EMSCRIPTEN_KEEPALIVE void toggle_section_c() {
 }
 extern "C" EMSCRIPTEN_KEEPALIVE void clear_section_c() {
     if (g_app && g_app->ready) { g_app->core.clearSectionPlanes(); g_app->host.requestFrame(); }
+}
+// `count` planes of four floats (nx, ny, nz, d): each cuts away where
+// dot(n, p) + d > 0. See ViewportCore::setSectionPlanes.
+extern "C" EMSCRIPTEN_KEEPALIVE void ifcv_set_section_planes_c(const float* v, int count,
+                                                               int show_gizmo) {
+    if (!g_app || !g_app->ready) return;
+    std::vector<SectionPlane> planes(std::size_t(std::max(count, 0)));
+    for (int i = 0; i < count; ++i) {
+        planes[std::size_t(i)].n = Eigen::Vector3f(v[i * 4], v[i * 4 + 1], v[i * 4 + 2]);
+        planes[std::size_t(i)].d = v[i * 4 + 3];
+    }
+    g_app->core.setSectionPlanes(planes, show_gizmo != 0);
+    g_app->host.requestFrame();
+}
+// Up to six planes as (nx, ny, nz, d) into `out`; returns the count.
+extern "C" EMSCRIPTEN_KEEPALIVE int ifcv_get_section_planes_c(float* out) {
+    if (!g_app || !g_app->ready) return 0;
+    const auto& planes = g_app->core.sectionPlanes();
+    const int n = std::min<int>(int(planes.size()), kMaxSectionPlanes);
+    for (int i = 0; i < n; ++i) {
+        out[i * 4]     = planes[std::size_t(i)].n.x();
+        out[i * 4 + 1] = planes[std::size_t(i)].n.y();
+        out[i * 4 + 2] = planes[std::size_t(i)].n.z();
+        out[i * 4 + 3] = planes[std::size_t(i)].d;
+    }
+    return n;
 }
 extern "C" EMSCRIPTEN_KEEPALIVE int section_is_active_c() {
     return (g_app && g_app->ready && g_app->section_tool_active) ? 1 : 0;

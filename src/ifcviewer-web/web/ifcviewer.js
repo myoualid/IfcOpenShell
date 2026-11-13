@@ -959,6 +959,17 @@
     };
 
     // Float-array round trips for the render settings (see main_web.cpp).
+    // Schedule times in days: Dates and date strings become days since the
+    // Unix epoch; numbers are taken as days already. setSchedule subtracts the
+    // earliest start so the wasm side keeps float precision.
+    let scheduleOrigin = 0;
+    function scheduleDay(t) {
+      if (typeof t === 'number') return t;
+      const ms = (t instanceof Date ? t : new Date(t)).getTime();
+      if (!isFinite(ms)) throw new Error('bad schedule date: ' + t);
+      return ms / 86400000;
+    }
+
     function readFloats(fn, n) {
       const ptr = Module._malloc(n * 4);
       try {
@@ -1594,6 +1605,132 @@
         });
       },
       clearMaterials: function () { Module._ifcv_clear_materials_c(); },
+
+      // Move objects by a world offset [dx, dy, dz] in metres (null = back in
+      // place) without changing their placement. Cheap enough to call every
+      // frame for many objects. Culling and picking keep the unmoved bounds.
+      setOffset: function (x, offset) {
+        const o = offset || [0, 0, 0];
+        withIdArray(resolveIds(x), function (ptr, n) {
+          Module._ifcv_set_offset_c(ptr, n, +o[0] || 0, +o[1] || 0, +o[2] || 0);
+        });
+      },
+      clearOffsets: function () { Module._ifcv_clear_offsets_c(); },
+
+      // ---- Scripted section planes ----------------------------------------------
+
+      // Replace the section planes (up to six). Each is { normal, point } or
+      // { normal, offset }: it cuts away the side `normal` points to, through
+      // `point` (or where dot(normal, p) + offset = 0). Pass [] to clear.
+      // Options: { gizmo } shows the planes' arrows (default false).
+      setSectionPlanes: function (planes, options) {
+        planes = (planes || []).slice(0, 6);
+        const v = new Float32Array(Math.max(planes.length, 1) * 4);
+        planes.forEach(function (p, i) {
+          const n = p.normal;
+          const d = p.point !== undefined
+            ? -(n[0] * p.point[0] + n[1] * p.point[1] + n[2] * p.point[2])
+            : +(p.offset || 0);
+          v.set([+n[0], +n[1], +n[2], d], i * 4);
+        });
+        const ptr = Module._malloc(v.byteLength);
+        try {
+          Module.HEAPF32.set(v, ptr >>> 2);
+          Module._ifcv_set_section_planes_c(ptr, planes.length, options && options.gizmo ? 1 : 0);
+        } finally {
+          Module._free(ptr);
+        }
+      },
+      getSectionPlanes: function () {
+        const ptr = Module._malloc(24 * 4);
+        try {
+          const n = Module._ifcv_get_section_planes_c(ptr);
+          const v = Module.HEAPF32.subarray(ptr >>> 2, (ptr >>> 2) + n * 4);
+          const out = [];
+          for (let i = 0; i < n; i++) {
+            out.push({ normal: Array.from(v.subarray(i * 4, i * 4 + 3)), offset: v[i * 4 + 3] });
+          }
+          return out;
+        } finally {
+          Module._free(ptr);
+        }
+      },
+      // Keep only what lies inside the box [min, max] (world, metres): six
+      // planes. Animate the box to sweep a cutaway through the model.
+      setSectionBox: function (min, max, options) {
+        if (!min || !max) { api.setSectionPlanes([], options); return; }
+        api.setSectionPlanes([
+          { normal: [ 1, 0, 0], point: max }, { normal: [-1, 0, 0], point: min },
+          { normal: [ 0, 1, 0], point: max }, { normal: [ 0, -1, 0], point: min },
+          { normal: [ 0, 0, 1], point: max }, { normal: [ 0, 0, -1], point: min },
+        ], options);
+      },
+
+      // ---- 4D schedule -------------------------------------------------------
+
+      // Put objects on a timeline. `tasks` is a list of
+      //   { ids, start, finish, kind, color, effect }
+      // ids: object ids or GlobalIds (as setColor takes). start / finish: Dates,
+      // date strings or plain numbers (days). kind: 'construct' (default),
+      // 'demolish' or 'temporary'. color: the tint while the task runs, as
+      // setColor takes; its alpha is the tint strength; null keeps the model
+      // colour. Defaults per kind: amber, red, grey. effect: 'none' (default),
+      // 'grow' (rises from its base while the task runs; a demolition sinks
+      // from the top) or 'drop' (lowered into place from dropHeight above).
+      // Then setScheduleTime(t) shows the building at t:
+      //   construct  hidden (or ghosted) before, tinted during, built after
+      //   demolish   normal before, tinted during, gone after
+      //   temporary  there only while it runs
+      // Options: { ghost, dropHeight }: the alpha of construction not yet
+      // started (0 hides it) and how high a 'drop' starts, in metres.
+      // Returns { start, finish } of the whole schedule.
+      setSchedule: function (tasks, options) {
+        const KINDS = { construct: 1, demolish: 2, temporary: 3 };
+        const EFFECTS = { none: 0, grow: 1, drop: 2 };
+        const DEFAULT_COLOR = { 1: '#E0A33AE6', 2: '#C0392BE6', 3: '#7F8C8DE6' };
+        let lo = Infinity, hi = -Infinity;
+        const recs = [];
+        (tasks || []).forEach(function (t) {
+          const kind = KINDS[t.kind || 'construct'];
+          if (!kind) throw new Error('unknown schedule kind: ' + t.kind);
+          const effect = EFFECTS[t.effect || 'none'];
+          if (effect === undefined) throw new Error('unknown schedule effect: ' + t.effect);
+          const s = scheduleDay(t.start), f = scheduleDay(t.finish);
+          lo = Math.min(lo, s); hi = Math.max(hi, f);
+          const color = t.color === null ? 0 : packColor(t.color || DEFAULT_COLOR[kind]);
+          resolveIds(t.ids).forEach(function (id) { recs.push([id, s, f, kind | (effect << 4), color]); });
+        });
+        scheduleOrigin = isFinite(lo) ? lo : 0;
+        const buf = new ArrayBuffer(recs.length * 20);
+        const u32 = new Uint32Array(buf), f32 = new Float32Array(buf);
+        recs.forEach(function (r, i) {
+          u32[i * 5] = r[0] >>> 0;
+          f32[i * 5 + 1] = r[1] - scheduleOrigin;
+          f32[i * 5 + 2] = r[2] - scheduleOrigin;
+          u32[i * 5 + 3] = r[3];
+          u32[i * 5 + 4] = r[4] >>> 0;
+        });
+        const ptr = Module._malloc(Math.max(buf.byteLength, 4));
+        try {
+          Module.HEAPU8.set(new Uint8Array(buf), ptr);
+          Module._ifcv_set_schedule_c(ptr, recs.length);
+        } finally {
+          Module._free(ptr);
+        }
+        if (options) api.setScheduleOptions(options);
+        return { start: lo, finish: hi };
+      },
+      clearSchedule: function () { Module._ifcv_set_schedule_c(0, 0); },
+      // Show the schedule at `t` (a Date, a date string or days, as setSchedule
+      // took them). Cheap enough to call every frame.
+      setScheduleTime: function (t) {
+        Module._ifcv_set_schedule_time_c(scheduleDay(t) - scheduleOrigin);
+      },
+      setScheduleOptions: function (o) {
+        o = o || {};
+        Module._ifcv_set_schedule_options_c(o.ghost !== undefined ? +o.ghost : -1,
+                                            o.dropHeight !== undefined ? +o.dropHeight : -1);
+      },
 
       // ---- Scene -----------------------------------------------------------
 

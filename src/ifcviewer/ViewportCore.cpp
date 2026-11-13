@@ -1040,6 +1040,8 @@ struct FrameUniforms {
     sky_zenith:    vec4<f32>,
     sky_horizon:   vec4<f32>,
     sky_nadir:     vec4<f32>,
+    // 4D schedule: x = time, y = on, z = ghost alpha, w = drop height.
+    schedule:      vec4<f32>,
 };
 
 // Returns true if `world` lies on the positive (clipped-away) side of any
@@ -1083,6 +1085,67 @@ struct PerModel {
 // Only the box-pick pipeline writes it; the layout entry is FRAGMENT-visible
 // only, because WebGPU forbids a read_write storage buffer in the vertex stage.
 @group(0) @binding(2) var<storage, read_write> hit_flags: array<atomic<u32>>;
+
+// Per-object animation state, indexed by object id (setObjectsOffset).
+struct ObjectState {
+    offset: vec4<f32>,
+    // 4D schedule: x = start, y = finish, z/w = the object's bounds in z.
+    times:  vec4<f32>,
+    // x = kind (bits 0-3: 0 none, 1 construct, 2 demolish, 3 temporary)
+    //     | effect << 4 (0 none, 1 grow, 2 drop),
+    // y = active colour (rgba8, alpha = tint strength).
+    info:   vec4<u32>,
+};
+@group(0) @binding(5) var<storage, read> object_state: array<ObjectState>;
+
+// Schedule phase at the current time: 0 normal, 1 hidden, 2 ghost, 3 active.
+// Mirrors ViewportCore::schedulePhaseOf, which the cull uses.
+fn schedulePhase(object_id: u32) -> u32 {
+    if (u_frame.schedule.y < 0.5 || object_id >= arrayLength(&object_state)) { return 0u; }
+    let s = object_state[object_id];
+    let kind = s.info.x & 0xFu;
+    if (kind == 0u) { return 0u; }
+    let t = u_frame.schedule.x;
+    if (t < s.times.x) {
+        if (kind == 1u) { return select(1u, 2u, u_frame.schedule.z > 0.0); }
+        if (kind == 3u) { return 1u; }
+        return 0u;
+    }
+    if (t < s.times.y) { return 3u; }
+    if (kind == 1u) { return 0u; }
+    return 1u;
+}
+
+// How far an active task has run, 0 .. 1.
+fn scheduleProgress(s: ObjectState) -> f32 {
+    return clamp((u_frame.schedule.x - s.times.x) / max(s.times.y - s.times.x, 1e-6), 0.0, 1.0);
+}
+
+// World position after the object's animation offset and, for an active
+// Drop task, its descent (ease-out from schedule.w above its place).
+fn animatedWorld(object_id: u32, world: vec3<f32>) -> vec3<f32> {
+    if (object_id >= arrayLength(&object_state)) { return world; }
+    let s = object_state[object_id];
+    var p = world + s.offset.xyz;
+    if (((s.info.x >> 4u) & 0xFu) == 2u && schedulePhase(object_id) == 3u) {
+        let r = 1.0 - scheduleProgress(s);
+        p.z = p.z + u_frame.schedule.w * r * r;
+    }
+    return p;
+}
+
+// An active Grow task shows only the part of the object below its rising
+// (construction) or falling (demolition) cut height.
+fn scheduleClipped(object_id: u32, world: vec3<f32>) -> bool {
+    if (object_id >= arrayLength(&object_state)) { return false; }
+    let s = object_state[object_id];
+    if (((s.info.x >> 4u) & 0xFu) != 1u || schedulePhase(object_id) != 3u) { return false; }
+    let u = scheduleProgress(s);
+    let z = world.z - s.offset.z;
+    let h = s.times.w - s.times.z;
+    if ((s.info.x & 0xFu) == 2u) { return z > s.times.w - u * h; }
+    return z > s.times.z + u * h;
+}
 
 // Sun shadow map (a 1x1 placeholder while shadows are off) and its
 // comparison sampler. Bilinear comparison gives each tap a smooth edge.
@@ -1209,7 +1272,7 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
     let b = f32((w2 >> 16u) & 0xFFu) / 255.0;
     let a = f32((w2 >> 24u) & 0xFFu) / 255.0;
 
-    let world4 = inst.transform * vec4<f32>(pos_local, 1.0);
+    let world4 = vec4<f32>(animatedWorld(inst.object_id, (inst.transform * vec4<f32>(pos_local, 1.0)).xyz), 1.0);
 
     var color = vec4<f32>(r, g, b, a);
     var has_override = 0u;
@@ -1283,6 +1346,7 @@ fn toneMap(x: vec3<f32>, op: u32) -> vec3<f32> {
 // fs_main returns it; fs_oit accumulates it.
 fn shadeSurface(in: VsOut, front_facing: bool) -> vec4<f32> {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
 
     var n = flatNormal(in.world_pos, front_facing);
     // Smooth normals: the interpolated vertex normal, turned to the viewer's
@@ -1308,6 +1372,16 @@ fn shadeSurface(in: VsOut, front_facing: bool) -> vec4<f32> {
     let style = u32(u_frame.shading.x + 0.5);
     var albedo = in.color.xyz;
     if (style != 0u && in.has_override == 0u) { albedo = u_frame.base_color.xyz; }
+
+    // 4D schedule: active work takes its task colour (alpha = strength).
+    let phase = schedulePhase(in.object_id);
+    if (phase == 1u) { discard; }
+    if (phase == 3u) {
+        let c = object_state[in.object_id].info.y;
+        let tint = vec4<f32>(f32(c & 0xFFu), f32((c >> 8u) & 0xFFu),
+                             f32((c >> 16u) & 0xFFu), f32((c >> 24u) & 0xFFu)) / 255.0;
+        albedo = mix(albedo, tint.rgb, tint.a);
+    }
 
     // Surface finish. `fres` is the share of the sky reflected (Schlick, so
     // it climbs at grazing angles); `spec` a Blinn-Phong highlight of the key
@@ -1369,7 +1443,9 @@ fn shadeSurface(in: VsOut, front_facing: bool) -> vec4<f32> {
     // state.
     // A reflective surface reflects more at grazing angles: glass seen edge-on
     // reads more opaque, as it does in life.
-    let alpha_out = min(in.color.a + (1.0 - in.color.a) * fres, u_frame.xray_alpha_cap);
+    var alpha_out = min(in.color.a + (1.0 - in.color.a) * fres, u_frame.xray_alpha_cap);
+    // Construction not yet started, shown as a ghost.
+    if (phase == 2u) { alpha_out = min(alpha_out, u_frame.schedule.z); }
     return vec4<f32>(select(srgbToLinear(color), color, encoded_out), alpha_out);
 }
 
@@ -1402,6 +1478,7 @@ fn fs_oit(in: VsOut, @builtin(front_facing) front_facing: bool) -> OitOut {
 @fragment
 fn fs_depth_only(in: VsOut) -> @location(0) vec4<f32> {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
     return vec4<f32>(0.0);
 }
 
@@ -1413,6 +1490,7 @@ fn fs_depth_only(in: VsOut) -> @location(0) vec4<f32> {
 @fragment
 fn fs_mask(in: VsOut) -> @location(0) f32 {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
     if (in.object_id >= arrayLength(&sel_flags)) { discard; }
     if ((sel_flags[in.object_id] & 1u) == 0u) { discard; }
     return 1.0;
@@ -1466,7 +1544,7 @@ fn vs_pick(@builtin(vertex_index) vid: u32) -> VsOutPick {
         f32(w1 & 0xFFFFu)          / 65535.0,
     );
     let pos_local = mix(mq.aabb_min.xyz, mq.aabb_max.xyz, pos_norm);
-    let world4    = inst.transform * vec4<f32>(pos_local, 1.0);
+    let world4    = vec4<f32>(animatedWorld(inst.object_id, (inst.transform * vec4<f32>(pos_local, 1.0)).xyz), 1.0);
 
     out.clip_pos  = u_frame.view_proj * world4;
     out.object_id = inst.object_id;
@@ -1477,6 +1555,7 @@ fn vs_pick(@builtin(vertex_index) vid: u32) -> VsOutPick {
 @fragment
 fn fs_pick(in: VsOutPick, @builtin(front_facing) front_facing: bool) -> FsOutPick {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
     var out: FsOutPick;
     out.object_id = in.object_id;
     // Pack signed normal into RGBA16F (unsigned-ish half range) as ×0.5+0.5.
@@ -1505,6 +1584,7 @@ fn fs_boxpick(in: VsOutPick) {
 struct VsOutShadow {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) world_pos: vec3<f32>,
+    @location(1) @interpolate(flat) object_id: u32,
 };
 
 @vertex
@@ -1513,6 +1593,7 @@ fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
     if (vid >= u_model.total_vertex_count) {
         out.clip_pos  = vec4<f32>(0.0, 0.0, 0.0, 0.0);
         out.world_pos = vec3<f32>(0.0, 0.0, 0.0);
+        out.object_id = 0u;
         return out;
     }
     let draw_idx = find_draw(vid);
@@ -1529,9 +1610,11 @@ fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
         f32((w0 >> 16u) & 0xFFFFu) / 65535.0,
         f32(w1 & 0xFFFFu)          / 65535.0,
     );
-    let world4 = inst.transform * vec4<f32>(mix(mq.aabb_min.xyz, mq.aabb_max.xyz, pos_norm), 1.0);
+    let world4 = vec4<f32>(animatedWorld(inst.object_id,
+        (inst.transform * vec4<f32>(mix(mq.aabb_min.xyz, mq.aabb_max.xyz, pos_norm), 1.0)).xyz), 1.0);
     out.clip_pos  = u_frame.light_view_proj * world4;
     out.world_pos = world4.xyz;
+    out.object_id = inst.object_id;
     return out;
 }
 
@@ -1539,6 +1622,7 @@ fn vs_shadow(@builtin(vertex_index) vid: u32) -> VsOutShadow {
 @fragment
 fn fs_shadow(in: VsOutShadow) {
     if (is_section_clipped(in.world_pos)) { discard; }
+    if (scheduleClipped(in.object_id, in.world_pos)) { discard; }
 }
 
 // --------------------------- Shadow-catching ground ------------------------
@@ -1621,7 +1705,7 @@ fn fs_sky(in: VsOutSky) -> @location(0) vec4<f32> {
 
 bool ViewportCore::buildPipelines() {
     // ---- Bind group layouts ----------------------------------------------
-    WGPUBindGroupLayoutEntry frame_entries[5] = {};
+    WGPUBindGroupLayoutEntry frame_entries[6] = {};
     frame_entries[0].binding = 0;
     frame_entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     frame_entries[0].buffer.type = WGPUBufferBindingType_Uniform;
@@ -1642,9 +1726,13 @@ bool ViewportCore::buildPipelines() {
     frame_entries[4].binding = 4;
     frame_entries[4].visibility = WGPUShaderStage_Fragment;
     frame_entries[4].sampler.type = WGPUSamplerBindingType_Comparison;
+    // Per-object animation state (offsets), read by every vertex stage.
+    frame_entries[5].binding = 5;
+    frame_entries[5].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    frame_entries[5].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
 
     WGPUBindGroupLayoutDescriptor frame_bgl_desc = {};
-    frame_bgl_desc.entryCount = 5;
+    frame_bgl_desc.entryCount = 6;
     frame_bgl_desc.entries    = frame_entries;
     frame_bgl_desc.label      = svFromCStr("ifcviewer-wgpu.frame_bgl");
     frame_bgl_ = wgpuDeviceCreateBindGroupLayout(device_, &frame_bgl_desc);
@@ -1878,6 +1966,20 @@ void ViewportCore::ensureSelectionFlagsBuffer() {
                  | WGPUBufferUsage_CopySrc;
         hb.label = svFromCStr("ifcviewer-wgpu.xray_hit_flags");
         hit_flags_buffer_ = wgpuDeviceCreateBuffer(device_, &hb);
+
+        // Per-object animation state, same capacity; contents carried over.
+        if (object_state_buffer_) {
+            wgpuBufferRelease(object_state_buffer_);
+            object_state_buffer_ = nullptr;
+        }
+        object_state_.resize(new_cap, ObjectStateGpu{});
+        schedule_phase_.resize(new_cap, kPhaseNormal);
+        WGPUBufferDescriptor ob = {};
+        ob.size  = uint64_t(new_cap) * sizeof(ObjectStateGpu);
+        ob.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+        ob.label = svFromCStr("ifcviewer-wgpu.object_state");
+        object_state_buffer_ = wgpuDeviceCreateBuffer(device_, &ob);
+        object_state_dirty_  = true;
     }
 
     // Rebuild the frame bind group against the (possibly new) buffer.
@@ -1897,11 +1999,26 @@ void ViewportCore::buildFrameBindGroup() {
         wgpuBindGroupRelease(frame_bind_group_);
         frame_bind_group_ = nullptr;
     }
+    if (shadow_frame_bind_group_) {
+        wgpuBindGroupRelease(shadow_frame_bind_group_);
+        shadow_frame_bind_group_ = nullptr;
+    }
     if (!frame_uniform_buffer_ || !selection_flags_buffer_ || !hit_flags_buffer_
-        || !shadow_view_ || !shadow_sampler_) {
+        || !shadow_view_ || !shadow_sampler_ || !object_state_buffer_) {
         return;
     }
-    WGPUBindGroupEntry fbg_entries[5] = {};
+    if (shadow_frame_bgl_) {
+        WGPUBindGroupEntry se[2] = {};
+        se[0].binding = 0; se[0].buffer = frame_uniform_buffer_; se[0].size = sizeof(FrameUniforms);
+        se[1].binding = 5; se[1].buffer = object_state_buffer_;  se[1].size = WGPU_WHOLE_SIZE;
+        WGPUBindGroupDescriptor sd = {};
+        sd.layout     = shadow_frame_bgl_;
+        sd.entryCount = 2;
+        sd.entries    = se;
+        sd.label      = svFromCStr("ifcviewer-wgpu.shadow_frame_bind_group");
+        shadow_frame_bind_group_ = wgpuDeviceCreateBindGroup(device_, &sd);
+    }
+    WGPUBindGroupEntry fbg_entries[6] = {};
     fbg_entries[0].binding = 0;
     fbg_entries[0].buffer  = frame_uniform_buffer_;
     fbg_entries[0].size    = sizeof(FrameUniforms);
@@ -1915,12 +2032,22 @@ void ViewportCore::buildFrameBindGroup() {
     fbg_entries[3].textureView = shadow_view_;
     fbg_entries[4].binding = 4;
     fbg_entries[4].sampler = shadow_sampler_;
+    fbg_entries[5].binding = 5;
+    fbg_entries[5].buffer  = object_state_buffer_;
+    fbg_entries[5].size    = WGPU_WHOLE_SIZE;
     WGPUBindGroupDescriptor fbg_desc = {};
     fbg_desc.layout     = frame_bgl_;
-    fbg_desc.entryCount = 5;
+    fbg_desc.entryCount = 6;
     fbg_desc.entries    = fbg_entries;
     fbg_desc.label      = svFromCStr("ifcviewer-wgpu.frame_bind_group");
     frame_bind_group_ = wgpuDeviceCreateBindGroup(device_, &fbg_desc);
+}
+
+void ViewportCore::flushObjectState() {
+    if (!object_state_dirty_ || !object_state_buffer_ || object_state_.empty()) return;
+    wgpuQueueWriteBuffer(queue_, object_state_buffer_, 0, object_state_.data(),
+                         object_state_.size() * sizeof(ObjectStateGpu));
+    object_state_dirty_ = false;
 }
 
 void ViewportCore::uploadSelectionFlagsIfDirty() {
@@ -2020,6 +2147,10 @@ void ViewportCore::updateFrameUniforms() {
         }
         u.sky_zenith[3] = sk.enabled && sky_pipeline_ ? 1.0f : 0.0f;
     }
+    u.schedule[0] = schedule_time_;
+    u.schedule[1] = schedule_on_ ? 1.0f : 0.0f;
+    u.schedule[2] = std::clamp(schedule_options_.ghost_alpha, 0.0f, 1.0f);
+    u.schedule[3] = schedule_options_.drop_height;
     {
         const float* mn = shadow_scene_min_;
         const float* mx = shadow_scene_max_;
@@ -2036,6 +2167,7 @@ void ViewportCore::updateFrameUniforms() {
 
     last_frame_uniforms_ = u;
     wgpuQueueWriteBuffer(queue_, frame_uniform_buffer_, 0, &u, sizeof(u));
+    flushObjectState();
 }
 
 // ===========================================================================
@@ -2696,6 +2828,7 @@ void ViewportCore::shutdown() {
 
     if (frame_bind_group_)        { wgpuBindGroupRelease(frame_bind_group_);          frame_bind_group_ = nullptr; }
     if (frame_uniform_buffer_)    { wgpuBufferRelease(frame_uniform_buffer_);         frame_uniform_buffer_ = nullptr; }
+    if (object_state_buffer_)  { wgpuBufferRelease(object_state_buffer_); object_state_buffer_ = nullptr; }
     if (selection_flags_buffer_)  { wgpuBufferRelease(selection_flags_buffer_);       selection_flags_buffer_ = nullptr; }
     selection_flags_capacity_ = 0;
     if (hit_flags_buffer_)        { wgpuBufferRelease(hit_flags_buffer_);             hit_flags_buffer_ = nullptr; }
@@ -3696,6 +3829,8 @@ std::uint32_t ViewportCore::cullModelCpuCompute(
         const ModelGpuData::CullInstance& inst = m.cull_instances[i];
         if (inst.mesh_id >= m.meshes.size()) return;
         if (visibility_.isHidden(inst.object_id)) return;
+        const std::uint8_t phase = schedulePhase(inst.object_id);
+        if (phase == kPhaseHidden) return;
         // Per-instance frustum still needed: a partially-covered subtree
         // descended this far means *some* leaves are visible, but not
         // necessarily this one.
@@ -3790,7 +3925,7 @@ std::uint32_t ViewportCore::cullModelCpuCompute(
         // (or the mesh's baked has-alpha flag) decides.
         const bool xray_active     = (xray_alpha_cap_ < 1.0f);
         const bool override_active = (inst.color_override_rgba8 != 0u);
-        const bool is_transparent  = xray_active
+        const bool is_transparent  = xray_active || phase == kPhaseGhost
             ? true
             : (override_active
                ? (((inst.color_override_rgba8 >> 24) & 0xFFu) < 255u)
@@ -7138,6 +7273,107 @@ void ViewportCore::setObjectsMaterial(const std::vector<std::uint32_t>& object_i
     host_->requestFrame();
 }
 
+void ViewportCore::setObjectsOffset(const std::vector<std::uint32_t>& object_ids,
+                                    float dx, float dy, float dz) {
+    bool changed = false;
+    for (std::uint32_t id : object_ids) {
+        if (id >= object_state_.size()) continue;
+        float* o = object_state_[id].offset;
+        if (o[0] == dx && o[1] == dy && o[2] == dz) continue;
+        o[0] = dx; o[1] = dy; o[2] = dz;
+        changed = true;
+    }
+    if (!changed) return;
+    object_state_dirty_ = true;
+    // The shadow map holds the old positions; the cull does not depend on it.
+    shadow_dirty_ = true;
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
+void ViewportCore::clearObjectOffsets() {
+    for (ObjectStateGpu& s : object_state_) s.offset[0] = s.offset[1] = s.offset[2] = 0.0f;
+    object_state_dirty_ = true;
+    shadow_dirty_ = true;
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
+std::uint8_t ViewportCore::schedulePhaseOf(const ObjectStateGpu& s) const {
+    const std::uint32_t kind = s.info[0] & 0xFu;
+    if (!schedule_on_ || kind == 0u) return kPhaseNormal;
+    const float t = schedule_time_;
+    if (t < s.times[0]) {
+        if (kind == 1u) return schedule_options_.ghost_alpha > 0.0f ? kPhaseGhost : kPhaseHidden;
+        if (kind == 3u) return kPhaseHidden;
+        return kPhaseNormal;
+    }
+    if (t < s.times[1]) return kPhaseActive;
+    return kind == 1u ? kPhaseNormal : kPhaseHidden;
+}
+
+bool ViewportCore::updateSchedulePhases() {
+    bool changed = false;
+    const std::size_t n = std::min(object_state_.size(), schedule_phase_.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::uint8_t p = schedulePhaseOf(object_state_[i]);
+        if (p != schedule_phase_[i]) { schedule_phase_[i] = p; changed = true; }
+    }
+    return changed;
+}
+
+void ViewportCore::setSchedule(const std::vector<ScheduleEntry>& entries) {
+    schedule_moves_ = false;
+    for (ObjectStateGpu& s : object_state_) {
+        std::memset(s.times, 0, sizeof(s.times));
+        std::memset(s.info, 0, sizeof(s.info));
+    }
+    for (const ScheduleEntry& e : entries) {
+        if (e.object_id >= object_state_.size()) continue;
+        ObjectStateGpu& s = object_state_[e.object_id];
+        float mn[3] = { 0, 0, 0 }, mx[3] = { 0, 0, 0 };
+        computeObjectAabb(e.object_id, mn, mx);
+        s.times[0] = e.start;
+        s.times[1] = std::max(e.finish, e.start);
+        s.times[2] = mn[2];
+        s.times[3] = mx[2];
+        s.info[0]  = std::uint32_t(e.kind) | (std::uint32_t(e.effect) << 4);
+        s.info[1]  = e.color;
+        if (e.effect != ScheduleEffect::None) schedule_moves_ = true;
+    }
+    schedule_on_ = !entries.empty();
+    shadow_dirty_ = true;
+    object_state_dirty_ = true;
+    updateSchedulePhases();
+    markCullInputsChanged();
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
+void ViewportCore::clearSchedule() {
+    setSchedule({});
+}
+
+void ViewportCore::setScheduleTime(float t) {
+    if (t == schedule_time_) return;
+    schedule_time_ = t;
+    if (!schedule_on_) return;
+    if (updateSchedulePhases()) markCullInputsChanged();
+    // Growing and dropping objects change shape with time, and so do their
+    // shadows.
+    if (schedule_moves_) shadow_dirty_ = true;
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
+void ViewportCore::setScheduleOptions(const ScheduleOptions& o) {
+    schedule_options_ = o;
+    shadow_dirty_ = true;
+    if (schedule_on_ && updateSchedulePhases()) markCullInputsChanged();
+    line_accum_count_ = 0;
+    host_->requestFrame();
+}
+
 void ViewportCore::clearObjectMaterials() {
     for (auto& [session_model_id, m] : models_gpu_) {
         bool touched = false;
@@ -8679,6 +8915,7 @@ int ViewportCore::encodeScene(WGPUCommandEncoder enc, WGPUTextureView view,
     if (interactive) {
         // Section-plane gizmo — shared renderer, drawn for desktop + web from here.
         // (The desktop's OverlayRenderer no longer draws it, to avoid doubling.)
+        if (section_gizmo_visible_)
         section_gizmo_.encode(pass, vp_this_frame, section_planes_,
                               viewport_w_px, viewport_h_px, dpr_int, section_selected_index_);
 
@@ -9220,6 +9457,7 @@ bool ViewportCore::addSectionPlaneAtSurface(const Eigen::Vector3f& point,
     p.d             = -n.dot(point);
     p.visual_radius = (visual_radius > 0.0f) ? visual_radius : 1.0f;
     section_planes_.push_back(p);
+    section_gizmo_visible_ = true;
     // The freshly added plane becomes the selected one.
     section_selected_index_ = int(section_planes_.size()) - 1;
     Log::info()
@@ -9248,6 +9486,25 @@ void ViewportCore::removeSectionPlane(int index) {
         --section_selected_index_;
     }
     Log::info() << "[wgpu section] removed plane " << index;
+    host_->requestFrame();
+}
+
+void ViewportCore::setSectionPlanes(const std::vector<SectionPlane>& planes, bool show_gizmo) {
+    section_planes_.clear();
+    for (const SectionPlane& in : planes) {
+        if (int(section_planes_.size()) >= kMaxSectionPlanes) break;
+        if (in.n.squaredNorm() < 1e-12f) continue;
+        SectionPlane p = in;
+        const float len = p.n.norm();
+        p.n /= len;
+        p.d /= len;
+        p.origin = -p.d * p.n;
+        if (p.visual_radius <= 0.0f) p.visual_radius = 1.0f;
+        section_planes_.push_back(p);
+    }
+    section_selected_index_ = -1;
+    section_gizmo_visible_  = show_gizmo;
+    line_accum_count_ = 0;
     host_->requestFrame();
 }
 
