@@ -270,7 +270,7 @@ export async function runSteps( steps ) {
 export function stepFailure( outcome ) {
 
 	const saved = outcome.done ? ` The ${ plural( outcome.done, 'change' ) } before it ${ outcome.done === 1 ? 'was' : 'were' } saved.` : '';
-	return `Could not ${ outcome.failed }: ${ outcome.message }.${ saved }`;
+	return `Could not ${ outcome.failed }: ${ outcome.message.replace( /\.?$/, '.' ) }${ saved }`;
 
 }
 

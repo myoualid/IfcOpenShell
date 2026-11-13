@@ -1541,8 +1541,7 @@ body {
    attribute; the schedule panels hide parts of themselves with it. */
 .bonsai-sheet [hidden],
 .SequenceTasks [hidden],
-.bonsai-dialog [hidden],
-.CostEditor [hidden] {
+.bonsai-dialog [hidden] {
 	display: none;
 }
 
@@ -2112,50 +2111,41 @@ body {
 	opacity: 0.6;
 }
 
-/* Cost item editor (right): quantity and value lines, the item total. */
-.CostEditor-total {
+/* Cost item dialog: quantity and rate lines with an input, the total. */
+.bonsai-dialog-total {
 	color: var(--dui-color-text-muted);
 	font-size: var(--dui-font-size-sm);
 	font-variant-numeric: tabular-nums;
 }
 
-.CostEditor-list {
-	gap: var(--dui-space-1);
+.bonsai-dialog-line.is-input {
+	padding: 1px var(--dui-space-1);
 }
 
-.CostEditor-line {
-	align-items: center;
-	gap: var(--dui-space-2);
-}
-
-.CostEditor-line .InputText {
+.bonsai-dialog-line.is-input .InputText {
 	box-sizing: border-box;
 	flex: 1 1 auto;
 	min-width: 0;
 }
 
-.CostEditor-line-label {
-	color: var(--dui-color-text-muted);
-	flex: 0 0 4.5rem;
-	font-size: var(--dui-font-size-xs);
+.bonsai-dialog-line-detail.is-label {
+	flex: 0 0 6.5rem;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.CostEditor-line-value {
-	flex: 0 0 auto;
-	font-size: var(--dui-font-size-xs);
-	font-variant-numeric: tabular-nums;
+.bonsai-dialog-line.is-added .bonsai-dialog-line-detail.is-label {
+	color: var(--dui-color-accent);
 }
 
-.CostEditor-line .Operator {
-	color: var(--dui-color-text-muted);
-	cursor: pointer;
-	font-size: 1rem;
+.bonsai-dialog-line.is-removed .bonsai-dialog-line-detail.is-label,
+.bonsai-dialog-line.is-removed .InputText {
+	opacity: 0.55;
+	text-decoration: line-through;
 }
 
-.CostEditor-actions .InputText {
-	flex: 1 1 8rem;
-	min-width: 0;
+.bonsai-dialog .InputText.is-invalid {
+	border-color: var(--dui-color-danger);
+	box-shadow: 0 0 0 1px var(--dui-color-danger);
 }

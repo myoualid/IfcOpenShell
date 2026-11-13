@@ -14,16 +14,16 @@ import ops from '../../ops.js';
 import { Viewer } from '../../tool/Viewer.js';
 import {
 	bindPanelToggle,
-	dropdownInput,
+	editCell,
 	element,
-	field,
 	iconButton,
 	plural,
+	setButtonLabel,
 	setDropdown,
 	textButton,
-	textInput,
 } from '../../util/sheet.js';
 import { ancestorIds, visibleRows } from '../../util/tree-rows.js';
+import { confirmItemRemoval, CostItemDialog, CostScheduleDialog, itemLabel } from './dialogs.js';
 
 // Large schedules open with their top two levels expanded.
 const EXPAND_ALL_LIMIT = 300;
@@ -82,12 +82,10 @@ function costState( context ) {
 
 }
 
-function confirmRemoveItem( name, hasChildren ) {
+// The cells that can be edited in place, in Tab order.
+const EDITABLE = [ 'identification', 'name', 'quantity', 'rate' ];
 
-	const what = hasChildren ? `"${ name }" and its nested items` : `"${ name }"`;
-	return window.confirm( `Delete ${ what } from the IFC file? This cannot be undone.` );
-
-}
+const HINT = 'Double-click a cell to type in it  ·  Enter opens the item  ·  Insert adds an item';
 
 class CostPanelUI {
 
@@ -121,6 +119,11 @@ class CostPanelUI {
 		this.grandTotal = 0;
 		this.money = moneyFormat( '' );
 		this._token = 0;
+		this._resumeEdit = null;
+
+		const onSaved = ( message ) => this._status.setValue( message );
+		this.itemDialog = new CostItemDialog( { onSaved } );
+		this.scheduleDialog = new CostScheduleDialog( { onSaved } );
 
 		this._build();
 
@@ -198,27 +201,37 @@ class CostPanelUI {
 
 		} );
 
+		const divider = () => new Text( '' ).addClass( 'bonsai-sheet-divider' );
+		this._editing = [
+			textButton( 'Item', 'add', () => this._addItem( 'sibling' ), { title: 'Add an item below the active one (Insert)' } ),
+			textButton( 'Nested', 'subdirectory_arrow_right', () => this._addItem( 'child' ), { title: 'Add an item inside the active one' } ),
+			textButton( 'Open', 'edit_note', () => this._openItem(), { title: 'Everything about the active item: quantities, rates, elements (Enter)' } ),
+			iconButton( 'delete', 'Delete the active item (Delete)', () => this._removeItem() ),
+		];
+
 		const toolbar = new StackPanel( { isVertical: false } )
 			.addClass( 'bonsai-sheet-toolbar' )
 			.add(
 				this._schedule,
+				iconButton( 'edit', 'Rename, change or delete this cost schedule', () => this._editSchedule() ),
+				iconButton( 'request_quote', 'New cost schedule', () => this._addSchedule() ),
+				divider(),
+				...this._editing,
+				divider(),
 				this._search,
 				iconButton( 'unfold_more', 'Expand all', () => this._expandAll() ),
 				iconButton( 'unfold_less', 'Collapse all', () => this._collapseAll() ),
 				this._unpriced,
-				iconButton( 'center_focus_strong', 'Isolate the active item', () => this._selectActive( { isolate: true } ) ),
-				iconButton( 'visibility', 'Show all objects', () => ops.Viewer.ShowAll() ),
-				iconButton( 'download', 'Export the schedule as CSV', () => this._exportCsv() ),
+				divider(),
+				iconButton( 'center_focus_strong', 'Show only what the active item prices', () => this._selectActive( { isolate: true } ) ),
+				iconButton( 'visibility', 'Show everything again', () => ops.Viewer.ShowAll() ),
+				iconButton( 'download', 'Export the schedule as CSV (opens in Excel)', () => this._exportCsv() ),
 				iconButton( 'refresh', 'Reload schedules from the model', () => this.refresh() ),
-				new Text( '' ).addClass( 'bonsai-sheet-divider' ),
-				iconButton( 'playlist_add', 'Add an item after the active one', () => this._addItem( 'sibling' ) ),
-				iconButton( 'subdirectory_arrow_right', 'Add a nested item to the active one', () => this._addItem( 'child' ) ),
-				iconButton( 'delete', 'Delete the active item (Delete)', () => this._removeItem() ),
-				iconButton( 'request_quote', 'New cost schedule', () => this._addSchedule() ),
 			);
 
 		this._summary = new Text( '' ).addClass( 'bonsai-sheet-summary' );
 		this._status = new Text( '' ).addClass( 'bonsai-sheet-status' );
+		this._hint = new Text( HINT ).addClass( 'bonsai-sheet-hint' );
 
 		this._header = element( 'div', 'bonsai-sheet-row bonsai-sheet-header CostSheet-row' );
 		this._header.addEventListener( 'click', ( event ) => this._onSort( event ) );
@@ -227,6 +240,10 @@ class CostPanelUI {
 		this._body.setAttribute( 'role', 'tree' );
 		this._body.setAttribute( 'aria-label', 'Cost items' );
 		this._empty = element( 'div', 'bonsai-sheet-empty' );
+		this._emptyText = element( 'p', 'bonsai-sheet-empty-text' );
+		this._emptyAction = textButton( '', 'add', () => this._emptyRun?.() );
+		this._emptyAction.addClass( 'primary' );
+		this._empty.append( element( 'span', 'bonsai-sheet-empty-icon material-symbols-outlined', 'payments' ), this._emptyText, this._emptyAction.dom );
 
 		this._grid = new Container().addClass( 'bonsai-sheet-grid CostSheet' );
 		this._grid.dom.append( this._header, this._body, this._empty );
@@ -239,9 +256,27 @@ class CostPanelUI {
 			.addClass( 'bonsai-sheet' )
 			.add(
 				toolbar,
-				new StackPanel( { isVertical: false } ).addClass( 'bonsai-sheet-info' ).add( this._summary, this._status ),
+				new StackPanel( { isVertical: false } ).addClass( 'bonsai-sheet-info' ).add( this._summary, this._status, this._hint ),
 				this._grid,
 			);
+
+	}
+
+	// The empty sheet says why, and offers the next step when there is one.
+	_setEmpty( message, action = null ) {
+
+		this._emptyText.textContent = message;
+		this._emptyAction.setHidden( ! action );
+		if ( action ) setButtonLabel( this._emptyAction, action.label );
+		this._emptyRun = action?.run ?? null;
+		this._empty.hidden = false;
+
+	}
+
+	// Item buttons work only on an open schedule.
+	_setAuthoring( enabled ) {
+
+		for ( const control of this._editing ) control.dom.classList.toggle( 'is-disabled', ! enabled );
 
 	}
 
@@ -287,10 +322,10 @@ class CostPanelUI {
 
 		if ( failure || ! schedules.length ) {
 
-			let message = 'Open an IFC file to review its cost schedules.';
-			if ( failure ) message = `Cost schedules could not be read: ${ failure }`;
-			else if ( store.models.some( ( entry ) => entry.file ) ) message = 'No cost schedules (IfcCostSchedule) in the open IFC files.';
-			this._clear( message );
+			const hasFile = store.models.some( ( entry ) => entry.file );
+			if ( failure ) this._clear( `The cost schedules could not be read: ${ failure }` );
+			else if ( hasFile ) this._clear( 'This model has no cost schedule yet. Start one, then add items, quantities and rates as you would on a bill.', { label: 'Start a cost schedule', run: () => this._addSchedule() } );
+			else this._clear( 'Open an IFC model to price it.' );
 			if ( this.state.schedule ) ops.Cost.Activate( { schedule: 0, item: 0 } );
 			return;
 
@@ -349,7 +384,7 @@ class CostPanelUI {
 
 	}
 
-	_clear( message ) {
+	_clear( message, action = null ) {
 
 		this._loadedKey = '';
 		this.rows = [];
@@ -360,8 +395,8 @@ class CostPanelUI {
 		this._status.setValue( '' );
 		this._header.replaceChildren();
 		this._body.replaceChildren();
-		this._empty.textContent = message;
-		this._empty.hidden = false;
+		this._setEmpty( message, action );
+		this._setAuthoring( false );
 
 	}
 
@@ -447,8 +482,11 @@ class CostPanelUI {
 		for ( const row of rows ) fragment.append( this._renderRow( row, Boolean( match ) ) );
 		this._body.replaceChildren( fragment );
 
-		this._empty.hidden = rows.length > 0;
-		this._empty.textContent = this.rows.length ? 'No items match.' : 'This cost schedule has no items yet.';
+		this._setAuthoring( true );
+		if ( rows.length ) this._empty.hidden = true;
+		else if ( this.rows.length ) this._setEmpty( 'No item matches the filter.' );
+		else this._setEmpty( 'No items yet. Add the first one, then type its description, quantity and rate straight into the sheet.', { label: 'Add the first item', run: () => this._addItem( 'sibling' ) } );
+		this._resume();
 
 	}
 
@@ -504,9 +542,15 @@ class CostPanelUI {
 		name.append( element( 'span', 'bonsai-sheet-label', row.name ) );
 		if ( row.productCount ) name.append( element( 'span', 'CostSheet-linked material-symbols-outlined', 'deployed_code' ) );
 		if ( row.rateItem ) name.append( element( 'span', 'CostSheet-rate material-symbols-outlined', 'link' ) );
+		const open = element( 'span', 'bonsai-sheet-open material-symbols-outlined', 'open_in_new' );
+		open.dataset.open = row.id;
+		open.title = 'Open the item';
+		name.append( open );
+		name.dataset.key = 'name';
 
 		const priced = isPriced( row );
 		const rate = element( 'span', 'bonsai-sheet-cell is-number', priced ? this.money( row.appliedValue ) : '—' );
+		rate.dataset.key = 'rate';
 		const total = element( 'span', 'bonsai-sheet-cell is-number is-total', priced ? this.money( row.totalCost ) : '—' );
 		const share = element( 'span', 'bonsai-sheet-cell is-share' );
 		if ( priced && this.grandTotal > 0 ) {
@@ -518,10 +562,15 @@ class CostPanelUI {
 
 		}
 
+		const code = element( 'span', 'bonsai-sheet-cell is-code', row.identification );
+		code.dataset.key = 'identification';
+		const quantity = element( 'span', 'bonsai-sheet-cell is-number', row.quantity == null ? '' : quantityFormat.format( row.quantity ) );
+		quantity.dataset.key = 'quantity';
+
 		node.append(
-			element( 'span', 'bonsai-sheet-cell is-code', row.identification ),
+			code,
 			name,
-			element( 'span', 'bonsai-sheet-cell is-number', row.quantity == null ? '' : quantityFormat.format( row.quantity ) ),
+			quantity,
 			element( 'span', 'bonsai-sheet-cell is-unit', row.quantity == null ? '' : row.unitSymbol ),
 			rate,
 			total,
@@ -594,18 +643,30 @@ class CostPanelUI {
 
 		}
 
+		const open = event.target.closest( '[data-open]' );
+		if ( open ) {
+
+			this._setActive( Number( open.dataset.open ) );
+			this._openItem();
+			return;
+
+		}
+
 		const id = this._rowId( event );
-		if ( id ) this._setActive( id, { select: true } );
+		if ( id && id !== this.activeId ) this._setActive( id, { select: true } );
 
 	}
 
+	// Double-click types into a cell; elsewhere on the row it opens the item.
 	_onDoubleClick( event ) {
 
-		if ( event.target.closest( '[data-toggle]' ) ) return;
+		if ( event.target.closest( '[data-toggle], [data-open], .bonsai-sheet-input' ) ) return;
 		const id = this._rowId( event );
 		if ( ! id ) return;
 		this._setActive( id );
-		this._selectActive( { isolate: true } );
+		const key = event.target.closest( '[data-key]' )?.dataset.key;
+		if ( key ) this._editCell( id, key );
+		else this._openItem();
 
 	}
 
@@ -658,7 +719,13 @@ class CostPanelUI {
 
 				break;
 			case 'Enter':
-				this._selectActive( { isolate: true } );
+				this._openItem();
+				break;
+			case 'F2':
+				if ( row ) this._editCell( row.id, 'name' );
+				break;
+			case 'Insert':
+				this._addItem( event.shiftKey ? 'child' : 'sibling' );
 				break;
 			case 'Delete':
 				this._removeItem();
@@ -844,19 +911,50 @@ class CostPanelUI {
 
 	}
 
-	// Cost.AddCostItem places it next to or under the active item and makes
-	// it active; the reload that follows shows it.
-	_addItem( placement ) {
+	// Cost.AddCostItem places it below or inside the active item and makes
+	// it active; the reload that follows shows it, with its description
+	// ready to type.
+	async _addItem( placement ) {
 
-		if ( this.key ) this._run( () => ops.Cost.AddCostItem( { placement, name: 'New item' } ), 'Item added' );
+		if ( ! this.key ) return;
+		if ( placement === 'child' && ! this.activeId ) {
+
+			this._status.setValue( 'Choose the item to add a nested item to.' );
+			return;
+
+		}
+
+		const result = await this._run( () => ops.Cost.AddCostItem( { placement, name: 'New item' } ), 'Item added: type its description' );
+		if ( result?.result ) this._resumeEdit = { id: result.result, key: 'name' };
+		this._resume();
 
 	}
 
-	_removeItem() {
+	async _removeItem() {
 
 		const row = this.byId.get( this.activeId );
-		if ( ! row || ! confirmRemoveItem( row.name, row.hasChildren ) ) return;
-		this._run( () => ops.Cost.RemoveCostItem(), `Deleted ${ row.identification || row.name }` );
+		if ( ! row ) {
+
+			this._status.setValue( 'Choose the item to delete.' );
+			return;
+
+		}
+
+		if ( ! await confirmItemRemoval( row ) ) return;
+		this._run( () => ops.Cost.RemoveCostItem( { item: row.id } ), `Deleted ${ row.identification || row.name }` );
+
+	}
+
+	_openItem() {
+
+		if ( ! this.activeId ) {
+
+			this._status.setValue( 'Choose an item first.' );
+			return;
+
+		}
+
+		this.itemDialog.open( this.activeId, this.money );
 
 	}
 
@@ -864,12 +962,194 @@ class CostPanelUI {
 
 		if ( ! store.models.some( ( entry ) => entry.file ) ) {
 
-			this._status.setValue( 'Open an IFC file first.' );
+			this._status.setValue( 'Open an IFC model first.' );
 			return;
 
 		}
 
-		this._run( () => ops.Cost.AddCostSchedule( { name: 'Cost schedule' } ), 'Cost schedule added' );
+		this.scheduleDialog.open( null );
+
+	}
+
+	_editSchedule() {
+
+		const schedule = this.schedules.find( ( entry ) => this._keyOf( entry ) === this.key );
+		if ( schedule ) this.scheduleDialog.open( schedule );
+		else this._addSchedule();
+
+	}
+
+	// IN-PLACE EDITING
+
+	// Quantity and rate cells edit the item's only quantity or value; an
+	// item with several opens its dialog instead.
+	_editCell( id, key ) {
+
+		const row = this.byId.get( id );
+		const node = this._body.querySelector( `[data-id="${ id }"]` );
+		let cell = node?.querySelector( `[data-key="${ key }"]` );
+		if ( ! row || ! cell ) return;
+		if ( key === 'name' ) cell = cell.querySelector( '.bonsai-sheet-label' );
+
+		let value = key === 'identification' ? row.identification : row.name;
+		if ( key === 'quantity' || key === 'rate' ) {
+
+			const item = ops.Cost.ItemDetails( { item: id } ).result;
+			const parts = key === 'quantity' ? item?.quantities ?? [] : item?.values ?? [];
+			if ( parts.length > 1 ) {
+
+				this._status.setValue( `This item has ${ parts.length } ${ key === 'quantity' ? 'quantities' : 'rates' }: change them here.` );
+				this._openItem();
+				return;
+
+			}
+
+			value = key === 'quantity' ? parts[ 0 ]?.value ?? '' : parts[ 0 ]?.formula ?? '';
+
+		}
+
+		const placeholders = { identification: 'Code', name: 'Description', quantity: 'Qty', rate: 'e.g. 45.50' };
+		editCell( cell, {
+			value: value ?? '',
+			type: key === 'quantity' ? 'number' : 'text',
+			placeholder: placeholders[ key ],
+			onCommit: ( text, move ) => this._commitCell( row, key, text.trim(), move ),
+			onMove: ( move ) => this._moveEdit( row.id, key, move ),
+		} );
+
+	}
+
+	// The next editable cell of the row, wrapping to the next row.
+	_moveEdit( id, key, move ) {
+
+		const rows = this._visible ?? [];
+		let index = rows.findIndex( ( row ) => row.id === id );
+		let column = EDITABLE.indexOf( key );
+		while ( index >= 0 && index < rows.length ) {
+
+			column += move;
+			if ( column >= EDITABLE.length ) {
+
+				column = 0;
+				index ++;
+
+			} else if ( column < 0 ) {
+
+				column = EDITABLE.length - 1;
+				index --;
+
+			}
+
+			const row = rows[ index ];
+			if ( ! row ) return;
+			if ( this._body.querySelector( `[data-id="${ row.id }"] [data-key="${ EDITABLE[ column ] }"]` ) ) {
+
+				if ( row.id !== this.activeId ) this._setActive( row.id );
+				this._editCell( row.id, EDITABLE[ column ] );
+				return;
+
+			}
+
+		}
+
+	}
+
+	// After the reload a change causes, carry on where the edit left off.
+	_resume() {
+
+		const next = this._resumeEdit;
+		if ( ! next || ! this.byId.has( next.id ) ) return;
+		if ( ! this._body.querySelector( `[data-id="${ next.id }"]` ) ) return;
+		this._resumeEdit = null;
+		if ( next.move ) this._moveEdit( next.id, next.key, next.move );
+		else this._editCell( next.id, next.key );
+
+	}
+
+	// What one cell edit runs: attributes, or the only quantity or value
+	// (added as a count or a fixed rate when there is none, removed when
+	// cleared).
+	_cellRun( row, key, text ) {
+
+		const item = { item: row.id };
+		if ( key === 'identification' ) return () => ops.Cost.EditCostItem( { Identification: text || null }, item );
+		if ( key === 'name' ) return () => ops.Cost.EditCostItem( { Name: text || 'Unnamed' }, item );
+
+		const details = ops.Cost.ItemDetails( item ).result;
+		if ( key === 'quantity' ) {
+
+			const quantity = details?.quantities[ 0 ];
+			if ( ! text ) return quantity ? () => ops.Cost.RemoveQuantity( quantity.id, item ) : null;
+			const value = Number( text );
+			if ( ! Number.isFinite( value ) ) throw new Error( 'The quantity must be a number.' );
+			if ( quantity ) return () => ops.Cost.EditQuantity( quantity.id, value, item );
+			this._note = 'Counted as a number of items; open the item to measure an area or a length instead.';
+			return () => ops.Cost.AddQuantity( { ...item, ifcClass: 'IfcQuantityCount', value } );
+
+		}
+
+		const current = details?.values[ 0 ];
+		if ( ! text ) return current ? () => ops.Cost.RemoveValue( current.id, item ) : null;
+		const check = ops.Cost.CheckFormula( text );
+		if ( check.status === 'CANCELLED' ) throw new Error( `“${ text }” is not a rate: ${ check.message }` );
+		if ( current ) return () => ops.Cost.EditValueFormula( current.id, text, item );
+		return async () => {
+
+			const added = await ops.Cost.AddValue( { ...item, type: 'FIXED' } );
+			if ( added?.status === 'CANCELLED' ) return added;
+			return ops.Cost.EditValueFormula( added.result, text, item );
+
+		};
+
+	}
+
+	async _commitCell( row, key, text, move ) {
+
+		let run;
+		this._note = '';
+		try {
+
+			run = this._cellRun( row, key, text );
+
+		} catch ( error ) {
+
+			this._status.setValue( error.message );
+			return;
+
+		}
+
+		if ( ! run ) {
+
+			if ( move ) this._moveEdit( row.id, key, move );
+			return;
+
+		}
+
+		if ( move ) this._resumeEdit = { id: row.id, key, move };
+		const result = await this._run( run, '' );
+		if ( ! result ) {
+
+			this._resumeEdit = null;
+			return;
+
+		}
+
+		// Say what the line comes to now, as a check against the paper.
+		if ( key === 'quantity' || key === 'rate' ) {
+
+			const item = ops.Cost.ItemDetails( { item: row.id } ).result;
+			if ( item?.values.length ) {
+
+				const quantity = item.quantity == null ? '' : `${ quantityFormat.format( item.quantity ) } ${ item.unitSymbol } × `;
+				this._status.setValue( `${ itemLabel( item ) }: ${ quantity }${ this.money( item.appliedValue ) } = ${ this.money( item.totalCost ) }${ this._note ? `. ${ this._note }` : '' }` );
+
+			} else if ( this._note ) {
+
+				this._status.setValue( this._note );
+
+			}
+
+		}
 
 	}
 
@@ -1033,352 +1313,4 @@ class CostElementPanelUI {
 
 }
 
-const SCHEDULE_TYPES = [
-	'COSTPLAN', 'BUDGET', 'ESTIMATE', 'TENDER', 'PRICEDBILLOFQUANTITIES', 'UNPRICEDBILLOFQUANTITIES',
-	'SCHEDULEOFRATES', 'USERDEFINED', 'NOTDEFINED',
-];
-const QUANTITY_TYPES = [
-	{ value: 'IfcQuantityCount', label: 'Count' },
-	{ value: 'IfcQuantityNumber', label: 'Number' },
-	{ value: 'IfcQuantityLength', label: 'Length' },
-	{ value: 'IfcQuantityArea', label: 'Area' },
-	{ value: 'IfcQuantityVolume', label: 'Volume' },
-	{ value: 'IfcQuantityWeight', label: 'Weight' },
-	{ value: 'IfcQuantityTime', label: 'Time' },
-];
-
-// Edits the open cost schedule and its active item: context.cost .model,
-// .schedule and .item. Every change goes through a Cost.* operator, which
-// works on that same state.
-class CostEditorPanelUI {
-
-	static id = 'bim.cost';
-
-	static spec = {
-		group: 'cost',
-		position: 'right',
-		id: 'cost-editor-panel',
-		label: 'Item',
-		icon: 'edit_note',
-		title: 'Cost Item Editor',
-		autoShow: false,
-	};
-
-	constructor( { context } ) {
-
-		this.context = context;
-		this.workspacePanel = null;
-		this._shownItemId = 0;
-
-		this._build();
-		const { signals } = context;
-		bindPanelToggle( signals, CostEditorPanelUI.spec.id, () => this.workspacePanel );
-		signals.scheduleChanged.add( ( change ) => {
-
-			if ( change?.module === 'cost' ) this.refresh();
-
-		} );
-		signals.scheduleActivated.add( ( change ) => {
-
-			if ( change?.module === 'cost' ) this.refresh();
-
-		} );
-		signals.liveIfcReady.add( () => this.refresh() );
-		signals.modelCleared.add( () => this.refresh() );
-		this.refresh();
-
-	}
-
-	attach( workspacePanel ) {
-
-		this.workspacePanel = workspacePanel;
-
-	}
-
-	get state() {
-
-		return costState( this.context );
-
-	}
-
-	_build() {
-
-		const run = ( fn ) => () => void fn();
-		const addSchedule = () => this._run( () => ops.Cost.AddCostSchedule( { name: 'Cost schedule' } ), 'Cost schedule added' );
-		const addItem = ( placement ) => this._run( () => ops.Cost.AddCostItem( { placement, name: 'New item' } ), 'Item added' );
-		const editSchedule = ( attributes ) => this._run( () => ops.Cost.EditCostSchedule( attributes ) );
-		const editItem = ( attributes ) => this._run( () => ops.Cost.EditCostItem( attributes ) );
-		const section = ( ...children ) => new StackPanel( { isVertical: true } ).addClass( 'CostEditor-section' ).add( ...children );
-		const row = ( ...children ) => new StackPanel( { isVertical: false } ).addClass( 'CostEditor-actions' ).add( ...children );
-		const subtitle = ( label ) => new Text( label ).addClass( 'CostEditor-subtitle' );
-
-		// Schedule
-		this._scheduleName = textInput( ( value ) => editSchedule( { Name: value.trim() || 'Cost schedule' } ) );
-		this._scheduleType = dropdownInput( SCHEDULE_TYPES, ( value ) => editSchedule( { PredefinedType: value } ) );
-		this._scheduleStatus = textInput( ( value ) => editSchedule( { Status: value.trim() || null } ), { placeholder: 'e.g. DRAFT, ISSUED' } );
-		this._scheduleSection = section(
-			new Text( 'Cost schedule' ).addClass( 'CostEditor-title' ),
-			field( 'Name', this._scheduleName ),
-			new StackPanel( { isVertical: false } ).addClass( 'CostEditor-pair' ).add(
-				field( 'Type', this._scheduleType ),
-				field( 'Status', this._scheduleStatus ),
-			),
-			row(
-				textButton( 'New schedule', 'request_quote', run( addSchedule ) ),
-				textButton( 'Delete schedule', 'delete', run( () => this._removeSchedule() ) ),
-			),
-		);
-
-		// Item
-		this._itemTitle = new Text( '' ).addClass( 'CostEditor-title' );
-		this._itemTotal = new Text( '' ).addClass( 'CostEditor-total' );
-		this._identification = textInput( ( value ) => editItem( { Identification: value.trim() || null } ) );
-		this._name = textInput( ( value ) => editItem( { Name: value.trim() || 'Unnamed' } ) );
-		this._description = textInput( ( value ) => editItem( { Description: value.trim() || null } ) );
-
-		this._quantities = new StackPanel( { isVertical: true } ).addClass( 'CostEditor-list' );
-		this._quantityType = dropdownInput( QUANTITY_TYPES, () => {} );
-		this._quantityType.setValue( 'IfcQuantityCount' );
-
-		this._values = new StackPanel( { isVertical: true } ).addClass( 'CostEditor-list' );
-		this._category = textInput( () => {}, { placeholder: 'Category, e.g. Labour' } );
-
-		this._rate = new Text( '' ).addClass( 'CostEditor-count' );
-		this._ratePick = new InputDropdown();
-		this._ratePick.dom.setAttribute( 'aria-label', 'Rate' );
-
-		this._products = new Text( '' ).addClass( 'CostEditor-count' );
-
-		this._itemSection = section(
-			this._itemTitle,
-			this._itemTotal,
-			new StackPanel( { isVertical: false } ).addClass( 'CostEditor-pair' ).add(
-				field( 'Code', this._identification ),
-				field( 'Name', this._name ),
-			),
-			field( 'Description', this._description ),
-			subtitle( 'Quantities' ),
-			this._quantities,
-			row( this._quantityType, textButton( 'Add quantity', 'add', run( () => this._run(
-				() => ops.Cost.AddQuantity( { ifcClass: this._quantityType.getValue() } ), 'Quantity added',
-			) ) ) ),
-			subtitle( 'Cost values' ),
-			this._values,
-			row(
-				textButton( 'Fixed', 'add', run( () => this._run( () => ops.Cost.AddValue( { type: 'FIXED' } ), 'Value added' ) ) ),
-				textButton( 'Sum of nested', 'functions', run( () => this._run( () => ops.Cost.AddValue( { type: 'SUM' } ), 'Sum added' ) ) ),
-			),
-			row( this._category, textButton( 'Category', 'category', run( () => this._addCategory() ) ) ),
-			subtitle( 'Rate' ),
-			this._rate,
-			row( this._ratePick, textButton( 'Assign rate', 'link', run( () => this._assignRate() ) ) ),
-			subtitle( 'Elements' ),
-			row(
-				this._products,
-				textButton( 'Assign selection', 'add_link', run( () => this._assignProducts( true ) ) ),
-				textButton( 'Unassign', 'link_off', run( () => this._assignProducts( false ) ) ),
-			),
-			row(
-				textButton( 'Add item', 'playlist_add', run( () => addItem( 'sibling' ) ) ),
-				textButton( 'Add nested', 'subdirectory_arrow_right', run( () => addItem( 'child' ) ) ),
-				textButton( 'Delete', 'delete', run( () => this._removeItem() ) ),
-			),
-		);
-
-		this._empty = new Text( '' ).addClass( 'CostEditor-empty' );
-		this._message = new Text( '' ).addClass( 'CostEditor-message' );
-		this._noSchedule = textButton( 'New cost schedule', 'request_quote', run( addSchedule ) );
-
-		this.root = new StackPanel( { isVertical: true } )
-			.addClass( 'CostEditor' )
-			.gap( '12px' )
-			.add( this._empty, this._noSchedule, this._scheduleSection, this._itemSection, this._message );
-
-	}
-
-	// Show the active schedule and item.
-	refresh() {
-
-		const { model, schedule: scheduleId, item: itemId } = this.state;
-		const hasFile = store.models.some( ( entry ) => entry.file );
-		const schedules = scheduleId ? ops.Cost.Schedules().result ?? [] : [];
-		const schedule = schedules.find( ( entry ) => entry.modelId === model && entry.id === scheduleId ) ?? null;
-		this._noSchedule.setHidden( Boolean( schedule ) || ! hasFile );
-		this._empty.setHidden( Boolean( schedule ) );
-		this._empty.setValue( hasFile ? 'No cost schedule is open.' : 'Open an IFC file to edit its cost schedules.' );
-		this._scheduleSection.setHidden( ! schedule );
-		this._itemSection.setHidden( true );
-		if ( ! schedule ) return;
-
-		this._scheduleName.setValue( schedule.name );
-		this._scheduleType.setValue( schedule.predefinedType || 'NOTDEFINED' );
-		this._scheduleStatus.setValue( schedule.status );
-		const item = itemId ? ops.Cost.ItemDetails().result : null;
-		if ( ! item ) {
-
-			this._shownItemId = 0;
-			this._message.setValue( 'Choose an item in the cost sheet to edit it.' );
-			return;
-
-		}
-
-		// A reload after an edit keeps the edit's message; a new item clears it.
-		if ( item.id !== this._shownItemId ) this._message.setValue( '' );
-		this._shownItemId = item.id;
-		const money = moneyFormat( schedule.currency );
-		this._itemSection.setHidden( false );
-		this._itemTitle.setValue( [ item.identification, item.name ].filter( Boolean ).join( '  ' ) || 'Item' );
-		const quantity = item.quantity == null ? '' : `${ quantityFormat.format( item.quantity ) } ${ item.unitSymbol } × `;
-		const basis = item.unitBasis ? ` / ${ quantityFormat.format( item.unitBasis ) }` : '';
-		this._itemTotal.setValue( item.values.length
-			? `${ quantity }${ money( item.appliedValue ) }${ basis } = ${ money( item.totalCost ) }`
-			: 'Unpriced: add a cost value or assign a rate.' );
-		this._identification.setValue( item.identification );
-		this._name.setValue( item.name === 'Unnamed' ? '' : item.name );
-		this._description.setValue( item.description );
-
-		this._fillQuantities( item );
-		this._fillValues( item, money );
-
-		this._rate.setValue( item.rateItem ? `From ${ [ item.rateItem.identification, item.rateItem.name ].filter( Boolean ).join( ' ' ) }` : 'No rate assigned' );
-		const rates = ( ops.Cost.RateItems().result ?? [] ).filter( ( rate ) => rate.id !== item.id );
-		setDropdown( this._ratePick, rates.map( ( rate ) => ( {
-			value: String( rate.id ),
-			label: `${ [ rate.identification, rate.name ].filter( Boolean ).join( ' ' ) } — ${ rate.schedule }`,
-		} ) ), item.rateItem ? String( item.rateItem.id ) : '' );
-		this._ratePick.setDisabled( ! rates.length );
-		this._products.setValue( `Prices ${ plural( item.productCount, 'element' ) }` );
-
-	}
-
-	_fillQuantities( item ) {
-
-		this._quantities.clear();
-		if ( ! item.quantities.length ) this._quantities.add( new Text( 'None: the item counts once.' ).addClass( 'CostEditor-empty' ) );
-		for ( const quantity of item.quantities ) {
-
-			const label = QUANTITY_TYPES.find( ( type ) => type.value === quantity.type )?.label ?? quantity.type;
-			const input = textInput( ( value ) => {
-
-				const number = Number( value );
-				if ( value === '' || ! Number.isFinite( number ) ) return this.refresh();
-				this._run( () => ops.Cost.EditQuantity( quantity.id, number ) );
-
-			}, { type: 'number' } );
-			input.setValue( quantity.value ?? '' );
-			input.dom.step = 'any';
-			const line = new StackPanel( { isVertical: false } ).addClass( 'CostEditor-line' );
-			line.dom.append( element( 'span', 'CostEditor-line-label', label ) );
-			line.add( input, iconButton( 'close', `Remove the ${ label.toLowerCase() } quantity`, () => this._run(
-				() => ops.Cost.RemoveQuantity( quantity.id ), 'Quantity removed',
-			) ) );
-			this._quantities.add( line );
-
-		}
-
-	}
-
-	_fillValues( item, money ) {
-
-		this._values.clear();
-		if ( ! item.values.length ) this._values.add( new Text( 'None' ).addClass( 'CostEditor-empty' ) );
-		for ( const value of item.values ) {
-
-			const label = value.name || ( value.category === '*' ? 'Sum' : value.category ) || 'Value';
-			const input = textInput( ( formula ) => this._run(
-				() => ops.Cost.EditValueFormula( value.id, formula ), 'Value updated',
-			), { placeholder: 'e.g. 120.5, SUM(), Labour()+Material()*1.2' } );
-			input.setValue( value.formula );
-			input.dom.title = 'Formula: a number, SUM(), Category(…), combined with + - * / and brackets';
-			const line = new StackPanel( { isVertical: false } ).addClass( 'CostEditor-line' );
-			line.dom.append( element( 'span', 'CostEditor-line-label', label ) );
-			line.add( input );
-			line.dom.append( element( 'span', 'CostEditor-line-value', money( value.applied ) ) );
-			line.add( iconButton( 'close', `Remove the ${ label } value`, () => this._run(
-				() => ops.Cost.RemoveValue( value.id ), 'Value removed',
-			) ) );
-			this._values.add( line );
-
-		}
-
-	}
-
-	// Run an operator; show a refusal or an error, else `done`.
-	async _run( run, done ) {
-
-		let result;
-		try {
-
-			result = await run();
-
-		} catch ( error ) {
-
-			result = { status: 'CANCELLED', message: error?.message || String( error ) };
-
-		}
-
-		if ( result?.status === 'CANCELLED' ) {
-
-			this._message.setValue( result.message || 'The change could not be made.' );
-			return null;
-
-		}
-
-		this._message.setValue( done || '' );
-		return result;
-
-	}
-
-	_addCategory() {
-
-		const category = this._category.getValue().trim();
-		if ( ! category ) {
-
-			this._message.setValue( 'Type a category first, such as Labour or Material.' );
-			return;
-
-		}
-
-		this._run( () => ops.Cost.AddValue( { type: 'CATEGORY', category } ), `${ category } value added` );
-		this._category.setValue( '' );
-
-	}
-
-	_assignRate() {
-
-		const rate = Number( this._ratePick.getValue() );
-		if ( rate ) this._run( () => ops.Cost.AssignRate( rate ), 'Rate assigned: its values are copied onto the item' );
-
-	}
-
-	async _assignProducts( assign ) {
-
-		const operator = assign ? ops.Cost.AssignProducts : ops.Cost.UnassignProducts;
-		const result = await this._run( () => operator() );
-		if ( ! result ) return;
-		const count = result.result ?? 0;
-		this._message.setValue( count
-			? `${ assign ? 'Assigned' : 'Unassigned' } ${ plural( count, 'element' ) }`
-			: 'Select elements of this model in the viewport first.' );
-
-	}
-
-	_removeItem() {
-
-		const item = this.state.item ? ops.Cost.ItemDetails().result : null;
-		if ( ! item || ! confirmRemoveItem( item.name, item.hasChildren ) ) return;
-		this._run( () => ops.Cost.RemoveCostItem(), `Deleted ${ item.identification || item.name }` );
-
-	}
-
-	async _removeSchedule() {
-
-		const name = this._scheduleName.getValue() || 'this cost schedule';
-		if ( ! window.confirm( `Delete "${ name }" and all its items from the IFC file? This cannot be undone.` ) ) return;
-		await this._run( () => ops.Cost.RemoveCostSchedule(), 'Cost schedule deleted' );
-
-	}
-
-}
-
-export default [ CostPanelUI, CostElementPanelUI, CostEditorPanelUI ];
+export default [ CostPanelUI, CostElementPanelUI ];

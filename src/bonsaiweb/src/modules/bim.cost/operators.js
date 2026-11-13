@@ -138,20 +138,6 @@ class CostToggleElement extends Operator {
 
 }
 
-class CostToggleEditor extends Operator {
-
-	static operatorName = 'Cost.ToggleEditor';
-	static operatorLabel = 'Toggle Cost Item Editor';
-
-	execute() {
-
-		this.context.signals.panelToggled.dispatch( { id: 'cost-editor-panel' } );
-		return { status: 'FINISHED' };
-
-	}
-
-}
-
 // STATE
 
 // Make a model, cost schedule and cost item active: options.model,
@@ -610,6 +596,39 @@ class CostAddValue extends CostOperator {
 
 }
 
+// Whether a formula reads, without changing anything: FINISHED, or
+// CANCELLED with the reason. The cost item dialog checks as you type.
+class CostCheckFormula extends Operator {
+
+	static operatorName = 'Cost.CheckFormula';
+	static operatorLabel = 'Check Cost Formula';
+	static operatorArgs = [ { name: 'formula', type: 'string' } ];
+
+	constructor( context, formula ) {
+
+		super( context );
+		this.formula = String( formula ?? '' );
+
+	}
+
+	execute() {
+
+		try {
+
+			Cost.parseFormula( this.formula );
+
+		} catch ( error ) {
+
+			return { status: 'CANCELLED', message: error.message };
+
+		}
+
+		return { status: 'FINISHED' };
+
+	}
+
+}
+
 // `value` is the STEP id of one of the active item's cost values; the
 // formula uses Bonsai's syntax, such as 120.5, SUM() or Labour()+Material()*1.2.
 class CostEditValueFormula extends CostPartOperator {
@@ -768,6 +787,30 @@ class CostAssignProducts extends CostOperator {
 
 }
 
+// The products selected in the viewport, in the active model (or
+// options.model): [ { guid, name, type } ]. The cost item dialog stages them.
+class CostSelectedProducts extends CostOperator {
+
+	static operatorName = 'Cost.SelectedProducts';
+	static operatorLabel = 'Selected Products';
+	static operatorArgs = [ OPTIONS ];
+
+	async execute() {
+
+		const result = [];
+		for ( const guid of await Viewer.selectedGuids( this.model ) ) {
+
+			const product = Ifc.byGuid( this.model, guid );
+			if ( product?.isA( 'IfcProduct' ) ) result.push( { guid, name: product.Name ?? '', type: product.isA() } );
+
+		}
+
+		return { status: 'FINISHED', result };
+
+	}
+
+}
+
 class CostUnassignProducts extends CostAssignProducts {
 
 	static operatorName = 'Cost.UnassignProducts';
@@ -784,6 +827,7 @@ export {
 	CostAddValue,
 	CostAssignProducts,
 	CostAssignRate,
+	CostCheckFormula,
 	CostEditCostItem,
 	CostEditCostSchedule,
 	CostEditQuantity,
@@ -799,8 +843,8 @@ export {
 	CostRemoveValue,
 	CostSchedules,
 	CostSelectItem,
+	CostSelectedProducts,
 	CostToggle,
-	CostToggleEditor,
 	CostToggleElement,
 	CostUnassignProducts,
 };
@@ -808,7 +852,6 @@ export {
 export default [
 	CostToggle,
 	CostToggleElement,
-	CostToggleEditor,
 	CostActivate,
 	CostSchedules,
 	CostItems,
@@ -816,6 +859,8 @@ export default [
 	CostRateItems,
 	CostProductItems,
 	CostSelectItem,
+	CostSelectedProducts,
+	CostCheckFormula,
 	CostAddCostSchedule,
 	CostEditCostSchedule,
 	CostRemoveCostSchedule,

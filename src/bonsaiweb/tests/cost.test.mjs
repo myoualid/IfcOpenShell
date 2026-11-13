@@ -219,6 +219,8 @@ test( 'authoring through the Cost operators ends where ifcopenshell.api does in 
 		const bad = ops.Cost.EditValueFormula( valueOf(), 'Labour(' );
 		assert.equal( bad.status, 'CANCELLED' );
 		assert.match( bad.message, /not closed/ );
+		assert.equal( ops.Cost.CheckFormula( 'Labour()+Material()*1.2' ).status, 'FINISHED' );
+		assert.match( ops.Cost.CheckFormula( 'Labour(' ).message, /not closed/ );
 		assert.equal( ops.Cost.AddValue( { type: 'CATEGORY' } ).status, 'CANCELLED', 'a category value needs a category' );
 		assert.equal( ops.Cost.AssignRate( doors ).status, 'CANCELLED' );
 
@@ -261,8 +263,7 @@ test( 'Cost.Activate, AddCostItem placement and toggles go through signals', () 
 		toggled.length = 0;
 		ops.Cost.Toggle();
 		ops.Cost.ToggleElement();
-		ops.Cost.ToggleEditor();
-		assert.deepEqual( toggled.map( ( request ) => request.id ), [ 'cost-panel', 'cost-element-panel', 'cost-editor-panel' ] );
+		assert.deepEqual( toggled.map( ( request ) => request.id ), [ 'cost-panel', 'cost-element-panel' ] );
 
 	} finally {
 
