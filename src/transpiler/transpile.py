@@ -143,6 +143,25 @@ def untyped_overloads(tree):
                 n.returns = None
 
 
+def mark_checked_reads(tree):
+    """Mark `isinstance(v, float)` tests (alone or in an `and`) whose branch reads `v` as `reads_checked`."""
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.If, ast.IfExp)):
+            continue
+        test = node.test
+        tests = test.values if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And) else [test]
+        body = node.body if isinstance(node.body, list) else [node.body]
+        for call in tests:
+            if not (isinstance(call, ast.Call) and ast.unparse(call.func) == "isinstance" and len(call.args) == 2):
+                continue
+            kinds = call.args[1].elts if isinstance(call.args[1], ast.Tuple) else [call.args[1]]
+            if not any(isinstance(k, ast.Name) and k.id == "float" for k in kinds):
+                continue
+            checked = ast.unparse(call.args[0])
+            if any(ast.unparse(n) == checked for b in body for n in ast.walk(b) if isinstance(n, ast.expr)):
+                call.reads_checked = True
+
+
 def flatten_type_checking(body):
     """Module statements with `if TYPE_CHECKING:` blocks (imports and type aliases) inlined; their else branches dropped."""
     return [
@@ -641,6 +660,7 @@ class Transpiler:
         tree = ast.parse(source)
         static_classmethods(tree)
         untyped_overloads(tree)
+        mark_checked_reads(tree)
         tree.body = flatten_type_checking(tree.body)
         self.functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
         named_tuples = {

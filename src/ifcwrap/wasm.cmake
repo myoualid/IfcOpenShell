@@ -113,6 +113,21 @@ foreach(plugin_target IN LISTS schema_libraries kernel_libraries tree_libraries 
 endforeach()
 string(REPLACE ";" "@" ifcopenshell_wasm_plugin_entries_arg "${ifcopenshell_wasm_plugin_entries}")
 
+# The OpenCASCADE kernel link scans these plugins' objects, so they have to be
+# compiled first. add_custom_command(TARGET) for that link lives in
+# ifcgeom/kernels, which is the directory that created the kernel target.
+if(TARGET geometry_kernel_opencascade)
+    foreach(plugin_target IN LISTS tree_libraries geometry_serializer_libraries)
+        if(NOT TARGET ${plugin_target})
+            continue()
+        endif()
+        get_target_property(plugin_depends ${plugin_target} IFCOPENSHELL_PLUGIN_DEPENDS)
+        if(plugin_depends AND plugin_depends MATCHES "(^|;)kernel:opencascade($|;)")
+            add_dependencies(geometry_kernel_opencascade ${plugin_target})
+        endif()
+    endforeach()
+endif()
+
 add_custom_target(ifcopenshell_wasm_plugins_bundle
     COMMAND ${CMAKE_COMMAND} -E make_directory "${IFCOPENSHELL_WASM_PLUGINS_DIR}"
     ${ifcopenshell_wasm_plugin_copy_commands}

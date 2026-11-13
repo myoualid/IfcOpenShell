@@ -2,7 +2,7 @@
 import { IfcOpenshellFile } from '@ifcopenshell/wasm/api';
 import type { AttributeValueType, EntityInstance } from './entity_instance.js';
 import { forgetFile, forgetInstance } from './entity_instance.js';
-import { IfcOpenShellError, abortError, ifcopenshell } from './init.js';
+import { IfcOpenShellError, abortError, nativeModule } from './init.js';
 
 /** Options controlling IFC byte-stream loading. */
 export interface OpenOptions {
@@ -36,7 +36,7 @@ export class File extends IfcOpenshellFile {
   /** Create an empty file, or take ownership of an existing native file handle. */
   constructor(schemaOrHandle: string | IfcOpenshellFile = 'IFC4') {
     const handle = typeof schemaOrHandle === 'string'
-      ? ifcopenshell.parse.newFile(schemaOrHandle, 0, '')
+      ? nativeModule().parse.newFile(schemaOrHandle, 0, '')
       : schemaOrHandle;
     if (!handle || handle.ptr === 0) throw new IfcOpenShellError('Failed to create IFC file');
     super(handle);
@@ -119,7 +119,7 @@ export class File extends IfcOpenshellFile {
     if (options.signal?.aborted) {
       throw abortError('Opening IFC file was aborted', options.signal.reason);
     }
-    const handle = ifcopenshell.parse.openBytes(bytes, filename, options.readonly ?? false);
+    const handle = nativeModule().parse.openBytes(bytes, filename, options.readonly ?? false);
     if (options.signal?.aborted) {
       handle?.destroy();
       throw abortError('Opening IFC file was aborted', options.signal.reason);

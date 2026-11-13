@@ -1,6 +1,6 @@
 import { IfcOpenshellGeomIterator } from '@ifcopenshell/wasm/api';
 import type { File } from '../file.js';
-import { IfcOpenShellError, ifcopenshell } from '../init.js';
+import { IfcOpenShellError, nativeModule } from '../init.js';
 import type { Settings } from './settings.js';
 
 /** Entity ids or IFC type names, matching the native include/exclude filters. */
@@ -27,7 +27,7 @@ export class Iterator extends IfcOpenshellGeomIterator {
     if (include !== undefined && exclude !== undefined) {
       throw new IfcOpenShellError('Specify either include or exclude, not both');
     }
-    const geom = ifcopenshell.geom;
+    const geom = nativeModule().geom;
     const filter = include ?? exclude;
     const handle = filter === undefined
       ? geom.createIterator(geometryLibrary, settings, file, numThreads)
