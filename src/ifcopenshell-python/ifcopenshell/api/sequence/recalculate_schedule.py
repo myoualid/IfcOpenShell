@@ -180,9 +180,6 @@ class Usecase:
         predecessor_types = [
             rel.SequenceType for rel in ifcopenshell.util.sequence.get_sequence_assignment(task, "predecessor")
         ]
-        successor_types = [
-            rel.SequenceType for rel in ifcopenshell.util.sequence.get_sequence_assignment(task, "successor")
-        ]
 
         if not predecessor_types:
             self.edges.append(
@@ -193,10 +190,10 @@ class Usecase:
                 self.g.nodes[task.id()]["early_start"] = ifcopenshell.util.date.ifc2datetime(
                     task.TaskTime.ScheduleStart
                 )  # we assume this task is constrained to start on this date
-        if not successor_types:
-            self.edges.append(
-                (task.id(), "finish", {"lag_time": datetime.timedelta(), "lag_type": "WORKTIME", "type": "FF"})
-            )
+        # Each task finishes before the end of the project, also a task with successors.
+        self.edges.append(
+            (task.id(), "finish", {"lag_time": datetime.timedelta(), "lag_type": "WORKTIME", "type": "FF"})
+        )
 
     def update_task_times(self) -> None:
         for ifc_definition_id in self.g.nodes:
