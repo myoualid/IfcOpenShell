@@ -230,7 +230,14 @@ class TestCascadeSchedule(test.bootstrap.IFC4):
         assert task.TaskTime.ScheduleFinish == "2000-01-01T15:00:00"
         assert task2.TaskTime.ScheduleStart == "2000-01-02T10:00:00"
 
-    def _create_task(self, duration):
+    def test_cascading_a_lag_as_a_ratio_of_the_predecessor_duration(self):
+        task = self._create_task("P1D")
+        task2 = self._create_task("P1D")
+        self._create_sequence(task, task2, "FINISH_START", lag=0.5)
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        assert task2.TaskTime.ScheduleStart == "2000-01-02T13:00:00"
+
+    def _create_task(self, duration, duration_type="WORKTIME"):
         task = ifcopenshell.api.sequence.add_task(self.file)
         if duration == "P0D":
             task.IsMilestone = True
@@ -238,16 +245,23 @@ class TestCascadeSchedule(test.bootstrap.IFC4):
         ifcopenshell.api.sequence.edit_task_time(
             self.file,
             task_time=task_time,
-            attributes={"ScheduleStart": datetime.date(2000, 1, 1), "ScheduleDuration": duration},
+            attributes={
+                "ScheduleStart": datetime.date(2000, 1, 1),
+                "ScheduleDuration": duration,
+                "DurationType": duration_type,
+            },
         )
         return task
 
-    def _create_sequence(self, predecessor, successor, relationship, lag=None):
+    def _create_sequence(self, predecessor, successor, relationship, lag=None, lag_type="WORKTIME"):
         rel = ifcopenshell.api.sequence.assign_sequence(
             self.file, relating_process=predecessor, related_process=successor
         )
         ifcopenshell.api.sequence.edit_sequence(self.file, rel_sequence=rel, attributes={"SequenceType": relationship})
-        if lag:
+        if isinstance(lag, float):  # An IfcRatioMeasure
+            value = self.file.createIfcRatioMeasure(lag)
+            rel.TimeLag = self.file.createIfcLagTime(DurationType=lag_type, LagValue=value)
+        elif lag:
             ifcopenshell.api.sequence.assign_lag_time(
-                self.file, rel_sequence=rel, lag_value=lag, duration_type="WORKTIME"
+                self.file, rel_sequence=rel, lag_value=lag, duration_type=lag_type
             )
