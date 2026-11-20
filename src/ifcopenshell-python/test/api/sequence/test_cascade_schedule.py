@@ -256,6 +256,16 @@ class TestCascadeSchedule(test.bootstrap.IFC4):
         ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
         assert task2.TaskTime.ScheduleStart == "2000-01-02T09:00:00"
 
+    def test_cascading_a_milestone_at_the_finish_of_its_predecessor(self):
+        task = self._create_task("P1D")
+        task2 = self._create_task("P0D")
+        task3 = self._create_task("P1D")
+        self._create_sequence(task, task2, "FINISH_START")
+        self._create_sequence(task2, task3, "FINISH_START")
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        assert task2.TaskTime.ScheduleStart == task2.TaskTime.ScheduleFinish == "2000-01-01T17:00:00"
+        assert task3.TaskTime.ScheduleStart == "2000-01-02T09:00:00"
+
     def test_cascading_a_lag_as_a_ratio_of_the_predecessor_duration(self):
         task = self._create_task("P1D")
         task2 = self._create_task("P1D")
