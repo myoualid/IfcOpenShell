@@ -425,6 +425,35 @@ def get_work_duration(
     return -result if value.startswith("-") else result
 
 
+def get_lag_time(
+    lag_time: ifcopenshell.entity_instance,
+    task: ifcopenshell.entity_instance,
+    predecessor: ifcopenshell.entity_instance,
+) -> datetime.timedelta:
+    """Get the IfcLagTime of a sequence as work days and work time
+
+    :param lag_time: The IfcLagTime.
+    :param task: The successor IfcTask. Its work day reads an IfcDuration.
+    :param predecessor: The predecessor IfcTask. An IfcRatioMeasure is a
+        ratio of its ScheduleDuration.
+    :return: The lag, in the form of get_work_duration.
+    """
+    if lag_time.LagValue.is_a("IfcDuration"):
+        return get_work_duration(lag_time.LagValue.wrappedValue, lag_time.DurationType, get_work_day_duration(task))
+    task_time = predecessor.TaskTime
+    if not task_time or not task_time.ScheduleDuration:
+        return datetime.timedelta()
+    if task_time.DurationType == "ELAPSEDTIME":
+        work_day = datetime.timedelta(days=1)
+    else:
+        work_day = get_work_day_duration(predecessor)
+    duration = get_work_duration(task_time.ScheduleDuration, task_time.DurationType, work_day)
+    days = datetime.timedelta(days=duration.days)
+    work = (duration - days + duration.days * work_day) * lag_time.LagValue.wrappedValue
+    work_days, rest = divmod(work, work_day)
+    return datetime.timedelta(days=work_days) + rest
+
+
 @cache
 def is_calendar_applicable(day, calendar: ifcopenshell.entity_instance) -> bool:
     if not calendar or not calendar.WorkingTimes:

@@ -167,9 +167,7 @@ class Usecase:
                         "lag_time": (
                             datetime.timedelta()
                             if not rel.TimeLag
-                            else ifcopenshell.util.sequence.get_work_duration(
-                                rel.TimeLag.LagValue.wrappedValue, rel.TimeLag.DurationType, work_day
-                            )
+                            else ifcopenshell.util.sequence.get_lag_time(rel.TimeLag, task, rel.RelatingProcess)
                         ),
                         "lag_type": rel.TimeLag.DurationType if rel.TimeLag else "WORKTIME",
                         "type": self.sequence_type_map[rel.SequenceType],
