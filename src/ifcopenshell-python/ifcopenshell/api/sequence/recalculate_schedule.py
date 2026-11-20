@@ -235,18 +235,12 @@ class Usecase:
             date, node["duration"], node["duration_type"], node["calendar"], date_type, node["work_day"]
         )
 
-    def offset_link(self, date, edge: dict, nodes: tuple, date_type: str, is_forward: bool):
-        # The lag is offset in the time of each task. The latest result applies (the earliest, back).
-        results = []
-        for node in nodes:
-            result = date
-            if edge["lag_time"]:
-                lag = edge["lag_time"] if is_forward else -edge["lag_time"]
-                result = ifcopenshell.util.sequence.offset_date(
-                    date, lag, node["duration_type"], node["calendar"], node["work_day"]
-                )
-            results.append(self.snap(node, result, date_type))
-        return max(results) if is_forward else min(results)
+    def offset_link(self, date, edge: dict, successor: dict, node: dict, date_type: str, is_forward: bool):
+        # The lag is work time of the successor (WORKTIME) or continuous time (ELAPSEDTIME).
+        date = ifcopenshell.util.sequence.offset_lag(
+            date, edge["lag_time"], edge["lag_type"], successor["calendar"], successor["work_day"], is_forward
+        )
+        return self.snap(node, date, date_type)
 
     def forward_pass(self, node) -> bool:
         data = self.g.nodes[node]
@@ -262,7 +256,7 @@ class Usecase:
                     return False
                 date_type = "START" if edge["type"] in ("FS", "SS") else "FINISH"
                 dates = starts if date_type == "START" else finishes
-                dates.append(self.offset_link(date, edge, (data, predecessor_data), date_type, True))
+                dates.append(self.offset_link(date, edge, data, data, date_type, True))
             start, finish = max(starts, default=None), max(finishes, default=None)
             if finish and (start is None or self.get_date(data, start, "FINISH") <= finish):
                 data["early_start"], data["early_finish"] = self.get_date(data, finish, "START"), finish
@@ -280,7 +274,7 @@ class Usecase:
         if date is None:
             return None
         date_type = "FINISH" if edge["type"] in ("FS", "FF") else "START"
-        return date_type, self.offset_link(date, edge, (data, successor_data), date_type, False)
+        return date_type, self.offset_link(date, edge, successor_data, data, date_type, False)
 
     def backward_pass(self, node) -> bool:
         data = self.g.nodes[node]
