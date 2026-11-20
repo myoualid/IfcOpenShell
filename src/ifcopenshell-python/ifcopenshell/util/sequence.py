@@ -137,34 +137,32 @@ def offset_date(
     calendar: ifcopenshell.entity_instance,
     work_day: datetime.timedelta = datetime.timedelta(hours=8),
 ):
+    """Offset a datetime by a duration
+
+    :param start: The datetime to offset.
+    :param duration: The duration, in the form of get_work_duration. Years
+        and months are calendar years and months.
+    :param duration_type: For ELAPSEDTIME, the duration is continuous time.
+        For other values, each day of the duration is one work day and the
+        offset is work time in the work periods of each day.
+    :param calendar: The IfcWorkCalendar, or None.
+    :param work_day: The length of a work day. See get_work_periods.
+    :return: The datetime after (or before, for a negative duration) the
+        duration. A result at the limit of a work period stays at that limit.
+    """
     current_date = start
     months = getattr(duration, "months", 0)
     years = getattr(duration, "years", 0)
     delta = getattr(duration, "tdelta", duration)
-    sign = -1 if delta < datetime.timedelta() else 1
-    time = abs(delta) - datetime.timedelta(days=abs(delta).days)
     if months or years:
-        # IfcDuration years and months are calendar years and months
         current_date += relativedelta(years=int(years), months=int(months))
-    days = sign * abs(delta).days
-
-    abs_duration = abs(days)
-    date_offset = datetime.timedelta(days=1 if days > 0 else -1)
-    while abs_duration > 0:
-        if duration_type == "ELAPSEDTIME" or not is_calendar_applicable(current_date, calendar):
-            abs_duration -= 1
-        elif is_working_day(current_date, calendar):
-            abs_duration -= 1
-        current_date += date_offset
-    direction = days or years * 12 + months
-    if direction > 0:
-        current_date = get_soonest_working_day(current_date, duration_type, calendar)
-    elif direction < 0 or not time:
-        current_date = get_recent_working_day(current_date, duration_type, calendar)
-    if time and duration_type == "ELAPSEDTIME":
-        current_date += sign * time
-    elif time:
-        current_date = offset_work_time(current_date, sign * time, calendar, work_day)
+    if duration_type == "ELAPSEDTIME":
+        return current_date + delta
+    sign = -1 if delta < datetime.timedelta() else 1
+    days = abs(delta).days
+    work = abs(delta) - datetime.timedelta(days=days) + days * work_day
+    if work:
+        current_date = offset_work_time(current_date, sign * work, calendar, work_day)
     return current_date
 
 
