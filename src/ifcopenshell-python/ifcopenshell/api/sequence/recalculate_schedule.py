@@ -209,7 +209,7 @@ class Usecase:
                 attributes={
                     "FreeFloat": ifcopenshell.util.date.datetime2ifc(data["free_float"], "IfcDuration"),
                     "TotalFloat": ifcopenshell.util.date.datetime2ifc(data["total_float"], "IfcDuration"),
-                    "IsCritical": data["total_float"].days == 0,
+                    "IsCritical": data["total_float"] <= datetime.timedelta(),
                     "EarlyStart": ifcopenshell.util.date.datetime2ifc(data["early_start"], "IfcDateTime"),
                     "EarlyFinish": ifcopenshell.util.date.datetime2ifc(data["early_finish"], "IfcDateTime"),
                     "LateStart": ifcopenshell.util.date.datetime2ifc(data["late_start"], "IfcDateTime"),
@@ -323,11 +323,11 @@ class Usecase:
         return True
 
     def get_float(self, data: dict, finish: datetime.datetime) -> datetime.timedelta:
-        # IfcTaskTime floats are elapsed time. The finishes move to the last work instant before the subtraction,
-        # so that the same work instant (17:00 and 09:00 the next day) gives no float.
+        # IfcTaskTime floats are elapsed time. Without work time between the two finishes, they are the same work
+        # instant (17:00 and 09:00 the next day) and there is no float.
         early_finish = data["early_finish"]
         if data["duration_type"] != "ELAPSEDTIME" or not data["duration"]:
             calendar, work_day = data["calendar"], data["work_day"]
-            finish = ifcopenshell.util.sequence.get_work_finish(finish, calendar, work_day)
-            early_finish = ifcopenshell.util.sequence.get_work_finish(early_finish, calendar, work_day)
+            if not ifcopenshell.util.sequence.get_work_time(early_finish, finish, calendar, work_day):
+                return datetime.timedelta()
         return finish - early_finish
