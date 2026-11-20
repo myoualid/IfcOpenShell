@@ -172,8 +172,16 @@ class TestOffsetDate(test.bootstrap.IFC4):
     def test_offsetting_by_elapsed_hours(self):
         assert self.offset(at(MONDAY, 14), 5 * H, duration_type="ELAPSEDTIME") == at(MONDAY, 19)
 
-    def test_offsetting_by_whole_days_as_before(self):
-        assert self.offset(at(MONDAY, 9), datetime.timedelta(days=2)) == at(MONDAY + datetime.timedelta(days=2), 9)
+    def test_offsetting_by_whole_work_days(self):
+        assert self.offset(at(MONDAY, 9), datetime.timedelta(days=2)) == at(MONDAY + datetime.timedelta(days=1), 17)
+
+    def test_offsetting_by_a_work_day_from_a_day_with_less_work_hours(self):
+        calendar = add_calendar(self.file, [("08:00:00", "12:00:00"), ("13:00:00", "17:00:00")])
+        friday = MONDAY + datetime.timedelta(days=4)
+        add_exception(self.file, calendar, friday, [("13:00:00", "17:00:00")])
+        assert self.offset(at(friday, 12), datetime.timedelta(days=1), calendar) == at(
+            MONDAY + datetime.timedelta(days=7), 17
+        )
 
     def test_offsetting_by_calendar_months_and_years(self):
         month, year = (ifcopenshell.util.date.parse_duration(d) for d in ("P1M", "P1Y"))
