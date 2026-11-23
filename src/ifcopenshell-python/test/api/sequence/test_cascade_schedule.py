@@ -230,24 +230,100 @@ class TestCascadeSchedule(test.bootstrap.IFC4):
         assert task.TaskTime.ScheduleFinish == "2000-01-01T15:00:00"
         assert task2.TaskTime.ScheduleStart == "2000-01-02T10:00:00"
 
-    def _create_task(self, duration):
-        task = ifcopenshell.api.sequence.add_task(self.file)
+    def test_cascading_start_to_start_with_a_sub_day_lag_to_the_end_of_a_day(self):
+        task = self._create_task("P1D")
+        task2 = self._create_task("P1D")
+        ifcopenshell.api.sequence.edit_task_time(
+            self.file, task_time=task.TaskTime, attributes={"ScheduleStart": datetime.datetime(2000, 1, 1, 15)}
+        )
+        self._create_sequence(task, task2, "START_START", lag="PT2H")
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        assert task2.TaskTime.ScheduleStart == "2000-01-02T09:00:00"
+        assert task2.TaskTime.ScheduleFinish == "2000-01-02T17:00:00"
+
+    def test_cascading_finish_to_finish_with_a_sub_day_lag(self):
+        task = self._create_task("P1D")
+        task2 = self._create_task("P1D")
+        self._create_sequence(task, task2, "FINISH_FINISH", lag="PT2H")
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        assert task2.TaskTime.ScheduleStart == "2000-01-01T11:00:00"
+        assert task2.TaskTime.ScheduleFinish == "2000-01-02T11:00:00"
+
+    def test_cascading_a_lag_in_elapsed_time(self):
+        task = self._create_task("PT5H")
+        task2 = self._create_task("P1D")
+        self._create_sequence(task, task2, "FINISH_START", lag="PT16H", lag_type="ELAPSEDTIME")
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        assert task2.TaskTime.ScheduleStart == "2000-01-02T09:00:00"
+
+    def test_cascading_a_milestone_at_the_finish_of_its_predecessor(self):
+        task = self._create_task("P1D")
+        task2 = self._create_task("P0D")
+        task3 = self._create_task("P1D")
+        self._create_sequence(task, task2, "FINISH_START")
+        self._create_sequence(task2, task3, "FINISH_START")
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        assert task2.TaskTime.ScheduleStart == task2.TaskTime.ScheduleFinish == "2000-01-01T17:00:00"
+        assert task3.TaskTime.ScheduleStart == "2000-01-02T09:00:00"
+
+    def test_cascading_a_task_in_elapsed_time_without_waiting_for_the_work_periods(self):
+        task = self._create_task("P1D")
+        task2 = self._create_task("PT16H", duration_type="ELAPSEDTIME")
+        self._create_sequence(task, task2, "FINISH_START")
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        assert task2.TaskTime.ScheduleStart == "2000-01-01T17:00:00"
+        assert task2.TaskTime.ScheduleFinish == "2000-01-02T09:00:00"
+
+    def test_cascading_a_finish_after_a_lag_in_elapsed_time(self):
+        task = self._create_task("PT5H")
+        task2 = self._create_task("PT2H")
+        self._create_sequence(task, task2, "FINISH_FINISH", lag="PT16H", lag_type="ELAPSEDTIME")
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        assert task2.TaskTime.ScheduleFinish == "2000-01-02T09:00:00"
+
+    def test_cascading_a_lag_as_a_ratio_of_the_predecessor_duration(self):
+        task = self._create_task("P1D")
+        task2 = self._create_task("P1D")
+        self._create_sequence(task, task2, "FINISH_START", lag=0.5)
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        assert task2.TaskTime.ScheduleStart == "2000-01-02T13:00:00"
+
+    def test_cascading_a_start_before_the_start_of_the_project(self):
+        ifcopenshell.api.root.create_entity(self.file, ifc_class="IfcProject")
+        work_schedule = ifcopenshell.api.sequence.add_work_schedule(self.file)
+        task = self._create_task("P1D", work_schedule=work_schedule)
+        task2 = self._create_task("P1D", work_schedule=work_schedule)
+        self._create_sequence(task, task2, "START_START", lag="-P2D")
+        ifcopenshell.api.sequence.cascade_schedule(self.file, task=task)
+        # The link gives a start 2 days before the start of the project. The task starts at the start of the project.
+        assert task2.TaskTime.ScheduleStart == "2000-01-01T09:00:00"
+        assert task2.TaskTime.ScheduleFinish == "2000-01-01T17:00:00"
+
+    def _create_task(self, duration, duration_type="WORKTIME", work_schedule=None):
+        task = ifcopenshell.api.sequence.add_task(self.file, work_schedule=work_schedule)
         if duration == "P0D":
             task.IsMilestone = True
         task_time = ifcopenshell.api.sequence.add_task_time(self.file, task=task)
         ifcopenshell.api.sequence.edit_task_time(
             self.file,
             task_time=task_time,
-            attributes={"ScheduleStart": datetime.date(2000, 1, 1), "ScheduleDuration": duration},
+            attributes={
+                "ScheduleStart": datetime.date(2000, 1, 1),
+                "ScheduleDuration": duration,
+                "DurationType": duration_type,
+            },
         )
         return task
 
-    def _create_sequence(self, predecessor, successor, relationship, lag=None):
+    def _create_sequence(self, predecessor, successor, relationship, lag=None, lag_type="WORKTIME"):
         rel = ifcopenshell.api.sequence.assign_sequence(
             self.file, relating_process=predecessor, related_process=successor
         )
         ifcopenshell.api.sequence.edit_sequence(self.file, rel_sequence=rel, attributes={"SequenceType": relationship})
-        if lag:
+        if isinstance(lag, float):  # An IfcRatioMeasure
+            value = self.file.createIfcRatioMeasure(lag)
+            rel.TimeLag = self.file.createIfcLagTime(DurationType=lag_type, LagValue=value)
+        elif lag:
             ifcopenshell.api.sequence.assign_lag_time(
-                self.file, rel_sequence=rel, lag_value=lag, duration_type="WORKTIME"
+                self.file, rel_sequence=rel, lag_value=lag, duration_type=lag_type
             )

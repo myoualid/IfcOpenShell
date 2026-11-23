@@ -21,7 +21,6 @@ from typing import Optional, Union
 
 import ifcopenshell.util.date
 import ifcopenshell.util.sequence
-from ifcopenshell.util.sequence import DURATION_TYPE
 
 
 def cascade_schedule(file: ifcopenshell.file, task: ifcopenshell.entity_instance) -> None:
@@ -112,7 +111,19 @@ class Usecase:
 
     def execute(self, task: ifcopenshell.entity_instance):
         self.calendar_cache = {}
+        self.project_start = self.get_project_start(task)
         self.cascade_task(task, is_first_task=True)
+
+    def get_project_start(self, task: ifcopenshell.entity_instance) -> Union[datetime.datetime, None]:
+        # The earliest start of the tasks without predecessors, as in recalculate_schedule.
+        if not (work_schedule := ifcopenshell.util.sequence.get_task_work_schedule(task)):
+            return None
+        starts = [
+            self.get_task_time_attribute(t, "ScheduleStart")
+            for t in ifcopenshell.util.sequence.get_work_schedule_tasks(work_schedule)
+            if not t.IsNestedBy and not ifcopenshell.util.sequence.get_sequence_assignment(t, "predecessor")
+        ]
+        return min((start for start in starts if start), default=None)
 
     def cascade_task(
         self,
@@ -149,66 +160,33 @@ class Usecase:
 
         for rel in ifcopenshell.util.sequence.get_sequence_assignment(task, "predecessor"):
             predecessor = rel.RelatingProcess
-            predecessor_duration = (
-                ifcopenshell.util.sequence.get_work_duration(
-                    predecessor.TaskTime.ScheduleDuration,
-                    predecessor.TaskTime.DurationType,
-                    self.get_work_day(predecessor),
+            if rel.SequenceType in ("FINISH_START", "FINISH_FINISH"):
+                date = self.get_task_time_attribute(predecessor, "ScheduleFinish")
+            elif rel.SequenceType in ("START_START", "START_FINISH"):
+                date = self.get_task_time_attribute(predecessor, "ScheduleStart")
+            else:
+                continue
+            if not date:
+                continue
+            lag = datetime.timedelta()
+            if rel.TimeLag:
+                # The lag is work time of the task (WORKTIME) or continuous time (ELAPSEDTIME).
+                lag = ifcopenshell.util.sequence.get_lag_time(rel.TimeLag, task, predecessor)
+                date = ifcopenshell.util.sequence.offset_lag(
+                    date, lag, rel.TimeLag.DurationType, self.get_calendar(task), self.get_work_day(task)
                 )
-                if predecessor.TaskTime and predecessor.TaskTime.ScheduleDuration
-                else datetime.timedelta()
-            )
-            if rel.SequenceType == "FINISH_START":
-                finish = self.get_task_time_attribute(predecessor, "ScheduleFinish")
-                if not finish:
-                    continue
-                lag = datetime.timedelta()
-                duration_type = "WORKTIME"
-                if rel.TimeLag:
-                    # updated to handle IfcRatioMeasure as a TimeLag value
-                    lag = self.get_lag_time(rel.TimeLag, task, predecessor, predecessor_duration)
-                    duration_type = rel.TimeLag.DurationType
-                for process in (task, predecessor):
-                    date = self.offset_date(finish, lag, duration_type, process)
-                    starts.append(
-                        ifcopenshell.util.sequence.get_work_start(date, *self.get_work_hours(process, duration_type))
-                    )
-            elif rel.SequenceType == "START_START":
-                start = self.get_task_time_attribute(predecessor, "ScheduleStart")
-                if not start:
-                    continue
-                if rel.TimeLag:
-                    lag = self.get_lag_time(rel.TimeLag, task, predecessor, predecessor_duration)
-                    duration_type = rel.TimeLag.DurationType
-                    starts.append(self.offset_date(start, lag, duration_type, task))
-                    starts.append(self.offset_date(start, lag, duration_type, predecessor))
-                else:
-                    starts.append(start)
-            elif rel.SequenceType == "FINISH_FINISH":
-                finish = self.get_task_time_attribute(predecessor, "ScheduleFinish")
-                if not finish:
-                    continue
-                if rel.TimeLag:
-                    lag = self.get_lag_time(rel.TimeLag, task, predecessor, predecessor_duration)
-                    duration_type = rel.TimeLag.DurationType
-                    finishes.append(self.offset_date(finish, lag, duration_type, task))
-                    finishes.append(self.offset_date(finish, lag, duration_type, predecessor))
-                else:
-                    finishes.append(finish)
-            elif rel.SequenceType == "START_FINISH":
-                start = self.get_task_time_attribute(predecessor, "ScheduleStart")
-                if not start:
-                    continue
-                lag = datetime.timedelta()
-                duration_type = "WORKTIME"
-                if rel.TimeLag:
-                    lag = self.get_lag_time(rel.TimeLag, task, predecessor, predecessor_duration)
-                    duration_type = rel.TimeLag.DurationType
-                for process in (task, predecessor):
-                    date = self.offset_date(start, lag, duration_type, process)
-                    finishes.append(
-                        ifcopenshell.util.sequence.get_work_finish(date, *self.get_work_hours(process, duration_type))
-                    )
+            if rel.SequenceType in ("FINISH_START", "START_START"):
+                starts.append(self.snap(task, date, "START"))
+            else:
+                # A finish after a finish, or after a limit in continuous time, stops after that instant.
+                is_elapsed = rel.TimeLag and rel.TimeLag.DurationType == "ELAPSEDTIME" and lag
+                is_strict = rel.SequenceType == "FINISH_FINISH" or bool(is_elapsed)
+                is_strict = is_strict or self.get_time(task) != self.get_time(predecessor)
+                finishes.append(self.snap(task, date, "FINISH", is_strict))
+
+        if (starts or finishes) and self.project_start:
+            # A task with predecessors also starts after the start of the project.
+            starts.append(self.snap(task, self.project_start, "START"))
 
         if starts and finishes:
             start = max(starts)
@@ -287,27 +265,6 @@ class Usecase:
                 for nested_task in rel.RelatedObjects or []
             ]
 
-    def get_lag_time(
-        self,
-        lag_time: ifcopenshell.entity_instance,
-        task: ifcopenshell.entity_instance,
-        predecessor: ifcopenshell.entity_instance,
-        predecessor_duration: datetime.timedelta,
-    ) -> datetime.timedelta:
-        if lag_time.LagValue.is_a("IfcDuration"):
-            return ifcopenshell.util.sequence.get_work_duration(
-                lag_time.LagValue.wrappedValue, lag_time.DurationType, self.get_work_day(task)
-            )
-        # An IfcRatioMeasure is a ratio of the predecessor duration.
-        if predecessor.TaskTime and predecessor.TaskTime.DurationType == "ELAPSEDTIME":
-            work_day = datetime.timedelta(days=1)
-        else:
-            work_day = self.get_work_day(predecessor)
-        days = datetime.timedelta(days=predecessor_duration.days)
-        work = (predecessor_duration - days + predecessor_duration.days * work_day) * lag_time.LagValue.wrappedValue
-        work_days, rest = divmod(work, work_day)
-        return datetime.timedelta(days=work_days) + rest
-
     def get_calendar(self, task: ifcopenshell.entity_instance) -> ifcopenshell.entity_instance:
         if task.id() not in self.calendar_cache:
             self.calendar_cache[task.id()] = ifcopenshell.util.sequence.derive_calendar(task)
@@ -316,24 +273,28 @@ class Usecase:
     def get_work_day(self, task: ifcopenshell.entity_instance) -> datetime.timedelta:
         return ifcopenshell.util.sequence.get_work_day_duration(task, self.get_calendar(task))
 
-    def get_work_hours(
-        self, task: ifcopenshell.entity_instance, duration_type: DURATION_TYPE
-    ) -> tuple[Union[ifcopenshell.entity_instance, None], datetime.timedelta]:
-        # The calendar and the work day that give the work periods of the task.
-        if duration_type == "ELAPSEDTIME":
-            return None, datetime.timedelta(hours=8)  # 09:00 to 17:00, as before
+    def get_work_hours(self, task: ifcopenshell.entity_instance) -> tuple:
+        # The work periods of the task. A milestone and a task in elapsed time have no work periods.
+        task_time = task.TaskTime
+        duration = task_time.ScheduleDuration if task_time else None
+        if (
+            not duration
+            or not ifcopenshell.util.date.parse_duration(duration)
+            or task_time.DurationType == "ELAPSEDTIME"
+        ):
+            return None
         return self.get_calendar(task), self.get_work_day(task)
 
-    def offset_date(
-        self,
-        date: datetime.datetime,
-        duration: datetime.timedelta,
-        duration_type: DURATION_TYPE,
-        task: ifcopenshell.entity_instance,
-    ) -> datetime.datetime:
-        return ifcopenshell.util.sequence.offset_date(
-            date, duration, duration_type, self.get_calendar(task), self.get_work_day(task)
-        )
+    def get_time(self, task: ifcopenshell.entity_instance) -> tuple:
+        # The time of the task: its work periods, and if it is in elapsed time.
+        task_time = task.TaskTime
+        is_elapsed = not task_time or not task_time.ScheduleDuration or task_time.DurationType == "ELAPSEDTIME"
+        return self.get_calendar(task), self.get_work_day(task), is_elapsed
+
+    def snap(self, task: ifcopenshell.entity_instance, date: datetime.datetime, date_type: str, is_strict=False):
+        if not (hours := self.get_work_hours(task)):
+            return date
+        return ifcopenshell.util.sequence.snap_date(date, date_type, *hours, is_strict=is_strict)
 
     def get_task_time_attribute(
         self, task: ifcopenshell.entity_instance, attribute: str

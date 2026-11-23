@@ -172,8 +172,16 @@ class TestOffsetDate(test.bootstrap.IFC4):
     def test_offsetting_by_elapsed_hours(self):
         assert self.offset(at(MONDAY, 14), 5 * H, duration_type="ELAPSEDTIME") == at(MONDAY, 19)
 
-    def test_offsetting_by_whole_days_as_before(self):
-        assert self.offset(at(MONDAY, 9), datetime.timedelta(days=2)) == at(MONDAY + datetime.timedelta(days=2), 9)
+    def test_offsetting_by_whole_work_days(self):
+        assert self.offset(at(MONDAY, 9), datetime.timedelta(days=2)) == at(MONDAY + datetime.timedelta(days=1), 17)
+
+    def test_offsetting_by_a_work_day_from_a_day_with_less_work_hours(self):
+        calendar = add_calendar(self.file, [("08:00:00", "12:00:00"), ("13:00:00", "17:00:00")])
+        friday = MONDAY + datetime.timedelta(days=4)
+        add_exception(self.file, calendar, friday, [("13:00:00", "17:00:00")])
+        assert self.offset(at(friday, 12), datetime.timedelta(days=1), calendar) == at(
+            MONDAY + datetime.timedelta(days=7), 17
+        )
 
     def test_offsetting_by_calendar_months_and_years(self):
         month, year = (ifcopenshell.util.date.parse_duration(d) for d in ("P1M", "P1Y"))
@@ -232,6 +240,80 @@ class TestGetWorkTime(test.bootstrap.IFC4):
         assert subject.get_work_time(at(MONDAY, 17), at(MONDAY + datetime.timedelta(days=1), 9), None) == 0 * H
 
 
+class TestOffsetLag(test.bootstrap.IFC4):
+    def setup_calendar(self):
+        return add_calendar(self.file, [("08:00:00", "12:00:00"), ("13:00:00", "17:00:00")])
+
+    def test_offsetting_by_a_lag_in_work_time(self):
+        calendar = self.setup_calendar()
+        assert subject.offset_lag(at(MONDAY + datetime.timedelta(days=4), 16), 2 * H, "WORKTIME", calendar) == at(
+            MONDAY + datetime.timedelta(days=7), 9
+        )
+
+    def test_offsetting_by_a_lag_in_elapsed_time(self):
+        calendar = self.setup_calendar()
+        assert subject.offset_lag(at(MONDAY + datetime.timedelta(days=4), 17), 16 * H, "ELAPSEDTIME", calendar) == at(
+            SATURDAY, 9
+        )
+
+    def test_giving_the_earliest_work_instant_forward_for_a_negative_lag(self):
+        calendar = self.setup_calendar()
+        assert subject.offset_lag(at(MONDAY + datetime.timedelta(days=7), 10), -2 * H, "WORKTIME", calendar) == at(
+            MONDAY + datetime.timedelta(days=4), 17
+        )
+
+    def test_giving_the_latest_work_instant_backward_for_a_negative_lag(self):
+        calendar = self.setup_calendar()
+        result = subject.offset_lag(
+            at(MONDAY + datetime.timedelta(days=4), 15), -2 * H, "WORKTIME", calendar, is_forward=False
+        )
+        assert result == at(MONDAY + datetime.timedelta(days=7), 8)
+
+    def test_keeping_the_date_for_no_lag(self):
+        assert subject.offset_lag(at(SATURDAY, 10), datetime.timedelta(), "WORKTIME", None) == at(SATURDAY, 10)
+
+
+class TestSnapDate(test.bootstrap.IFC4):
+    def setup_calendar(self):
+        return add_calendar(self.file, [("08:00:00", "12:00:00"), ("13:00:00", "17:00:00")])
+
+    def test_moving_a_start_to_the_next_work_period(self):
+        calendar = self.setup_calendar()
+        assert subject.snap_date(at(SATURDAY, 10), "START", calendar) == at(MONDAY + datetime.timedelta(days=7), 8)
+
+    def test_moving_a_finish_to_the_previous_work_period(self):
+        calendar = self.setup_calendar()
+        assert subject.snap_date(at(SATURDAY, 10), "FINISH", calendar) == at(MONDAY + datetime.timedelta(days=4), 17)
+
+    def test_stopping_the_work_after_a_strict_limit(self):
+        calendar = self.setup_calendar()
+        assert subject.snap_date(at(SATURDAY, 10), "FINISH", calendar, is_strict=True) == at(
+            MONDAY + datetime.timedelta(days=7), 8
+        )
+
+    def test_starting_the_work_before_a_strict_limit(self):
+        calendar = self.setup_calendar()
+        assert subject.snap_date(at(SATURDAY, 10), "START", calendar, is_forward=False) == at(
+            MONDAY + datetime.timedelta(days=7), 8
+        )
+        result = subject.snap_date(at(SATURDAY, 10), "START", calendar, is_forward=False, is_strict=True)
+        assert result == at(MONDAY + datetime.timedelta(days=4), 17)
+
+    def test_keeping_a_strict_finish_at_the_start_of_a_work_period(self):
+        calendar = self.setup_calendar()
+        monday = at(MONDAY + datetime.timedelta(days=7), 8)
+        assert subject.snap_date(monday, "FINISH", calendar, is_forward=False) == at(
+            MONDAY + datetime.timedelta(days=4), 17
+        )
+        assert subject.snap_date(monday, "FINISH", calendar, is_forward=False, is_strict=True) == monday
+
+    def test_keeping_a_date_in_a_work_period(self):
+        calendar = self.setup_calendar()
+        for date_type in ("START", "FINISH"):
+            for is_forward in (True, False):
+                assert subject.snap_date(at(MONDAY, 10), date_type, calendar, is_forward=is_forward) == at(MONDAY, 10)
+
+
 class TestGetWorkDuration:
     def test_converting_work_hours_of_one_work_day_or_more_to_work_days(self):
         assert subject.get_work_duration("PT24H", "WORKTIME") == datetime.timedelta(days=3)
@@ -247,3 +329,17 @@ class TestGetWorkDuration:
 
     def test_reading_an_elapsed_duration_as_it_is(self):
         assert subject.get_work_duration("PT24H", "ELAPSEDTIME") == datetime.timedelta(days=1)
+
+
+class TestGetTaskWorkSchedule(test.bootstrap.IFC4):
+    def test_getting_the_work_schedule_of_a_nested_task(self):
+        ifcopenshell.api.root.create_entity(self.file, ifc_class="IfcProject")
+        work_schedule = ifcopenshell.api.sequence.add_work_schedule(self.file)
+        task = ifcopenshell.api.sequence.add_task(self.file, work_schedule=work_schedule)
+        nested_task = ifcopenshell.api.sequence.add_task(self.file, parent_task=task)
+        assert subject.get_task_work_schedule(nested_task) == work_schedule
+
+    def test_getting_no_work_schedule_if_the_parent_task_has_none(self):
+        task = ifcopenshell.api.root.create_entity(self.file, ifc_class="IfcTask")
+        nested_task = ifcopenshell.api.sequence.add_task(self.file, parent_task=task)
+        assert subject.get_task_work_schedule(nested_task) is None

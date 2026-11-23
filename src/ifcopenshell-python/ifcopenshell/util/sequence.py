@@ -137,34 +137,32 @@ def offset_date(
     calendar: ifcopenshell.entity_instance,
     work_day: datetime.timedelta = datetime.timedelta(hours=8),
 ):
+    """Offset a datetime by a duration
+
+    :param start: The datetime to offset.
+    :param duration: The duration, in the form of get_work_duration. Years
+        and months are calendar years and months.
+    :param duration_type: For ELAPSEDTIME, the duration is continuous time.
+        For other values, each day of the duration is one work day and the
+        offset is work time in the work periods of each day.
+    :param calendar: The IfcWorkCalendar, or None.
+    :param work_day: The length of a work day. See get_work_periods.
+    :return: The datetime after (or before, for a negative duration) the
+        duration. A result at the limit of a work period stays at that limit.
+    """
     current_date = start
     months = getattr(duration, "months", 0)
     years = getattr(duration, "years", 0)
     delta = getattr(duration, "tdelta", duration)
-    sign = -1 if delta < datetime.timedelta() else 1
-    time = abs(delta) - datetime.timedelta(days=abs(delta).days)
     if months or years:
-        # IfcDuration years and months are calendar years and months
         current_date += relativedelta(years=int(years), months=int(months))
-    days = sign * abs(delta).days
-
-    abs_duration = abs(days)
-    date_offset = datetime.timedelta(days=1 if days > 0 else -1)
-    while abs_duration > 0:
-        if duration_type == "ELAPSEDTIME" or not is_calendar_applicable(current_date, calendar):
-            abs_duration -= 1
-        elif is_working_day(current_date, calendar):
-            abs_duration -= 1
-        current_date += date_offset
-    direction = days or years * 12 + months
-    if direction > 0:
-        current_date = get_soonest_working_day(current_date, duration_type, calendar)
-    elif direction < 0 or not time:
-        current_date = get_recent_working_day(current_date, duration_type, calendar)
-    if time and duration_type == "ELAPSEDTIME":
-        current_date += sign * time
-    elif time:
-        current_date = offset_work_time(current_date, sign * time, calendar, work_day)
+    if duration_type == "ELAPSEDTIME":
+        return current_date + delta
+    sign = -1 if delta < datetime.timedelta() else 1
+    days = abs(delta).days
+    work = abs(delta) - datetime.timedelta(days=days) + days * work_day
+    if work:
+        current_date = offset_work_time(current_date, sign * work, calendar, work_day)
     return current_date
 
 
@@ -265,6 +263,82 @@ def get_work_finish(
     """
     instant = datetime.timedelta(microseconds=1)
     return offset_work_time(date, -instant, calendar, work_day) + instant
+
+
+def offset_lag(
+    date: datetime.datetime,
+    lag: datetime.timedelta,
+    lag_type: Optional[DURATION_TYPE],
+    calendar: Optional[ifcopenshell.entity_instance],
+    work_day: datetime.timedelta = datetime.timedelta(hours=8),
+    is_forward: bool = True,
+) -> datetime.datetime:
+    """Offset a date of a predecessor by the lag of a sequence
+
+    :param date: The date of the predecessor (forward), or of the successor
+        (backward).
+    :param lag: The lag, from get_lag_time.
+    :param lag_type: The IfcLagTime DurationType. ELAPSEDTIME is continuous
+        time. Other values are work time of the calendar.
+    :param calendar: The IfcWorkCalendar of the successor, or None.
+    :param work_day: The length of a work day of the successor.
+    :param is_forward: True to add the lag, False to subtract it.
+    :return: The offset date. For a lag in work time, the end of a pause in
+        the work (for example 17:00 and 09:00 the next day) gives the
+        earliest date (forward) or the latest date (backward).
+    """
+    if not lag:
+        return date
+    result = offset_date(date, lag if is_forward else -lag, lag_type, calendar, work_day)
+    if lag_type == "ELAPSEDTIME" or getattr(lag, "tdelta", lag) >= datetime.timedelta():
+        return result  # A positive lag stops at the earliest (forward) or latest (backward) limit
+    if is_forward:
+        return get_work_finish(result, calendar, work_day)
+    return get_work_start(result, calendar, work_day)
+
+
+def snap_date(
+    date: datetime.datetime,
+    date_type: Literal["START", "FINISH"],
+    calendar: Optional[ifcopenshell.entity_instance],
+    work_day: datetime.timedelta = datetime.timedelta(hours=8),
+    is_forward: bool = True,
+    is_strict: bool = False,
+) -> datetime.datetime:
+    """Move a start or finish of a task in work time to a work instant
+
+    A start is the instant when the work starts. A finish is the instant when
+    the work stops. Out of the work periods, a start moves to the start of the
+    next work period and a finish moves to the end of the previous work
+    period. For the task, all the instants of a pause in the work are the
+    same work instant.
+
+    :param date: The date to move.
+    :param date_type: START or FINISH.
+    :param calendar: The IfcWorkCalendar of the task, or None.
+    :param work_day: The length of a work day of the task.
+    :param is_forward: True for the earliest date at or after the date
+        (forward pass). False for the latest date at or before the date
+        (backward pass).
+    :param is_strict: True if the instant itself is a limit, not only the
+        work instant: for example after a lag in elapsed time. Forward, a
+        finish then moves to the start of the next work period: the work stops
+        after that instant. Backward, a start out of the work periods moves to
+        the end of the previous work period, and a finish at the start of a
+        work period stays there.
+    :return: The start or finish.
+    """
+    start = get_work_start(date, calendar, work_day)
+    finish = get_work_finish(date, calendar, work_day)
+    if date_type == "START":
+        if is_forward or start == date or not is_strict:
+            return start
+        return finish
+    if finish == date:
+        return finish
+    if is_forward:
+        return start if is_strict else finish
+    return date if is_strict and start == date else finish
 
 
 def get_soonest_working_day(start, duration_type: DURATION_TYPE, calendar: ifcopenshell.entity_instance):
@@ -425,6 +499,35 @@ def get_work_duration(
     return -result if value.startswith("-") else result
 
 
+def get_lag_time(
+    lag_time: ifcopenshell.entity_instance,
+    task: ifcopenshell.entity_instance,
+    predecessor: ifcopenshell.entity_instance,
+) -> datetime.timedelta:
+    """Get the IfcLagTime of a sequence as work days and work time
+
+    :param lag_time: The IfcLagTime.
+    :param task: The successor IfcTask. Its work day reads an IfcDuration.
+    :param predecessor: The predecessor IfcTask. An IfcRatioMeasure is a
+        ratio of its ScheduleDuration.
+    :return: The lag, in the form of get_work_duration.
+    """
+    if lag_time.LagValue.is_a("IfcDuration"):
+        return get_work_duration(lag_time.LagValue.wrappedValue, lag_time.DurationType, get_work_day_duration(task))
+    task_time = predecessor.TaskTime
+    if not task_time or not task_time.ScheduleDuration:
+        return datetime.timedelta()
+    if task_time.DurationType == "ELAPSEDTIME":
+        work_day = datetime.timedelta(days=1)
+    else:
+        work_day = get_work_day_duration(predecessor)
+    duration = get_work_duration(task_time.ScheduleDuration, task_time.DurationType, work_day)
+    days = datetime.timedelta(days=duration.days)
+    work = (duration - days + duration.days * work_day) * lag_time.LagValue.wrappedValue
+    work_days, rest = divmod(work, work_day)
+    return datetime.timedelta(days=work_days) + rest
+
+
 @cache
 def is_calendar_applicable(day, calendar: ifcopenshell.entity_instance) -> bool:
     if not calendar or not calendar.WorkingTimes:
@@ -498,13 +601,12 @@ def is_work_time_applicable_to_day(work_time: ifcopenshell.entity_instance, day)
 
 def get_task_work_schedule(task: ifcopenshell.entity_instance) -> Union[ifcopenshell.entity_instance, None]:
     parent_task = get_parent_task(task)
-    if parent_task:
-        return get_task_work_schedule(parent_task) or get_task_work_schedule(task)
-    else:
-        for rel in task.HasAssignments:
-            if rel.is_a("IfcRelAssignsToControl") and rel.RelatingControl.is_a("IfcWorkSchedule"):
-                return rel.RelatingControl
-        return None
+    if parent_task and (work_schedule := get_task_work_schedule(parent_task)):
+        return work_schedule
+    for rel in task.HasAssignments:
+        if rel.is_a("IfcRelAssignsToControl") and rel.RelatingControl.is_a("IfcWorkSchedule"):
+            return rel.RelatingControl
+    return None
 
 
 def get_nested_tasks(task: ifcopenshell.entity_instance) -> list[ifcopenshell.entity_instance]:
