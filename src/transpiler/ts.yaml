@@ -341,6 +341,54 @@ types:
     when: kind in ['Any', 'Iterator', 'Generator', 'Callable']
     output: any
 rules:
+  # Python indexes an entity by attribute position: entity[0] is its first attribute.
+  - input:
+      node: Subscript
+      value: $value
+      slice: $index
+    when: node.ctx.__class__.__name__ == "Load" and value | kind == "entity" and index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0
+    output: '({{ value | emit }}.get({{ index.value }}) as any)'
+  # Schema declarations are not downcast: methods of one declaration class need an explicit cast.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: enumeration_items
+      args: []
+      keywords: []
+    when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_enumeration_type")
+    output: '{{ value | emit }}.asEnumerationType().enumerationItems()'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: select_list
+      args: []
+      keywords: []
+    when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_select_type")
+    output: '{{ value | emit }}.asSelectType().selectList()'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: type_of_element
+      args: []
+      keywords: []
+    when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_aggregation_type")
+    output: '{{ value | emit }}.asAggregationType().typeOfElement()'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: type_of_aggregation_string
+      args: []
+      keywords: []
+    when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_aggregation_type")
+    output: '{{ value | emit }}.asAggregationType().typeOfAggregationString()'
   # Matrix multiplication needs numpy arrays, which the generated code does not have.
   - input:
       node: BinOp
