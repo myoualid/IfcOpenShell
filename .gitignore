@@ -145,9 +145,9 @@ CLAUDE.local.md
 /src/bonsaiviewer-autodesk/dist/
 
 # Python-to-TypeScript transpilation (src/transpiler): written by generate.py; not committed.
+# transpile.json is committed: it is the coverage baseline (each module's stubs and their reasons).
 /src/ts/ifcopenshell-js/src/util/
 /src/ts/ifcopenshell-js/src/api/
-/src/transpiler/transpile.json
 /src/transpiler/types.json
 /src/transpiler/TRACKING.md
 /src/transpiler/test-results.json

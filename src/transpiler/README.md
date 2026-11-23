@@ -15,7 +15,8 @@ python src/transpiler/transpile.py src/ifcopenshell-python/ifcopenshell/util/uni
 
 The generated code is build output and not committed. Unsupported functions become
 throwing stubs, listed with the first unsupported construct in
-`src/transpiler/transpile.json`. Unsupported module-level code makes
+`src/transpiler/transpile.json`. That file is committed as the coverage baseline: after a
+change to the rules or the Python source, its diff shows which functions changed status. Unsupported module-level code makes
 the whole file a module of throwing functions rather than disappearing.
 `precomputed.json` holds the results of the functions listed under `precomputed` in
 `ts.yaml`; refresh it with `generate.py --precompute`, which needs an installed
