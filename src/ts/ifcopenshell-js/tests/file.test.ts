@@ -351,4 +351,16 @@ END-ISO-10303-21;`;
     file.dispose();
     expect(ifcopenshell.File.byPointer(0)).toBeNull();
   });
+  it('collects entities to remove by identity', () => {
+    using file = new ifcopenshell.File('IFC4');
+    const wall = file.create('IfcWall', { Name: 'Wall' });
+    expect(file.toDelete).toBeNull();
+    file.toDelete = new Set();
+    file.toDelete!.add(wall);
+    file.toDelete!.add(file.byId(wall.id())!);
+    expect(file.toDelete!.size).toBe(1);
+    file.toDelete = null;
+    expect(file.toDelete).toBeNull();
+    expect(file.units).toEqual({});
+  });
 });

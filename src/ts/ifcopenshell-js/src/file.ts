@@ -21,6 +21,23 @@ const openFiles = new Map<number, File>();
 
 /** High-level wrapper for an IFC file and its entity graph. */
 export class File extends IfcOpenshellFile {
+  /** Project units by unit type, which `util/unit` caches here. */
+  units: Record<string, EntityInstance> = {};
+
+  private toDeleteSet: Set<EntityInstance> | null = null;
+
+  /**
+   * Entities that `util/element` collects to remove in one batch, or null outside a batch.
+   * Membership follows entity identity.
+   */
+  get toDelete(): Set<EntityInstance> | null {
+    return this.toDeleteSet;
+  }
+
+  set toDelete(value: Iterable<EntityInstance> | null) {
+    this.toDeleteSet = value ? new EntityInstanceSet(value) : null;
+  }
+
   /** @internal The open File with this native file pointer, or null. */
   static byPointer(pointer: number): File | null {
     return openFiles.get(pointer) ?? null;
