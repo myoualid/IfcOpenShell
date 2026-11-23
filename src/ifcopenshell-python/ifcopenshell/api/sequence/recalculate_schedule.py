@@ -181,10 +181,11 @@ class Usecase:
             rel.SequenceType for rel in ifcopenshell.util.sequence.get_sequence_assignment(task, "predecessor")
         ]
 
+        # Each task starts after the start of the project, also a task with predecessors.
+        self.edges.append(
+            ("start", task.id(), {"lag_time": datetime.timedelta(), "lag_type": "WORKTIME", "type": "FS"})
+        )
         if not predecessor_types:
-            self.edges.append(
-                ("start", task.id(), {"lag_time": datetime.timedelta(), "lag_type": "WORKTIME", "type": "FS"})
-            )
             if task.TaskTime and task.TaskTime.ScheduleStart:
                 self.start_dates.append(ifcopenshell.util.date.ifc2datetime(task.TaskTime.ScheduleStart))
                 self.g.nodes[task.id()]["early_start"] = ifcopenshell.util.date.ifc2datetime(
