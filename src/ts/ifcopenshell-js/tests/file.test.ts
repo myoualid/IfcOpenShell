@@ -330,4 +330,17 @@ END-ISO-10303-21;`;
     using parsed = ifcopenshell.File.fromString(source.toString());
     expect(parsed.byType('IfcWall').map(wall => wall.get('Name'))).toEqual(['Wall']);
   });
+  it('checks which entities reference an entity', () => {
+    using file = new ifcopenshell.File('IFC4');
+    const point = file.create('IfcCartesianPoint', { Coordinates: [0, 0, 0] });
+    const placement = file.create('IfcAxis2Placement3D', { Location: point });
+    const other = file.create('IfcAxis2Placement3D', { Location: point });
+    const lonely = file.create('IfcCartesianPoint', { Coordinates: [1, 0, 0] });
+    expect(file.isReferencedOnlyIn(point, [placement.id()])).toBe(false);
+    expect(file.isReferencedOnlyIn(point, [placement.id(), other.id()])).toBe(true);
+    expect(file.isReferencedOnlyIn(lonely, [])).toBe(true);
+    expect(file.idsReferencedOnlyWithin([point.id(), placement.id()])).toEqual([placement.id()]);
+    expect(file.idsReferencedOnlyWithin([point.id(), placement.id(), other.id()]).sort())
+      .toEqual([point.id(), placement.id(), other.id()].sort());
+  });
 });

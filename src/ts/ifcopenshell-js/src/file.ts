@@ -93,6 +93,18 @@ export class File extends IfcOpenshellFile {
     }
   }
 
+  /** Whether every entity that references `entity` has one of `ids`. */
+  isReferencedOnlyIn(entity: EntityInstance, ids: Iterable<number>): boolean {
+    const allowed = new Set(ids);
+    return this.getInverseList(entity).every(inverse => allowed.has(inverse.id()));
+  }
+
+  /** The ids, of those given, whose referencing entities all have an id among them. */
+  idsReferencedOnlyWithin(ids: Iterable<number>): number[] {
+    const within = new Set(ids);
+    return [...within].filter(id => this.getInverseList(this.byId(id)).every(inverse => within.has(inverse.id())));
+  }
+
   /** General IFC schema version, without addendum or technical corrigendum suffixes. */
   schema(): string {
     return this.schemaIdentifier().replace(/(_ADD|_TC)\d+.*$/, '');
