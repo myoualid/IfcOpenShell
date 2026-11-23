@@ -329,3 +329,17 @@ class TestGetWorkDuration:
 
     def test_reading_an_elapsed_duration_as_it_is(self):
         assert subject.get_work_duration("PT24H", "ELAPSEDTIME") == datetime.timedelta(days=1)
+
+
+class TestGetTaskWorkSchedule(test.bootstrap.IFC4):
+    def test_getting_the_work_schedule_of_a_nested_task(self):
+        ifcopenshell.api.root.create_entity(self.file, ifc_class="IfcProject")
+        work_schedule = ifcopenshell.api.sequence.add_work_schedule(self.file)
+        task = ifcopenshell.api.sequence.add_task(self.file, work_schedule=work_schedule)
+        nested_task = ifcopenshell.api.sequence.add_task(self.file, parent_task=task)
+        assert subject.get_task_work_schedule(nested_task) == work_schedule
+
+    def test_getting_no_work_schedule_if_the_parent_task_has_none(self):
+        task = ifcopenshell.api.root.create_entity(self.file, ifc_class="IfcTask")
+        nested_task = ifcopenshell.api.sequence.add_task(self.file, parent_task=task)
+        assert subject.get_task_work_schedule(nested_task) is None
