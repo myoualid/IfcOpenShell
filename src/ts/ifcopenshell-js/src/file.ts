@@ -45,6 +45,11 @@ export class File extends IfcOpenshellFile {
     return new File(handle);
   }
 
+  /** Parse IFC STEP text. */
+  static fromString(text: string, options: OpenOptions = {}): File {
+    return File.open(new TextEncoder().encode(text), undefined, options);
+  }
+
   get maxId(): number {
     return this.getMaxId();
   }
@@ -65,12 +70,22 @@ export class File extends IfcOpenshellFile {
   declare traverse: (entity: EntityInstance, maxDepth: number) => EntityInstance[];
   declare traverseBreadthFirst: (entity: EntityInstance, maxDepth: number) => EntityInstance[];
 
-  /** Create an entity with any of its IFC attributes, using their schema names. */
-  create(ifcClass: string, attributes: Record<string, AttributeValueType> = {}): EntityInstance {
-    const entity = this.createEntityByName(ifcClass) as EntityInstance | null;
+  /**
+   * Create an entity with any of its IFC attributes: by schema name in an object, or by
+   * position in an array. Give `id` to create the entity with that id.
+   */
+  create(
+    ifcClass: string,
+    attributes: Record<string, AttributeValueType> | AttributeValueType[] = {},
+    id?: number,
+  ): EntityInstance {
+    const entity = (id ? this.createEntityByNameWithId(ifcClass, id) : this.createEntityByName(ifcClass)) as EntityInstance | null;
     if (!entity) throw new IfcOpenShellError(`Failed to create ${ifcClass}`);
     try {
-      for (const [name, value] of Object.entries(attributes)) entity.set(name, value);
+      const entries = Array.isArray(attributes)
+        ? attributes.map((value, index) => [index, value] as const)
+        : Object.entries(attributes);
+      for (const [nameOrIndex, value] of entries) entity.set(nameOrIndex, value);
       return entity;
     } catch (error) {
       this.remove(entity);

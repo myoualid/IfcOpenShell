@@ -314,4 +314,20 @@ END-ISO-10303-21;`;
     expect(() => integer.set(0, 1.5)).toThrow();
     expect(() => integer.set(0, 1n << 63n)).toThrow();
   });
+  it('creates entities by position and with a given id', () => {
+    using file = new ifcopenshell.File('IFC4');
+    const wall = file.create('IfcWall', ['0SAozgFqvA6voDVczQIpmj', null, 'Wall']);
+    expect(wall.get('GlobalId')).toBe('0SAozgFqvA6voDVczQIpmj');
+    expect(wall.get('Name')).toBe('Wall');
+    const slab = file.create('IfcSlab', { Name: 'Slab' }, 42);
+    expect(slab.id()).toBe(42);
+    expect(file.byId(42)!.get('Name')).toBe('Slab');
+  });
+
+  it('parses IFC STEP text', () => {
+    using source = new ifcopenshell.File('IFC4');
+    source.create('IfcWall', { Name: 'Wall' });
+    using parsed = ifcopenshell.File.fromString(source.toString());
+    expect(parsed.byType('IfcWall').map(wall => wall.get('Name'))).toEqual(['Wall']);
+  });
 });
