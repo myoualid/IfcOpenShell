@@ -25,9 +25,9 @@
       "types": "./dist/serializers/index.d.ts",
       "import": "./dist/serializers/index.js"
     },
-    "./util": {
-      "types": "./dist/util/index.d.ts",
-      "import": "./dist/util/index.js"
+    "./helpers": {
+      "types": "./dist/helpers/index.d.ts",
+      "import": "./dist/helpers/index.js"
     }
   },
   "files": [
