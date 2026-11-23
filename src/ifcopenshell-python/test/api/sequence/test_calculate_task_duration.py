@@ -16,8 +16,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
-import ifcopenshell.api.pset
 import ifcopenshell.api.control
+import ifcopenshell.api.pset
 import ifcopenshell.api.resource
 import ifcopenshell.api.root
 import ifcopenshell.api.sequence
