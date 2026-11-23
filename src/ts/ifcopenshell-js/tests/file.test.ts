@@ -343,4 +343,12 @@ END-ISO-10303-21;`;
     expect(file.idsReferencedOnlyWithin([point.id(), placement.id(), other.id()]).sort())
       .toEqual([point.id(), placement.id(), other.id()].sort());
   });
+  it('returns the open File of an entity', () => {
+    const file = new ifcopenshell.File('IFC4');
+    const wall = file.create('IfcWall', { Name: 'Wall' });
+    expect(wall.file()).toBe(file);
+    expect(file.byType('IfcWall')[0]!.file()).toBe(file);
+    file.dispose();
+    expect(ifcopenshell.File.byPointer(0)).toBeNull();
+  });
 });

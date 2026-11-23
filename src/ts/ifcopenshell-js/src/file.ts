@@ -16,8 +16,16 @@ export interface GetInverseOptions {
   withAttributeIndices?: boolean;
 }
 
+/** Open files by native file pointer, so that an entity can return its File. */
+const openFiles = new Map<number, File>();
+
 /** High-level wrapper for an IFC file and its entity graph. */
 export class File extends IfcOpenshellFile {
+  /** @internal The open File with this native file pointer, or null. */
+  static byPointer(pointer: number): File | null {
+    return openFiles.get(pointer) ?? null;
+  }
+
   /** Create an empty file, or take ownership of an existing native file handle. */
   constructor(schemaOrHandle: string | IfcOpenshellFile = 'IFC4') {
     const handle = typeof schemaOrHandle === 'string'
@@ -25,6 +33,24 @@ export class File extends IfcOpenshellFile {
       : schemaOrHandle;
     if (!handle || handle.ptr === 0) throw new IfcOpenShellError('Failed to create IFC file');
     super(handle);
+    this.pointer = this.filePointer();
+    openFiles.set(this.pointer, this);
+  }
+
+  private readonly pointer: number;
+
+  private forget(): void {
+    if (openFiles.get(this.pointer) === this) openFiles.delete(this.pointer);
+  }
+
+  override destroy(): void {
+    this.forget();
+    super.destroy();
+  }
+
+  override dispose(): void {
+    this.forget();
+    super.dispose();
   }
 
   /** Open IFC STEP bytes and retain ownership of the native file. */

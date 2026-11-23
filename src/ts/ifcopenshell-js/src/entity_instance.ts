@@ -3,6 +3,7 @@
 import { IfcOpenshellInstance } from '@ifcopenshell/wasm/api';
 import type { AttributeValueType as NativeAttributeValueType } from '@ifcopenshell/wasm/api';
 import { IfcOpenShellError } from './init.js';
+import { File } from './file.js';
 
 /** Values decoded by the native WASM attribute typemap. */
 export type AttributeValueType = NativeAttributeValueType<EntityInstance>;
@@ -67,6 +68,11 @@ export class EntityInstance extends IfcOpenshellInstance {
 
   attributes(): string[] {
     return this.getAttributeNames();
+  }
+
+  /** The open File that contains this entity, or null. */
+  override file(): File | null {
+    return File.byPointer(this.filePointer());
   }
 
   entries(): [string, AttributeValueType][] {
