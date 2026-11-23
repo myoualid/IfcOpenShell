@@ -163,7 +163,7 @@ dunder_operators:
   Pow: pow
   MatMult: matmul
 # Imported modules that rules translate (others are dropped and their users stubbed).
-supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field]
+supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field, itertools, chain]
 # Modules imported only for annotations.
 type_only_modules: [typing, typing_extensions, collections.abc, __future__, collections, functools]
 # Functions that introspect Python itself; generate.py runs them for each argument and
@@ -348,6 +348,24 @@ rules:
       slice: $index
     when: node.ctx.__class__.__name__ == "Load" and value | kind == "entity" and index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0
     output: '({{ value | emit }}.get({{ index.value }}) as any)'
+  # itertools.chain(*lists): the items of each list, in order.
+  - input:
+      node: Call
+      func: $callee
+      args:
+        - node: Starred
+          value: $lists
+      keywords: []
+    when: callee | source in ["itertools.chain", "chain"]
+    output: 'Array.from<any>({{ lists | iterable }}).flatMap((v: any) => [...v])'
+  # itertools.chain(a, b): one array with the items of a and then of b.
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: []
+    when: callee | source in ["itertools.chain", "chain"] and args | selectattr("__class__.__name__", "equalto", "Starred") | list | length == 0
+    output: '[{% for arg in args %}...{{ arg | iterable }}{% if not loop.last %}, {% endif %}{% endfor %}]'
   # Schema declarations are not downcast: methods of one declaration class need an explicit cast.
   - input:
       node: Call
