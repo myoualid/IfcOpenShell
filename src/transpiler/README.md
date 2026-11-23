@@ -1,26 +1,36 @@
 <!-- This file was generated with the assistance of an AI coding tool. -->
 
-# Python Ã¢â€ â€™ TypeScript prototype
+# Python to TypeScript transpiler
 
-From the repository root (Python dependencies: `pip install PyYAML Jinja2`):
+Transpiles `ifcopenshell.util` and `ifcopenshell.api` into the `ifcopenshell` npm
+package (`src/ts/ifcopenshell-js`), as `ifcopenshell/util/<module>` and
+`ifcopenshell/api/<package>`. From the repository root (Python dependencies: `requirements.txt`):
 
-```powershell
-python src/transpiler/transpile.py src/ifcopenshell-python/ifcopenshell/util/unit.py -o src/transpiler/unit.ts
+```shell
+python src/transpiler/generate.py            # write src/ts/ifcopenshell-js/src/{util,api}
+python src/transpiler/generate.py --report   # also write TRACKING.md: per module, what remains, what is tested, what is done
+python src/transpiler/transpile.py src/ifcopenshell-python/ifcopenshell/util/unit.py   # one module to stdout
 ```
+
+The generated code is build output and not committed. Unsupported functions become
+throwing stubs, listed with the first unsupported construct in
+`src/transpiler/transpile.json`. Unsupported module-level code makes
+the whole file a module of throwing functions rather than disappearing.
+`precomputed.json` holds the results of the functions listed under `precomputed` in
+`ts.yaml`; refresh it with `generate.py --precompute`, which needs an installed
+ifcopenshell close to this checkout.
 
 The generated TypeScript targets the `ifcopenshell` npm package's
 [Core API](https://docs.ifcopenshell.org/output/typescript-api/Core.html).
 The caller initializes IfcOpenShell and supplies the file.
 
-The whole module is processed, including top-level data and type aliases.
-Currently 27 of `unit.py`'s 33 functions translate. Unsupported functions become
-exported throwing stubs, with the first unsupported construct reported to stderr.
-Unsupported top-level data aborts translation rather than disappearing.
+## How it works
 
 `transpile.py` parses Python, discovers bindings, matches patterns and renders
 Jinja templates. All translation rules, including types, syntax, API names,
 imports and data-shape inference, live in `ts.yaml`. There is no preamble or
-runtime compatibility library: rules emit native TypeScript operations directly.
+runtime compatibility library: rules emit native TypeScript operations directly. Where a function needs a Python library without a TS
+counterpart, or a type that cannot be proven, it becomes a stub.
 Pass `--rules another.yaml` to use a different rule set. Treat rule files as trusted code.
 
 Patterns use Python AST field names, with `node` specifying the AST class.
@@ -55,28 +65,10 @@ No utility-specific file type or module augmentation is generated. Properties
 missing from the target API may produce TypeScript typing errors; those need
 resolution in the source/API rather than synthetic types in the transpiler.
 Loops, defaults, keyword calls to local functions, unpacking, comprehensions and
-unit conversions are supported. Unknown calls are rejected. Inference and API mappings cover
-the patterns in this module, rather than general Python semantics. In particular,
-dictionary `.get()` uses `??` for these tables' non-null values, and collection
-equality handles the flat numeric tuples used for dimensions.
-
-Remaining stubs: `get_property_unit`, `calculate_unit_scale`, `format_length`,
-`is_attr_type`, `iter_element_and_attributes_per_type`, `convert_file_length_units`.
-These reach unmapped schema reflection, formatting or external Python modules.
-`get_property_table_unit` requires an explicit `ifc_file`; `entity.file` has no mapping yet.
-
-This is a prototype: dynamic locals still use `any`; narrow tuple/literal return
-types occasionally need targeted assertions. Literal-union parameters become
-strings when the Python body manipulates them as strings. General formatting,
-parenthesis cleanup, nested scopes and general imports remain future work.
+unit conversions are supported. Unknown calls are rejected. Types (see below), inference
+and API mappings cover the patterns in the source, rather than general Python semantics.
+Where the type of a value is not known, the Python gets the type annotation it lacks.
 No Python or WASM code is executed during translation.
-
-Manually verified: 61 calls against Python, all 10 data tables, and IFC graph
-smoke checks with JS stand-ins. The emitted code intentionally exposes the
-Python file's `units` property, which is absent from the current JS `File` type.
-Full type checking also requires generated WASM declarations missing from this
-checkout. No test suite was added.
-
 
 Select the exploratory C++ target explicitly:
 
@@ -101,3 +93,35 @@ recursive variants and operand-valued short-circuiting. Forward declarations,
 string/enum decoding, attribute writes, caches and schema-specific casts also
 need decisions. Dynamic attribute types currently come from a small explicit
 YAML table. No C++ compilation or runtime validation was attempted.
+
+## Types
+
+`mypy_types.py` proves the types of expressions with mypy, and `ts.yaml` asks for them through the
+`kind` and `nullable` filters. A plugin gives IFC attributes their types from `attributes.json`,
+which `generate.py --precompute` refreshes. Results are cached in `types.json` (not committed) and
+recomputed when the Python source changes; that takes a minute or two. `requirements.txt` installs
+the pure Python build of mypy, since `mypy_types.py` subclasses its visitors.
+
+## Unsupported modules
+
+The generated code does not emulate Python libraries. Functions that use `numpy`, `datetime`
+arithmetic, `isodate`, `dateutil`, `lark`, `shapely`, Blender modules or native functions that
+the WASM build does not expose become stubs that throw with the reason; `transpile.json` lists
+them. `src/ts/ifcopenshell-js/src/helpers/lang.ts` holds the few Python semantics that plain TS
+does not give, such as the truthiness of empty containers.
+
+`generate.py` also writes `api/index.ts` and `util/index.ts`, which export every package and
+module as a namespace (`ifcopenshell/api`, `ifcopenshell/util`; the latter re-exports the
+hand-written helpers of `src/helpers`).
+
+## Building
+
+```shell
+cd src/ts/ifcopenshell-js
+npm ci
+npm run generate   # transpile into src/util and src/api (a few minutes: mypy)
+npm run build      # type-checks and compiles the generated code into dist/util and dist/api
+```
+
+The generated code is not committed, so run `generate` and `build` after changing the rules or
+the Python source.

@@ -1,0 +1,8988 @@
+{
+"AccessState": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"AcidityConcentration": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ActingRole": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ActionID": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ActionSource": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ActionType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Actor": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Actors": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ActualDate": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ActualDuration": {
+"optional": true,
+"types": [
+"number",
+"string"
+]
+},
+"ActualFinish": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"ActualStart": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"ActualUsage": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ActualWork": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"AdditionalConditions": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"AddressLines": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"Addresses": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"AdheresToElement": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AdmixturesDescription": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Aggregates": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AgreementFlag": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"AlkalinityConcentration": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"AmbientIntensity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"AmountOfSubstanceExponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"AnchorageSlip": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Angle": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"AngleUnit": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"AnnotatedBySymbols": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AnnotatedCurve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"AnnotatedSurface": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ApplicableDate": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"ApplicableDates": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"ApplicableEntity": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ApplicableOccurrence": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ApplicableValueRatio": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ApplicationDeveloper": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ApplicationFullName": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ApplicationIdentifier": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"AppliedCondition": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"AppliedLoad": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"AppliedValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Approval": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ApprovalDateTime": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ApprovalLevel": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ApprovalQualifier": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ApprovalStatus": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ApprovedObjects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ApprovedProperties": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ApprovedResources": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AreaValue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"ArithmeticOperator": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"AssemblyPlace": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"AssetID": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"AssignedItems": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AssignedStructuralActivity": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AssignedToFlowElement": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AssignedToStructuralItem": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AssociatedGeometry": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AssociatedTo": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"AttributeIdentifier": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Axis": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Axis1": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Axis2": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Axis3": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"AxisCurve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"AxisDirection": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"AxisPosition": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"AxisTag": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"BackgroundColour": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"BarCount": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BarLength": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BarRole": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"BarSurface": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"BaseCosts": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"BaseCurve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"BaseDepth1": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"BaseDepth2": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"BaseDepth3": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"BaseQuantity": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"BaseSurface": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"BaseWidth2": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"BaseWidth4": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"BasisCurve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"BasisSurface": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"BeamWidthAngle": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Benchmark": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"BenchmarkValues": {
+"optional": true,
+"types": [
+"entity",
+[
+"entity"
+]
+]
+},
+"BendingParameters": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"BendingShapeCode": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Blue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"BoilingPoint": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BottomFlangeEdgeRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BottomFlangeFilletRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BottomFlangeSlope": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BottomFlangeThickness": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"BottomFlangeWidth": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"BottomRadius": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"BottomXDim": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Bound": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Boundaries": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"BoundedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Bounds": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"BoxAlignment": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"BoxHeight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BoxRotateAngle": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BoxSlantAngle": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BoxWidth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"BuildingAddress": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"CO2Content": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"COContent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CapacityByNumber": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CapacityByWeight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CarbonContent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CardinalEndPoint": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CardinalPoint": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CartesianPosition": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"CasingDepth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CasingThickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Category": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"CausedBy": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Causes": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"CentreOfGravityInX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CentreOfGravityInY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CfsFaces": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ChangeAction": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"CharacterSpacing": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ClassificationForObjects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ClassificationRefForObjects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ClassifiedAs": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ClassifiedConstraint": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ClassifiedMaterial": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Closed": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"ClosedCurve": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"ClothoidConstant": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Coefficient": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CoefficientsX": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"CoefficientsY": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"CoefficientsZ": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"Colour": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ColourAppearance": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ColourComponents": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"ColourIndex": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"ColourList": {
+"optional": false,
+"types": [
+[
+[
+"number"
+]
+]
+]
+},
+"ColourTemperature": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Colours": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Columns": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"CombustionTemperature": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Completion": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ComponentOfTotal": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Components": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"CompositeProfile": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"CompositionType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"CompressionFailureX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CompressionFailureY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CompressionFailureZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CompressiveStrength": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ConcentrationExponent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Condition": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ConditionCoordinateSystem": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Confidentiality": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ConnectedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ConnectedFrom": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ConnectedTo": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ConnectionConstraint": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ConnectionGeometry": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ConnectionType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ConnectsStructuralMembers": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ConstantAttenuation": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"ConstantTerm": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ConstraintGrade": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ConstraintSource": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ConstructionType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ContainedIn": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ContainedInStructure": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Contains": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ContainsElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Contents": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ContextIdentifier": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ContextOfItems": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ContextType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ControlElementId": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ControlPointsList": {
+"optional": false,
+"types": [
+[
+"entity"
+],
+[
+[
+"entity"
+]
+]
+]
+},
+"Controls": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ConversionFactor": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ConversionOffset": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"CoordIndex": {
+"optional": false,
+"types": [
+[
+"number"
+],
+[
+[
+"number"
+]
+]
+]
+},
+"CoordList": {
+"optional": false,
+"types": [
+[
+[
+"number"
+]
+]
+]
+},
+"CoordinateReferenceSystem": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"CoordinateSpaceDimension": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Coordinates": {
+"optional": false,
+"types": [
+[
+"number"
+],
+"entity"
+]
+},
+"Corner": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"CorrespondingBoundary": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Corresponds": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"CosineTerm": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"CostQuantities": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"CostType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"CostValues": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"CountValue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Country": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Covers": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"CoversElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"CoversSpaces": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"CreatingActor": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"CreationDate": {
+"optional": false,
+"types": [
+"number",
+"entity",
+"string"
+]
+},
+"CreationTime": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"Creators": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"Criterion": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"CriterionDateTime": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"CrossSectionArea": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"CrossSectionPositions": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"CrossSectionReinforcementDefinitions": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"CrossSections": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"CubicTerm": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Currency": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"CurrentValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Curve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Curve3D": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"CurveColour": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"CurveFont": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"CurveFontScaling": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"CurveForm": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"CurveInterpolation": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"CurveOnRelatedElement": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"CurveOnRelatingElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"CurveStyleFont": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"CurveWidth": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"DailyInteraction": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DataOrigin": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"DataValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"DateComponent": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"DayComponent": {
+"optional": true,
+"types": [
+"number",
+[
+"number"
+]
+]
+},
+"DaylightSavingOffset": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Declares": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Decomposes": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"DefinedUnit": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"DefinedValues": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"Defines": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"DefinesOccurrence": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"DefinesType": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"DefiningUnit": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"DefiningValues": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"Definition": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"DefinitionType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Degree": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"DeltaTConstant": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DeltaTY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DeltaTZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DeltaT_Constant": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DeltaT_Y": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DeltaT_Z": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DependantProperty": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"DependingProperty": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"DepreciatedValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Depth": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Description": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"DesignParameters": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"DestabilizingLoad": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"DiffuseColour": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"DiffuseReflectionColour": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"DiffuseTransmissionColour": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Dimensions": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Dir": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Direction": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"DirectionRatios": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"DirectionSense": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Directrix": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Discrimination": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"DispersionFactor": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DisplacementX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DisplacementY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DisplacementZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DissolvedSolidsContent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Distance": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"DistanceAlong": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"DistanceAttenuation": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Distortion": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"DistributionData": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"DistributionPointFunction": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"DocumentId": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"DocumentInfoForObjects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"DocumentOwner": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"DocumentRefForObjects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"DocumentReferences": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"DocumentedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Duration": {
+"optional": true,
+"types": [
+"number",
+"string"
+]
+},
+"DurationType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"DynamicViscosity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"EarlyDate": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"EarlyFinish": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"EarlyStart": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"Eastings": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"EccentricityInX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"EccentricityInY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"EccentricityInZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"EdgeElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"EdgeEnd": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"EdgeGeometry": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"EdgeList": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"EdgeRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"EdgeStart": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Edition": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"EditionDate": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"Editors": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"EffectiveDepth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ElectricCurrentExponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"ElectricCurrentType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ElectronicFormat": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"ElectronicMailAddresses": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"ElementType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Elements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Elevation": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ElevationOfRefHeight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ElevationOfTerrain": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ElevationWithFlooring": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Enclosure": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"EndCantLeft": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"EndCantRight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"EndGradient": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"EndParam": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"EndPoint": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"EndProfile": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"EndRadiusOfCurvature": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"EndSweptArea": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"EndTag": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"EndTime": {
+"optional": false,
+"types": [
+"entity",
+"string"
+]
+},
+"EnergySequence": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"EngagedIn": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Engages": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"EnumerationReference": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"EnumerationValues": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"Enumerators": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"EventOccurenceTime": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"EventTriggerType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ExceptionTimes": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"ExchangeRate": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Exponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Expression": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ExtendedProperties": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Extent": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ExternalReferenceForResources": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ExtrudedDirection": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"FaceSurface": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Faces": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"FacsimileNumbers": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"Factor": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"FactorX": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"FactorY": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"FactorZ": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"FamilyName": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"FbsmFaces": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"FeatureLength": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FileExtension": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"FillStyleTarget": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"FillStyles": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"FilletRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FillsVoids": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Finish": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"FinishDate": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"FinishFloat": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FinishTime": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"FirstCoordinate": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"FirstMullionOffset": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FirstOperand": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"FirstTransomOffset": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FixedReference": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"FixedUntilDate": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"Flags": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"FlangeEdgeRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FlangeSlope": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FlangeThickness": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"FlangeWidth": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"FlowConditionSingleValue": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FlowConditionTimeSeries": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"FlowDirection": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"FlowrateSingleValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"FlowrateTimeSeries": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Fluid": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"FontFamily": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"FontSize": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"FontStyle": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"FontVariant": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"FontWeight": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ForLayerSet": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ForProfileEndSet": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ForProfileSet": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ForceX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ForceY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ForceZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Formula": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Fraction": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FrameDepth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FrameThickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FreeFloat": {
+"optional": true,
+"types": [
+"number",
+"string"
+]
+},
+"FreezingPoint": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Frequency": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"FrictionCoefficient": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"FullLoadCurrent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"GeodeticDatum": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Girth": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"GivenName": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"GivingApproval": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"GlobalId": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"GlobalOrLocal": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"GravityCenterLineHeight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Green": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"HardeningModule": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Hardness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"HasApprovals": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasAssignments": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasAssociations": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasColours": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasConstraints": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasContext": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasControlElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasCoordinateOperation": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasCoverings": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasDocumentReferences": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasExternalReference": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasExternalReferences": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasFillings": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasInteractionReqsFrom": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasInteractionReqsTo": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasIntersections": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasLibraryReferences": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasOpenings": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasPorts": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasProjections": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasProperties": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasPropertySets": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasPropertyTemplates": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasQuantities": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasReferences": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasRepresentation": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasResults": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasShapeAspects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasStructuralMember": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasSubContexts": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasSurfaceFeatures": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasTexCoords": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasTextureMaps": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HasTextures": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"HatchLineAngle": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"HatchLineAppearance": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"HeadDepth2": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"HeadDepth3": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"HeadWidth": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Height": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"HeightUnit": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"HigherHeatingValue": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"HorizontalLength": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"HorizontalWidths": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"HourComponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"HourOffset": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"ID": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Id": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Identification": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Identifier": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ImpactType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ImplicitOuter": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"ImpliedOrder": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"ImportanceRating": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ImpuritiesContent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"IncorporationDate": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"InitialStress": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"InnerBoundaries": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"InnerCoordIndices": {
+"optional": false,
+"types": [
+[
+[
+"number"
+]
+]
+]
+},
+"InnerCurves": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"InnerFilletRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"InnerRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"InnerReference": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"InnerTexCoordIndices": {
+"optional": false,
+"types": [
+[
+[
+"number"
+]
+]
+]
+},
+"InputFrequency": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"InputPhase": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"InputVoltage": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"InstanceName": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"IntendedUse": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Intensity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Intent": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"InterferenceGeometry": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"InterferenceSpace": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"InterferenceType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"InterferesElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"InteriorOrExteriorSpace": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"InternalFilletRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"InternalLocation": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"InternalOrExternalBoundary": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"IntersectingAxes": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Interval": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"InventoryType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"InvisibleSegmentLength": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"IsActingUpon": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsAggregatedIn": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsAttenuating": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"IsClassifiedItemIn": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsClassifyingItemIn": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsComponentIn": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsConnectionRealization": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsCritical": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"IsDeclaredBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsDecomposedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsDefinedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsGroupedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsHeading": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"IsInterferedByElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsLinear": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"IsMappedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsMilestone": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"IsNestedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsOverAllocated": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"IsPointedTo": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsPointer": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsPotable": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"IsPredecessorTo": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsRelatedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsRelatedFromCallout": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsRelatedToCallout": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsRelatedWith": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsSuccessorFrom": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsTypedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"IsVentilated": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"IsothermalMoistureCapacity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Item": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ItemOf": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ItemReference": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Items": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"JobDescription": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Jurisdiction": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"KnotMultiplicities": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"KnotSpec": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Knots": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"Label": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"LagValue": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"LandTitleNumber": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Language": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"LastModifiedDate": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LastModifyingApplication": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"LastModifyingUser": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"LastRevisionTime": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"LastUpdateDate": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"LateDate": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"LateFinish": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"LateStart": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"LayerAssignment": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"LayerAssignments": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"LayerBlocked": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"LayerFrozen": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"LayerOn": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"LayerSetDirection": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"LayerSetName": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"LayerStyles": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"LayerThickness": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"LegSlope": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LengthExponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"LengthValue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"LetterSpacing": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Level": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"LevelingDelay": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"LibraryInfoForObjects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"LibraryRefForObjects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"LibraryReference": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"LifeCyclePhase": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"LightColour": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"LightDistributionCurve": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"LightDistributionDataSource": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"LightEmissionSource": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"LineHeight": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"LinearForceX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearForceY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearForceZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearMomentX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearMomentY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearMomentZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearStiffnessByAreaX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearStiffnessByAreaY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearStiffnessByAreaZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearStiffnessByLengthX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearStiffnessByLengthY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearStiffnessByLengthZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearStiffnessX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearStiffnessY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearStiffnessZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LinearTerm": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LiningDepth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LiningOffset": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LiningThickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LiningToPanelOffsetX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LiningToPanelOffsetY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ListPositions": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"ListValues": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"Literal": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"LoadGroupFor": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"LoadedBy": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"LocalOrigin": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Location": {
+"optional": true,
+"types": [
+"string",
+"entity"
+]
+},
+"LocationAtRelatedElement": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"LocationAtRelatingElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"LocationOfInteraction": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Locations": {
+"optional": true,
+"types": [
+[
+[
+"number"
+]
+]
+]
+},
+"LogicalAggregator": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"LongDescription": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"LongName": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"LongitudinalBarCrossSectionArea": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LongitudinalBarNominalDiameter": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LongitudinalBarSpacing": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LongitudinalEndPosition": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"LongitudinalStartPosition": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"LoopVertex": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"LowerBoundValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"LowerHeatingValue": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LowerValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"LowerVaporResistanceFactor": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"LuminousFlux": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"LuminousIntensity": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"LuminousIntensityExponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Magnitude": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"MainPlaneAngle": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"MajorRadius": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"MapProjection": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"MapUnit": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"MapUsage": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"MapZone": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"MappedRepresentation": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"MappedTo": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"MappingOrigin": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"MappingSource": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"MappingTarget": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Maps": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"MassDensity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MassExponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"MasterRepresentation": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Material": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"MaterialClassifications": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"MaterialConstituents": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"MaterialExpression": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"MaterialLayers": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"MaterialProfiles": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Materials": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"MaxAggregateSize": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MaxRequiredArea": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MaximumPlateThickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MaximumPowerInput": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MaximumSectionModulusY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MaximumSectionModulusZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MaximumValue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"MeshLength": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MeshWidth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MessagingIDs": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"MethodOfMeasurement": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"MiddleNames": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"MimeContentType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"MimeSubtype": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"MinCurvatureRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MinRequiredArea": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MinimumCircuitCurrent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MinimumPlateThickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MinimumSectionModulusY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MinimumSectionModulusZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MinimumValue": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MinorRadius": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"MinuteComponent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MinuteOffset": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Mode": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ModelOrDraughting": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"ModelorDraughting": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"MoistureDiffusivity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MolecularWeight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MomentOfInertiaY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MomentOfInertiaYZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MomentOfInertiaZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MomentX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MomentY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MomentZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"MonthComponent": {
+"optional": true,
+"types": [
+"number",
+[
+"number"
+]
+]
+},
+"MostUsedValue": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"MoveFrom": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"MoveTo": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"MullionThickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"N20Content": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Name": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Nests": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"NominalBarDiameter": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"NominalDiameter": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"NominalLength": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"NominalValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Normals": {
+"optional": true,
+"types": [
+[
+[
+"number"
+]
+]
+]
+},
+"Northings": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Notation": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"NotationFacets": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"NotationValue": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"NumberOfRiser": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"NumberOfRisers": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"NumberOfTreads": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"NumberValue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"ObjectPlacement": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ObjectType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ObjectTypeOf": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ObjectiveQualifier": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Occurrences": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"OfOrganization": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"OfPerson": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"OfProductRepresentation": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"OfShapeAspect": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"OfTable": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"OffsetDirection": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"OffsetDistances": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"OffsetFromReferenceLine": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"OffsetLateral": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"OffsetLongitudinal": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"OffsetPoint": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"OffsetValues": {
+"optional": false,
+"types": [
+[
+"number"
+],
+[
+"entity"
+]
+]
+},
+"OffsetVertical": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Opacity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"OperatesOn": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"OperationType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Operator": {
+"optional": false,
+"types": [
+"string",
+"entity"
+]
+},
+"Orientation": {
+"optional": false,
+"types": [
+"boolean",
+"entity"
+]
+},
+"OrientationOf2DPlane": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"OriginalValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"OrthogonalHeight": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Outer": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"OuterBoundary": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"OuterCurve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"OuterFilletRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"OverallDepth": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"OverallHeight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"OverallWidth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"OverridingProperties": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Owner": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"OwnerHistory": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"OwningApplication": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"OwningUser": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"PHLevel": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PagerNumber": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"PanelDepth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PanelOperation": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"PanelPosition": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"PanelWidth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ParamLength": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Parameter": {
+"optional": true,
+"types": [
+[
+"entity"
+],
+[
+"string"
+],
+[
+"number"
+]
+]
+},
+"ParameterTakesPrecedence": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"ParentBoundary": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ParentContext": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ParentCurve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ParentEdge": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ParentProfile": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"PartOfComplex": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PartOfComplexTemplate": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PartOfProductDefinitionShape": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PartOfPset": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PartOfPsetTemplate": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PartOfU": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PartOfV": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PartOfW": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PartitioningType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Path": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"PatternList": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PatternStart": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Perimeter": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PermitID": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Phase": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"PhysicalOrVirtualBoundary": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"PhysicalWeight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Pixel": {
+"optional": false,
+"types": [
+[
+"string"
+]
+]
+},
+"Placement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"PlacementLocation": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"PlacementRefDirection": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PlacementRelTo": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PlacesObject": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PlanarForceX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PlanarForceY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PlanarForceZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PlasticShapeFactorY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PlasticShapeFactorZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PlasticStrain": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PnIndex": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"Pnt": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"PointOfReferenceHatchLine": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PointOnRelatedElement": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PointOnRelatingElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"PointParameter": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"PointParameterU": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"PointParameterV": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Points": {
+"optional": false,
+"types": [
+[
+"entity"
+],
+"entity"
+]
+},
+"PoissonRatio": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Polygon": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PolygonalBoundary": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Porosity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Position": {
+"optional": true,
+"types": [
+"entity",
+"number"
+]
+},
+"PositionedRelativeTo": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Positions": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PostalBox": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"PostalCode": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"PreStress": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Precision": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PredefinedType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Prefix": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"PrefixTitles": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"PreparedBy": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PressureSingleValue": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"PressureTimeSeries": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PrimaryMeasureType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"PrimaryUnit": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PrimeMeridian": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Priority": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ProcedureID": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ProcedureType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ProcessType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ProductDefinitional": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"Profile": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ProfileDefinition": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ProfileName": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ProfileOfPort": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ProfileOrientation": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ProfileSectionLocation": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ProfileType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Profiles": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ProjectedOrTrue": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ProjectsElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Properties": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PropertiesForConstraint": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PropertyDefinitionOf": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PropertyDependsOn": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PropertyForDependance": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"PropertyReference": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PropertySource": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ProportionalStress": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ProtectivePoreRatio": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ProvidesBoundaries": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ProxyType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Publisher": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"PunchList": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"Purpose": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"QuadraticTerm": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"QuadricAttenuation": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Qualifier": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Quality": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Quantities": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"QuantityInProcess": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"QuarticTerm": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"QuinticTerm": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Radius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RadiusOfCurvature": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RailHeadDistance": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"RasterCode": {
+"optional": false,
+"types": [
+"boolean",
+"string"
+]
+},
+"RasterFormat": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"RateDateTime": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"RateSource": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"RatedPowerInput": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RealizingElement": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"RealizingElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Records": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Recurrence": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RecurrencePattern": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"RecurrenceType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Red": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"RefDirection": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"RefElevation": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RefLatitude": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"RefLongitude": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"ReferenceCurve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ReferenceExtent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ReferenceIntoLibrary": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ReferencePath": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ReferenceSurface": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ReferenceToDocument": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ReferenceTokens": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"ReferencedBy": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ReferencedByPlacements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ReferencedDocument": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ReferencedInStructures": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ReferencedLibrary": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ReferencedSource": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ReferencedTimeSeries": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ReferencesElement": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ReferencesElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ReferencingValues": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ReflectanceColour": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ReflectanceMethod": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ReflectionColour": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"RefractionIndex": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Region": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ReinforcementRole": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ReinforcementSectionDefinitions": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedApproval": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedApprovals": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedBuildingElement": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"RelatedBuildings": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedClassifications": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedConnectionType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"RelatedConstraints": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedControlElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedCoverings": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedDefinitions": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedDocuments": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedDraughtingCallout": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedFeatureElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedItems": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedMaterials": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedMonetaryUnit": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedObjects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedObjectsType": {
+"optional": true,
+"types": [
+"string",
+"boolean"
+]
+},
+"RelatedOpeningElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedOrganizations": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedPort": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedPriorities": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"RelatedProcess": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedProducts": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedProperties": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedPropertySets": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedResourceObjects": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatedSpace": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedSpaceProgram": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedStructuralActivity": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedStructuralConnection": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedStructuralMember": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatedSurfaceFeatures": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Relates": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatesConstraints": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatesTo": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RelatingActor": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingAppliedValue": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingApproval": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingBuildingElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingClassification": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingConnectionType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"RelatingConstraint": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingContext": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingControl": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingDocument": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingDraughtingCallout": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingFlowElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingGroup": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingItem": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingLibrary": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingMaterial": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingMonetaryUnit": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingObject": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingOpeningElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingOrganization": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingPort": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingPositioningElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingPriorities": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"RelatingProcess": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingProduct": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingProfileDef": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingProfileProperties": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingPropertyDefinition": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingReference": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingResource": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingSpace": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingSpaceProgram": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingStructuralMember": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingStructure": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingSystem": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingTemplate": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelatingType": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelationshipType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"RelativePlacement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RelaxationValue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Relaxations": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"RemainingTime": {
+"optional": true,
+"types": [
+"number",
+"string"
+]
+},
+"RemainingUsage": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RemainingWork": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"RepeatFactor": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RepeatS": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"RepeatT": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"Representation": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"RepresentationContexts": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"RepresentationIdentifier": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"RepresentationMap": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RepresentationMaps": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"RepresentationType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Representations": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RepresentationsInContext": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"RepresentedMaterial": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"RequestID": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"RequestedLocation": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"RequestingApproval": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ResourceConsumption": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ResourceGroup": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ResourceIdentifier": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ResourceOf": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ResourceType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ResponsiblePerson": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ResponsiblePersons": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"ResultForLoadGroup": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ResultGroupFor": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ResultValues": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Revision": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"RibHeight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RibSpacing": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RibWidth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RiserHeight": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Role": {
+"optional": false,
+"types": [
+"string",
+"entity"
+]
+},
+"Roles": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"RotationalDisplacementRX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RotationalDisplacementRY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RotationalDisplacementRZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"RotationalStiffnessByLengthX": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"RotationalStiffnessByLengthY": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"RotationalStiffnessByLengthZ": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"RotationalStiffnessX": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"RotationalStiffnessY": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"RotationalStiffnessZ": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"RoundingRadius": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"RowCells": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"Rows": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"SameSense": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"SbsmBoundary": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Scale": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Scale2": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Scale3": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ScheduleContour": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ScheduleDate": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ScheduleDuration": {
+"optional": true,
+"types": [
+"number",
+"string"
+]
+},
+"ScheduleFinish": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"ScheduleStart": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"ScheduleTimeControlAssigned": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ScheduleUsage": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ScheduleWork": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Scope": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"SecondComponent": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"SecondCoordinate": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SecondMullionOffset": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"SecondOperand": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SecondRepeatFactor": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SecondTransomOffset": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"SecondaryMeasureType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"SecondaryPlaneAngle": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"SecondaryUnit": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SectionDefinition": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SectionType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"SegmentLength": {
+"optional": false,
+"types": [
+"number",
+"entity"
+]
+},
+"SegmentStart": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Segments": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"SelfIntersect": {
+"optional": true,
+"types": [
+"boolean"
+]
+},
+"SelfWeightCoefficients": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"SemiAxis1": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"SemiAxis2": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Sense": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"SenseAgreement": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"SepticTerm": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"SequenceType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"ServiceLifeDuration": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"ServiceLifeType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ServicedBySystems": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ServicesBuildings": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ServicesFacilities": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"SetPointValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SexticTerm": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ShapeAspectStyle": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ShapeOfProduct": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ShapeRepresentations": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ShapeType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"SharedPlacement": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ShearAreaY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ShearAreaZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ShearCentreY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ShearCentreZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ShearDeformationAreaY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ShearDeformationAreaZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ShearModulus": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ShearReinforcement": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"SheathDiameter": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Side": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"SineTerm": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"SiteAddress": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SizeInX": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"SizeInY": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Sizeable": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"SkillSet": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"SlippageX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"SlippageY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"SlippageZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Slopes": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"SolarReflectanceBack": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"SolarReflectanceFront": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"SolarTransmittance": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Sort": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"SoundLevelSingleValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SoundLevelTimeSeries": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SoundScale": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"SoundValues": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Source": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"SourceCRS": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SourceDescription": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"SourceOfResultGroup": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"SpaceProgramIdentifier": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"SpecificHeatCapacity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Specification": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"SpecularColour": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SpecularHighlight": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SpineCurve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SpreadAngle": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"StandardRequiredArea": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Start": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"StartCantLeft": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"StartCantRight": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"StartDate": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"StartDirection": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"StartDistAlong": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"StartFloat": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"StartGradient": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"StartHeight": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"StartOfNextHatchLine": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"StartParam": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"StartPoint": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"StartProfile": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"StartRadiusOfCurvature": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"StartTag": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"StartTime": {
+"optional": false,
+"types": [
+"entity",
+"string"
+]
+},
+"State": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Status": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"StatusTime": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"SteelGrade": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"StyleOfSymbol": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"StyledByItem": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Styles": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"SubContractor": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SubmittedBy": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SubmittedOn": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"SubsequentAppliedLoads": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"SubsequentThickness": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"SuffixTitles": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"Suppliers": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"SupportedLength": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"SurfaceColour": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SurfaceForm": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"SurfaceOnRelatedElement": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"SurfaceOnRelatingElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SurfaceReinforcement1": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"SurfaceReinforcement2": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"SweptArea": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SweptCurve": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Symbol": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"SystemType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Tag": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"TagList": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"Tags": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"Target": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"TargetCRS": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"TargetScale": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TargetUsers": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"TargetView": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"TaskId": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"TaskTime": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TelephoneNumbers": {
+"optional": true,
+"types": [
+[
+"string"
+]
+]
+},
+"TemperatureSingleValue": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TemperatureTimeSeries": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TemplateType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"TensionFailureX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TensionFailureY": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TensionFailureZ": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TensionForce": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TexCoordIndex": {
+"optional": true,
+"types": [
+[
+[
+"number"
+]
+],
+[
+"number"
+]
+]
+},
+"TexCoordIndices": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"TexCoords": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"TexCoordsList": {
+"optional": false,
+"types": [
+[
+[
+"number"
+]
+]
+]
+},
+"TexCoordsOf": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"TextAlign": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"TextCharacterAppearance": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TextDecoration": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"TextFontStyle": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"TextIndent": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TextStyle": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TextTransform": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"TextureCoordinates": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TextureMaps": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"TexturePoints": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"TextureTransform": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TextureType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"TextureVertices": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Textures": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"TheActor": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"TheOrganization": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ThePerson": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"TheoryType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ThermalConductivity": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ThermalExpansionCoefficient": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ThermalIrEmissivityBack": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ThermalIrEmissivityFront": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ThermalIrTransmittance": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ThermalLoadSource": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ThermalLoadTimeSeriesValues": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"ThermalLoadType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ThermodynamicTemperatureExponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Thickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ThresholdDepth": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ThresholdOffset": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ThresholdThickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Tiles": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"TilingPattern": {
+"optional": false,
+"types": [
+"entity",
+[
+"entity"
+]
+]
+},
+"TilingScale": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"TimeComponent": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"TimeExponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"TimeForTask": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TimeLag": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"TimeOfApproval": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"TimePeriods": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"TimeSeries": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"TimeSeriesDataType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"TimeSeriesReferences": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"TimeSeriesScheduleType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"TimeStamp": {
+"optional": false,
+"types": [
+"entity",
+"string"
+]
+},
+"TimeStep": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"TimeValue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Title": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"ToFaceSet": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ToMaterialConstituentSet": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ToMaterialLayerSet": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ToMaterialProfileSet": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ToTexMap": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"TopFlangeEdgeRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TopFlangeFilletRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TopFlangeSlope": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TopFlangeThickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TopFlangeWidth": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"TopXDim": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"TopXOffset": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"TorsionalConstantX": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TorsionalSectionModulus": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TotalCrossSectionArea": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"TotalFloat": {
+"optional": true,
+"types": [
+"number",
+"string"
+]
+},
+"TotalReplacementCost": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Town": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Transition": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"TranslationalStiffnessByAreaX": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TranslationalStiffnessByAreaY": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TranslationalStiffnessByAreaZ": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TranslationalStiffnessByLengthX": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TranslationalStiffnessByLengthY": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TranslationalStiffnessByLengthZ": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TranslationalStiffnessX": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TranslationalStiffnessY": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TranslationalStiffnessZ": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TransmissionColour": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TransomOffset": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TransomThickness": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Transparency": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TransverseBarCrossSectionArea": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TransverseBarNominalDiameter": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TransverseBarSpacing": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TransversePosition": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TreadLength": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"TreeRootExpression": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"Trim1": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Trim2": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"TrueNorth": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"TypeIdentifier": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Types": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"U1": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"U2": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"UAxes": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"UClosed": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"UDegree": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"UKnots": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"UMultiplicities": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"URLReference": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"UltimateStrain": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"UltimateStress": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Unit": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"UnitBasis": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"UnitComponent": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"UnitType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Units": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"UnitsInContext": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"UpdateDate": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"UpperBoundValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"UpperValue": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"UpperVaporResistanceFactor": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"UrlReference": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"Usage": {
+"optional": true,
+"types": [
+"string",
+"entity"
+]
+},
+"UsageName": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UsageRatio": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"UsageType": {
+"optional": false,
+"types": [
+"string"
+]
+},
+"UsedInStyles": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"Usense": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"User": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"UserDefinedCategory": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedControlType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedDataOrigin": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedEnergySequence": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedEventTriggerType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedFunction": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedGrade": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedOperationType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedPartitioningType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedProcedureType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedPropertySource": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedPurpose": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedQualifier": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedRole": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedSequenceType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedTargetView": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedThermalLoadSource": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UserDefinedType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"UsingCurves": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"V1": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"V2": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"VAxes": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"VClosed": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"VDegree": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"VKnots": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"VMultiplicities": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"ValidFrom": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"ValidUntil": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"ValueComponent": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"ValueOfComponents": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ValueSource": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Values": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"ValuesReferenced": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"VaporPermeability": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"VaryingAppliedLoadLocation": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"VaryingThicknessLocation": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"VelocitySingleValue": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"VelocityTimeSeries": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Version": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"VersionDate": {
+"optional": true,
+"types": [
+"entity",
+"string"
+]
+},
+"VertexGeometry": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"VerticalDatum": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Vertices": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"VisibleReflectanceBack": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"VisibleReflectanceFront": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"VisibleSegmentLength": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"VisibleTransmittance": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Voids": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"VoidsElements": {
+"optional": false,
+"types": [
+[
+"entity"
+]
+]
+},
+"VolumeOnRelatedElement": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"VolumeOnRelatingElement": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"VolumeValue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Vsense": {
+"optional": false,
+"types": [
+"boolean"
+]
+},
+"WAxes": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"WWWHomePageURL": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"WallThickness": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"WarpingConstant": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"WarpingMoment": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"WarpingStiffness": {
+"optional": true,
+"types": [
+"number",
+"entity"
+]
+},
+"WaterImpermeability": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"WebEdgeRadius": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"WebSlope": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"WebThickness": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"WeekdayComponent": {
+"optional": true,
+"types": [
+[
+"number"
+]
+]
+},
+"WeightValue": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"WeightsData": {
+"optional": false,
+"types": [
+[
+"number"
+],
+[
+[
+"number"
+]
+]
+]
+},
+"WellKnownText": {
+"optional": false,
+"types": [
+[
+"entity"
+],
+"string"
+]
+},
+"WetBulbTemperatureSingleValue": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"WetBulbTemperatureTimeSeries": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"Width": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"Widths": {
+"optional": false,
+"types": [
+[
+"number"
+]
+]
+},
+"WordSpacing": {
+"optional": true,
+"types": [
+"entity"
+]
+},
+"WorkControlType": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"WorkMethod": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"Workability": {
+"optional": true,
+"types": [
+"string"
+]
+},
+"WorkingTimes": {
+"optional": true,
+"types": [
+[
+"entity"
+]
+]
+},
+"WorldCoordinateSystem": {
+"optional": false,
+"types": [
+"entity"
+]
+},
+"XAxisAbscissa": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"XAxisOrdinate": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"XDim": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"XLength": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"YDim": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"YLength": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"YearComponent": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"YieldStress": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"YoungModulus": {
+"optional": true,
+"types": [
+"number"
+]
+},
+"ZDim": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"ZLength": {
+"optional": false,
+"types": [
+"number"
+]
+},
+"Zone": {
+"optional": true,
+"types": [
+"entity"
+]
+}
+}
