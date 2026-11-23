@@ -74,22 +74,25 @@ class Usecase:
         if attributes.get("ScheduleDuration", None) and "ScheduleFinish" in attributes.keys():
             del attributes["ScheduleFinish"]
 
+        # A start or finish with a time of day is kept as it is. A date without
+        # a time gets the first or last work instant of the next working day.
         duration_type = attributes.get("DurationType", self.task_time.DurationType)
+        work_day = ifcopenshell.util.sequence.get_work_day_duration(self.task, self.calendar)
         finish = attributes.get("ScheduleFinish", None)
-        if finish:
-            if isinstance(finish, str):
-                finish = datetime.datetime.fromisoformat(finish)
-            attributes["ScheduleFinish"] = datetime.datetime.combine(
-                ifcopenshell.util.sequence.get_soonest_working_day(finish, duration_type, self.calendar),
-                datetime.time(17),
+        if isinstance(finish, str):
+            finish = datetime.datetime.fromisoformat(finish) if "T" in finish else datetime.date.fromisoformat(finish)
+        if finish and not isinstance(finish, datetime.datetime):
+            day = ifcopenshell.util.sequence.get_soonest_working_day(finish, duration_type, self.calendar)
+            attributes["ScheduleFinish"] = ifcopenshell.util.sequence.get_work_finish(
+                datetime.datetime.combine(day + datetime.timedelta(days=1), datetime.time()), self.calendar, work_day
             )
         start = attributes.get("ScheduleStart", None)
-        if start:
-            if isinstance(start, str):
-                start = datetime.datetime.fromisoformat(start)
-            attributes["ScheduleStart"] = datetime.datetime.combine(
-                ifcopenshell.util.sequence.get_soonest_working_day(start, duration_type, self.calendar),
-                datetime.time(9),
+        if isinstance(start, str):
+            start = datetime.datetime.fromisoformat(start) if "T" in start else datetime.date.fromisoformat(start)
+        if start and not isinstance(start, datetime.datetime):
+            day = ifcopenshell.util.sequence.get_soonest_working_day(start, duration_type, self.calendar)
+            attributes["ScheduleStart"] = ifcopenshell.util.sequence.get_work_start(
+                datetime.datetime.combine(day, datetime.time()), self.calendar, work_day
             )
 
         for name, value in attributes.items():
@@ -117,27 +120,30 @@ class Usecase:
             self.handle_resource_calculation()
 
     def calculate_finish(self):
+        work_day = ifcopenshell.util.sequence.get_work_day_duration(self.task, self.calendar)
         finish = ifcopenshell.util.sequence.get_start_or_finish_date(
             ifcopenshell.util.date.ifc2datetime(self.task_time.ScheduleStart),
-            ifcopenshell.util.date.ifc2datetime(self.task_time.ScheduleDuration),
+            ifcopenshell.util.sequence.get_work_duration(
+                self.task_time.ScheduleDuration, self.task_time.DurationType, work_day
+            ),
             self.task_time.DurationType,
             self.calendar,
             date_type="FINISH",
+            work_day=work_day,
         )
         self.task_time.ScheduleFinish = ifcopenshell.util.date.datetime2ifc(finish, "IfcDateTime")
 
     def calculate_duration(self):
         start = ifcopenshell.util.date.ifc2datetime(self.task_time.ScheduleStart)
         finish = ifcopenshell.util.date.ifc2datetime(self.task_time.ScheduleFinish)
-        current_date = datetime.date(start.year, start.month, start.day)
-        finish_date = datetime.date(finish.year, finish.month, finish.day)
-        duration = datetime.timedelta(days=1)
-        while current_date < finish_date:
-            if self.task_time.DurationType == "ELAPSEDTIME" or not self.calendar:
-                duration += datetime.timedelta(days=1)
-            elif ifcopenshell.util.sequence.is_working_day(current_date, self.calendar):
-                duration += datetime.timedelta(days=1)
-            current_date += datetime.timedelta(days=1)
+        if self.task_time.DurationType == "ELAPSEDTIME":
+            duration = finish - start
+        else:
+            # Work days and work hours, in the form of get_work_duration
+            work_day = ifcopenshell.util.sequence.get_work_day_duration(self.task, self.calendar)
+            work = ifcopenshell.util.sequence.get_work_time(start, finish, self.calendar, work_day)
+            work_days, rest = divmod(work, work_day)
+            duration = datetime.timedelta(days=work_days) + rest
         self.task_time.ScheduleDuration = ifcopenshell.util.date.datetime2ifc(duration, "IfcDuration")
 
     def get_task(self) -> ifcopenshell.entity_instance:
