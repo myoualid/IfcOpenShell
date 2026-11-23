@@ -20,6 +20,7 @@ export type { IfcOpenShell } from './init.js';
 export { File, open } from './file.js';
 export type { GetInverseOptions, OpenOptions } from './file.js';
 export { EntityInstance } from './entity_instance.js';
+export * as guid from './guid.js';
 export type { AttributeValueType, EntityInfoValue, EntityInstanceInfo, GetInfoOptions } from './entity_instance.js';
 export { exportToBuffer } from './serializers/index.js';
 export type {
