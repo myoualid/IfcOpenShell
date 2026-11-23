@@ -184,3 +184,35 @@ class EntityInstanceSet extends Set<EntityInstance> {
 export function open(bytes: Uint8Array | ArrayBuffer, filename?: string, options?: OpenOptions): File {
   return File.open(bytes, filename, options);
 }
+
+const resources = new Map<string, Uint8Array>();
+
+/**
+ * Provide the bytes of a data file that code opens by path, such as the property set
+ * templates that `util/pset` reads. Browsers have no file system to read them from.
+ * The key is the file name, or the end of its path or URL.
+ */
+export function registerResource(path: string, bytes: Uint8Array | ArrayBuffer): void {
+  resources.set(path.replace(/\\/g, '/'), bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+}
+
+/**
+ * Read a data file by path or file URL: the bytes given to {@link registerResource} for a
+ * matching path, else the file system when one is available (Node).
+ */
+export function readResource(path: string): Uint8Array {
+  const normalized = path.replace(/\\/g, '/');
+  for (const [key, bytes] of resources) {
+    if (normalized === key || normalized.endsWith(`/${key}`)) return bytes;
+  }
+  const fs = (globalThis as { process?: { getBuiltinModule?(name: string): unknown } }).process?.getBuiltinModule?.('node:fs') as
+    | { readFileSync(path: string | URL): Uint8Array }
+    | undefined;
+  if (!fs) throw new IfcOpenShellError(`No file system to read ${path}; provide it with registerResource()`);
+  return fs.readFileSync(normalized.startsWith('file:') ? new URL(normalized) : normalized);
+}
+
+/** Open an IFC file by path or file URL; see {@link registerResource}. */
+export function openPath(path: string, options?: OpenOptions): File {
+  return File.open(readResource(path), path.replace(/\\/g, '/'), options);
+}

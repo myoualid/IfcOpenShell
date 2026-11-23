@@ -17,7 +17,7 @@ export {
   isIfcOpenShellAbortError,
 } from './init.js';
 export type { IfcOpenShell } from './init.js';
-export { File, open } from './file.js';
+export { File, open, openPath, readResource, registerResource } from './file.js';
 export type { GetInverseOptions, OpenOptions } from './file.js';
 export { EntityInstance } from './entity_instance.js';
 export * as guid from './guid.js';
