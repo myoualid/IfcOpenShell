@@ -47,7 +47,7 @@ builtin_values:
   bool: Boolean
   bytes: '((v: any) => v)'
   dict: '((v: any = {}) => ({ ...v }))'
-  set: '((v: any = []) => new Set<any>(v))'
+  set: '(set: rendered by the rule that emits builtin_values)'
 math_functions:
   sqrt: Math.sqrt
   sin: Math.sin
@@ -822,7 +822,7 @@ rules:
       op: $op
       value: $value
     when: op.__class__.__name__ in ["BitOr", "Sub", "BitAnd"] and (target | kind == "set" or value | kind == "set")
-    output: '{% if op.__class__.__name__ == "BitOr" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.add(v));{% elif op.__class__.__name__ == "Sub" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.delete(v));{% else %}((keep: Set<any>) => [...{{ target | emit }}].forEach((v: any) => keep.has(v) || {{ target | emit }}.delete(v)))(new Set<any>({{ value | iterable }}));{% endif %}'
+    output: '{% if op.__class__.__name__ == "BitOr" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.add(v));{% elif op.__class__.__name__ == "Sub" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.delete(v));{% else %}((keep: Set<any>) => [...{{ target | emit }}].forEach((v: any) => keep.has(v) || {{ target | emit }}.delete(v)))({{ "helpers.lang" | use("lang") }}.identitySet({{ value | iterable }}));{% endif %}'
   - input:
       node: AugAssign
       target: $target
@@ -1134,7 +1134,7 @@ rules:
       elt: $clause
       generators: $generators
     when: node.__class__.__name__ in ["ListComp", "GeneratorExp", "SetComp"] and generators | length > 1 and generators | selectattr("is_async") | list | length == 0
-    output: '{% set kind = node.__class__.__name__ %}{% macro chain(items) %}{% set g = items[0] %}Array.from<any>({{ g.iter | iterable }}){% for filter in g.ifs %}.filter(({{ g.target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if items | length > 1 %}.flatMap(({{ g.target | emit }}: any) => {{ chain(items[1:]) }}){% else %}.map(({{ g.target | emit }}: any) => ({{ clause | emit }})){% endif %}{% endmacro %}{% if kind == "SetComp" %}new Set<any>({{ chain(generators) }}){% else %}{{ chain(generators) }}{% endif %}'
+    output: '{% set kind = node.__class__.__name__ %}{% macro chain(items) %}{% set g = items[0] %}Array.from<any>({{ g.iter | iterable }}){% for filter in g.ifs %}.filter(({{ g.target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if items | length > 1 %}.flatMap(({{ g.target | emit }}: any) => {{ chain(items[1:]) }}){% else %}.map(({{ g.target | emit }}: any) => ({{ clause | emit }})){% endif %}{% endmacro %}{% if kind == "SetComp" %}{{ "helpers.lang" | use("lang") }}.identitySet({{ chain(generators) }}){% else %}{{ chain(generators) }}{% endif %}'
   - input:
       node: ListComp
       elt: $clause
@@ -1356,7 +1356,7 @@ rules:
         id: frozenset
       args: $args
       keywords: []
-    output: 'new Set{{ "<any>" if not args }}({{ args | map("iterable") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet({{ args | map("iterable") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1480,7 +1480,7 @@ rules:
           arg: $kind
           value: $value
     when: kind in ["default", "default_factory"]
-    output: '{% if kind == "default" %}{{ value | emit }}{% elif value.id is defined and value.id in ["list", "dict", "set"] %}{{ {"list": "[]", "dict": "{}", "set": "new Set<any>()"}[value.id] }}{% else %}{{ value | emit }}(){% endif %}'
+    output: '{% if kind == "default" %}{{ value | emit }}{% elif value.id is defined and value.id in ["list", "dict", "set"] %}{{ {"list": "[]", "dict": "{}", "set": "{{ "helpers.lang" | use("lang") }}.identitySet()"}[value.id] }}{% else %}{{ value | emit }}(){% endif %}'
   - input:
       node: Call
       func: $callee
@@ -1674,7 +1674,7 @@ rules:
       args:
         - $factory
       keywords: []
-    output: 'new {{ "helpers.lang" | use("lang") }}.Dict(null, () => {{ {"list": "[]", "dict": "({})", "set": "new Set<any>()", "int": "0", "float": "0", "str": "\"\""}.get(factory.id, (factory | emit) ~ "()") if factory.id is defined else (factory | emit) ~ "()" }})'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Dict(null, () => {{ {"list": "[]", "dict": "({})", "set": "{{ "helpers.lang" | use("lang") }}.identitySet()", "int": "0", "float": "0", "str": "\"\""}.get(factory.id, (factory | emit) ~ "()") if factory.id is defined else (factory | emit) ~ "()" }})'
   - input:
       node: Call
       func:
@@ -1776,7 +1776,7 @@ rules:
         id: set
       args: $args
       keywords: []
-    output: 'new Set<any>({{ args | map("emit") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1880,7 +1880,7 @@ rules:
         attr: copy
       args: []
       keywords: []
-    output: '{% set k = value | kind %}{% if k == "set" %}new Set<any>({{ value | emit }}){% elif k == "dict" %}({ ...{{ value | emit }} }){% elif k == "array" %}[...{{ value | emit }}]{% else %}{{ "helpers.lang" | use("lang") }}.copy({{ value | emit }}){% endif %}'
+    output: '{% set k = value | kind %}{% if k == "set" %}{{ "helpers.lang" | use("lang") }}.identitySet({{ value | emit }}){% elif k == "dict" %}({ ...{{ value | emit }} }){% elif k == "array" %}[...{{ value | emit }}]{% else %}{{ "helpers.lang" | use("lang") }}.copy({{ value | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1954,7 +1954,7 @@ rules:
   - input:
       node: Set
       elts: $elements
-    output: 'new Set<any>([{{ elements | map("emit") | join(", ") }}])'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet([{{ elements | map("emit") | join(", ") }}])'
   - input:
       node: SetComp
       elt: $clause
@@ -1964,7 +1964,7 @@ rules:
           iter: $iterable
           ifs: $filters
           is_async: 0
-    output: 'new Set<any>(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if clause | emit != target | emit %}.map(({{ target | emit }}: any) => ({{ clause | emit }})){% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if clause | emit != target | emit %}.map(({{ target | emit }}: any) => ({{ clause | emit }})){% endif %})'
   - input:
       node: Call
       func:
@@ -2015,7 +2015,7 @@ rules:
         - $items
       keywords: []
     when: method in ["difference_update", "intersection_update"]
-    output: '{% if method == "difference_update" %}Array.from<any>({{ items | iterable }}).forEach((v: any) => {{ value | emit }}.delete(v)){% else %}((keep: Set<any>) => [...{{ value | emit }}].forEach((v: any) => keep.has(v) || {{ value | emit }}.delete(v)))(new Set<any>({{ items | iterable }})){% endif %}'
+    output: '{% if method == "difference_update" %}Array.from<any>({{ items | iterable }}).forEach((v: any) => {{ value | emit }}.delete(v)){% else %}((keep: Set<any>) => [...{{ value | emit }}].forEach((v: any) => keep.has(v) || {{ value | emit }}.delete(v)))({{ "helpers.lang" | use("lang") }}.identitySet({{ items | iterable }})){% endif %}'
   - input:
       node: Call
       func:
@@ -2347,7 +2347,7 @@ rules:
       op: $op
       right: $right
     when: op.__class__.__name__ in ["BitOr", "Sub", "BitAnd"] and (left | kind == "set" or right | kind == "set")
-    output: 'new Set<any>({{ left | emit }}).{{ {"BitOr": "union", "Sub": "difference", "BitAnd": "intersection"}[op.__class__.__name__] }}(new Set<any>({{ right | iterable }}))'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet({{ left | emit }}).{{ {"BitOr": "union", "Sub": "difference", "BitAnd": "intersection"}[op.__class__.__name__] }}({{ "helpers.lang" | use("lang") }}.identitySet({{ right | iterable }}))'
   - input:
       node: BinOp
       left: $left
@@ -2471,7 +2471,7 @@ rules:
       ctx:
         node: Load
     when: name in builtin_values and name not in shadowed and name not in module_globals
-    output: '{{ builtin_values[name] }}'
+    output: '{% if name == "set" %}((v: any = []) => {{ "helpers.lang" | use("lang") }}.identitySet(v)){% else %}{{ builtin_values[name] }}{% endif %}'
   - input:
       node: Name
       id: __file__

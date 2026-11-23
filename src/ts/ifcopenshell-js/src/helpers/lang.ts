@@ -525,6 +525,7 @@ export function iadd(a: any, b: any): any {
 }
 
 export const imul = mul;
+export const isub = sub;
 /** Python `a == b`: lists and tuples by value, otherwise identity. */
 export function eq(a: any, b: any): boolean {
   if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((value, i) => eq(value, b[i]));
@@ -615,12 +616,95 @@ export function setitem(container: any, key: any, value: any): void {
 }
 
 /** Identity of a key, as Python hashing sees it: tuples by value, entities by identity. */
+function isEntity(value: unknown): value is { identity(): number; filePointer(): number } {
+  return value !== null && typeof value === 'object'
+    && typeof (value as { identity?: unknown }).identity === 'function'
+    && typeof (value as { filePointer?: unknown }).filePointer === 'function';
+}
+
+/**
+ * The key of a set member or dict key: an entity by its identity(), so that two handles of one
+ * entity are equal, as in Python; a list by its items; other values as they are.
+ */
 function keyOf(key: unknown): unknown {
+  if (isEntity(key)) return `@${key.filePointer()}:${key.identity()}`;
   if (Array.isArray(key)) return JSON.stringify(key.map(item => {
     const k = keyOf(item);
-    return typeof k === 'object' && k !== null ? `@${(k as { id?(): number }).id?.() ?? ''}:${String((k as { filePointer?(): number }).filePointer?.() ?? '')}` : k;
+    return typeof k === 'object' && k !== null ? String(k) : k;
   }));
   return key;
+}
+
+function items<T>(values: Iterable<T> | ReadonlySetLike<T>): Iterable<T> {
+  return Symbol.iterator in Object(values) ? values as Iterable<T> : { [Symbol.iterator]: () => (values as ReadonlySetLike<T>).keys() };
+}
+
+/** Python set: members compare by value, and entities by identity(), as Python entity equality does. */
+export class IdentitySet<T = any> extends Set<T> {
+  private readonly members = new Map<unknown, T>();
+
+  constructor(values?: Iterable<T> | null) {
+    super();
+    for (const value of values ?? []) this.add(value);
+  }
+
+  override add(value: T): this {
+    const key = keyOf(value);
+    if (!this.members.has(key)) {
+      this.members.set(key, value);
+      super.add(value);
+    }
+    return this;
+  }
+
+  override has(value: T): boolean {
+    return this.members.has(keyOf(value));
+  }
+
+  override delete(value: T): boolean {
+    const key = keyOf(value);
+    if (!this.members.has(key)) return false;
+    const member = this.members.get(key) as T;
+    this.members.delete(key);
+    return super.delete(member);
+  }
+
+  override clear(): void {
+    this.members.clear();
+    super.clear();
+  }
+
+  override union<U>(other: Iterable<U> | ReadonlySetLike<U>): IdentitySet<T | U> {
+    return new IdentitySet<T | U>([...this, ...items(other)]);
+  }
+
+  override intersection<U>(other: Iterable<U> | ReadonlySetLike<U>): IdentitySet<T & U> {
+    const others = new IdentitySet<unknown>(items(other));
+    return new IdentitySet([...this].filter(value => others.has(value))) as IdentitySet<T & U>;
+  }
+
+  override difference<U>(other: Iterable<U> | ReadonlySetLike<U>): IdentitySet<T> {
+    const others = new IdentitySet<unknown>(items(other));
+    return new IdentitySet([...this].filter(value => !others.has(value)));
+  }
+
+  override symmetricDifference<U>(other: Iterable<U> | ReadonlySetLike<U>): IdentitySet<T | U> {
+    const others = new IdentitySet<T | U>(items(other));
+    return new IdentitySet<T | U>([...[...this].filter(v => !others.has(v)), ...[...others].filter(v => !this.has(v as T))]);
+  }
+
+  override isSubsetOf(other: Iterable<unknown> | ReadonlySetLike<unknown>): boolean {
+    const others = new IdentitySet<unknown>(items(other));
+    return [...this].every(value => others.has(value));
+  }
+
+  override isSupersetOf(other: Iterable<unknown> | ReadonlySetLike<unknown>): boolean {
+    return [...items(other)].every(value => this.has(value as T));
+  }
+
+  override isDisjointFrom(other: Iterable<unknown> | ReadonlySetLike<unknown>): boolean {
+    return [...items(other)].every(value => !this.has(value as T));
+  }
 }
 
 /**
@@ -700,4 +784,9 @@ export function dictGet(dict: Map<any, any>, key: unknown, otherwise: any = null
 export function dictSetdefault<K, V>(dict: Map<K, V>, key: K, value: V): V {
   if (!dict.has(key)) dict.set(key, value);
   return dictGet(dict, key) as V;
+}
+
+/** A Python set (see {@link IdentitySet}), typed as a plain Set. */
+export function identitySet<T = any>(values?: Iterable<T> | null): Set<T> {
+  return new IdentitySet<T>(values);
 }
