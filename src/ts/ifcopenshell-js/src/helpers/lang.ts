@@ -33,7 +33,7 @@ export function len(value: unknown): number {
 /** Python `item in container`. */
 export function contains(container: unknown, item: unknown): boolean {
   if (typeof container === 'string') return container.includes(item as string);
-  if (Array.isArray(container)) return container.includes(item);
+  if (Array.isArray(container)) return container.some(member => same(member, item));
   if (container instanceof Set || container instanceof Map) return container.has(item);
   if (isDict(container)) return Object.hasOwn(container, item as string);
   throw new TypeError(`argument of type ${typeof container} is not iterable`);
@@ -42,7 +42,7 @@ export function contains(container: unknown, item: unknown): boolean {
 /** Python `container.remove(item)` for lists, sets and files. */
 export function remove(container: unknown, item: unknown): void {
   if (Array.isArray(container)) {
-    const index = container.indexOf(item);
+    const index = container.findIndex(member => same(member, item));
     if (index < 0) throw new Error('list.remove(x): x not in list');
     container.splice(index, 1);
   } else if (container instanceof Set) {
@@ -822,4 +822,41 @@ export function strip(text: string, chars: string | null = null, side: 'both' | 
   if (side !== 'end') while (start < end && set.has(text[start]!)) start++;
   if (side !== 'start') while (end > start && set.has(text[end - 1]!)) end--;
   return text.slice(start, end);
+}
+
+/** Python `a < b`, `<=`, `>`, `>=` for values of unknown type: numbers, strings, lists and dates. */
+export function lt(a: unknown, b: unknown): boolean {
+  return order(a, b) < 0;
+}
+
+export function le(a: unknown, b: unknown): boolean {
+  return order(a, b) <= 0;
+}
+
+export function gt(a: unknown, b: unknown): boolean {
+  return order(a, b) > 0;
+}
+
+export function ge(a: unknown, b: unknown): boolean {
+  return order(a, b) >= 0;
+}
+
+interface DeclaredTypeCasts {
+  asNamedType?(): { declaredType(): unknown } | null;
+  asSimpleType?(): { declaredType(): unknown } | null;
+  asTypeDeclaration?(): { declaredType(): unknown } | null;
+}
+
+/** declared_type() of a named, simple or type declaration, with the explicit cast that it needs. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a schema declaration, used as Python does
+export function declaredType(declaration: DeclaredTypeCasts): any {
+  const cast = declaration.asNamedType?.() ?? declaration.asSimpleType?.() ?? declaration.asTypeDeclaration?.();
+  if (!cast) throw new TypeError('declared_type() needs a named, simple or type declaration');
+  return cast.declaredType();
+}
+
+/** Python `a == b` for entities: two handles of one entity are equal. Other values compare with ===. */
+export function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  return isEntity(a) && isEntity(b) && a.identity() === b.identity() && a.filePointer() === b.filePointer();
 }
