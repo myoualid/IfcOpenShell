@@ -2,6 +2,7 @@
 
 add_executable(test_ifcopenshell_geometry
     test_ifcopenshell_geometry.cpp
+    test_mesh_metrics.cpp
     test_taxonomy.cpp
 )
 list(GET SCHEMA_VERSIONS -1 IFCGEOM_TEST_SCHEMA_VERSION)
