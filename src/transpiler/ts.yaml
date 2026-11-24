@@ -1504,7 +1504,7 @@ rules:
           arg: $kind
           value: $value
     when: kind in ["default", "default_factory"]
-    output: '{% if kind == "default" %}{{ value | emit }}{% elif value.id is defined and value.id in ["list", "dict", "set"] %}{{ {"list": "[]", "dict": "{}", "set": "{{ "helpers.lang" | use("lang") }}.identitySet()"}[value.id] }}{% else %}{{ value | emit }}(){% endif %}'
+    output: '{% if kind == "default" %}{{ value | emit }}{% elif value.id is defined and value.id in ["list", "dict", "set"] %}{{ {"list": "[]", "dict": "{}", "set": ("helpers.lang" | use("lang")) ~ ".identitySet()"}[value.id] }}{% else %}{{ value | emit }}(){% endif %}'
   - input:
       node: Call
       func: $callee
@@ -1698,7 +1698,7 @@ rules:
       args:
         - $factory
       keywords: []
-    output: 'new {{ "helpers.lang" | use("lang") }}.Dict(null, () => {{ {"list": "[]", "dict": "({})", "set": "{{ "helpers.lang" | use("lang") }}.identitySet()", "int": "0", "float": "0", "str": "\"\""}.get(factory.id, (factory | emit) ~ "()") if factory.id is defined else (factory | emit) ~ "()" }})'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Dict(null, () => {{ {"list": "[]", "dict": "({})", "set": ("helpers.lang" | use("lang")) ~ ".identitySet()", "int": "0", "float": "0", "str": "\"\""}.get(factory.id, (factory | emit) ~ "()") if factory.id is defined else (factory | emit) ~ "()" }})'
   - input:
       node: Call
       func:
