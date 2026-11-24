@@ -2083,9 +2083,7 @@
  "util/element": {
   "functions": 68,
   "source": "ifcopenshell/util/element.py",
-  "stubs": {
-   "replace_attribute": "entity_instance.walk has no TS counterpart"
-  }
+  "stubs": {}
  },
  "util/file": {
   "functions": 2,
@@ -2159,7 +2157,6 @@
   "functions": 11,
   "source": "ifcopenshell/util/schema.py",
   "stubs": {
-   "BatchReassignClass": "entity_instance.walk has no TS counterpart",
    "Migrator": "No rules rule at line 334: uses module os"
   }
  },
@@ -2177,33 +2174,25 @@
   "functions": 47,
   "source": "ifcopenshell/util/shape.py",
   "stubs": {
-   "_extend_line": "No rules rule at line 779: uses module np",
-   "_merge_coplanar_ngons": "No rules rule at line 1005: uses module np",
-   "bisect_mesh_plane_vf": "No rules rule at line 815: uses module np",
-   "get_area_vf": "No rules rule at line 463: uses module np",
+   "_extend_line": "No rules rule at line 783: uses module np",
+   "_merge_coplanar_ngons": "No rules rule at line 1009: uses module np",
+   "bisect_mesh_plane_vf": "No rules rule at line 819: uses module np",
    "get_bbox": "No rules rule at line 450: uses module np",
    "get_bbox_centroid": "No rules rule at line 175: uses module np",
    "get_bottom_elevation": "No rules rule at line 370: uses module np",
-   "get_edges": "No rules rule at line 253: uses module np",
    "get_edges_representation_item_ids": "No rules rule at line 318: uses module np",
    "get_element_bbox_centroid": "No rules rule at line 206: uses module np",
    "get_element_vertices": "No rules rule at line 360: uses module np",
-   "get_faces": "No rules rule at line 268: uses module np",
    "get_faces_material_style_ids": "No rules rule at line 304: uses module np",
    "get_faces_representation_item_ids": "No rules rule at line 309: uses module np",
-   "get_footprint_area": "No rules rule at line 584: uses module np",
-   "get_footprint_perimeter": "No rules rule at line 671: uses module np",
+   "get_footprint_area": "No rules rule at line 588: uses module np",
    "get_material_colors": "No rules rule at line 279: uses module np",
    "get_normals": "No rules rule at line 290: uses module np",
-   "get_outer_surface_area": "No rules rule at line 645: uses module np",
    "get_shape_bbox_centroid": "No rules rule at line 222: uses module np",
    "get_shape_matrix": "No rules rule at line 163: uses module np",
    "get_shape_vertices": "No rules rule at line 336: uses module np",
-   "get_side_area": "No rules rule at line 520: uses module np",
    "get_top_elevation": "No rules rule at line 380: uses module np",
-   "get_total_edge_length": "No rules rule at line 767: uses module np",
    "get_vert_centroid": "No rules rule at line 186: uses module np",
-   "get_vertices": "No rules rule at line 237: uses module np",
    "get_x": "No rules rule at line 107: uses module np",
    "get_y": "No rules rule at line 117: uses module np",
    "get_z": "No rules rule at line 127: uses module np"

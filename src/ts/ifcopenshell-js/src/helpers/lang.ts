@@ -865,3 +865,9 @@ export function same(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   return isEntity(a) && isEntity(b) && a.identity() === b.identity() && a.filePointer() === b.filePointer();
 }
+
+/** entity_instance.walk: `g(value)` where `f(value)` holds, applied to each item of lists and tuples. */
+export function walk(f: (value: unknown) => unknown, g: (value: unknown) => unknown, value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(item => walk(f, g, item));
+  return truthy(f(value)) ? g(value) : value;
+}

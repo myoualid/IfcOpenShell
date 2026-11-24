@@ -126,6 +126,17 @@ hand_written:
   util.placement._operator_placement: {module: helpers.placement, source: 641f28f6e22c}
   util.placement.get_mappeditem_transformation: {module: helpers.placement, source: a8ce8b023187}
   util.placement.rotation: {module: helpers.placement, source: 727f3b8e44cd}
+  util.shape.get_vertices: {module: helpers.shape, source: 2e608667e867}
+  util.shape.get_edges: {module: helpers.shape, source: 12c1725818a5}
+  util.shape.get_faces: {module: helpers.shape, source: 193d88a66465}
+  util.shape.get_area_vf: {module: helpers.shape, source: 5a6f806b01c6}
+  util.shape.get_area: {module: helpers.shape, source: 0fef0eeadadf}
+  util.shape.get_volume: {module: helpers.shape, source: afa107e3e099}
+  util.shape.get_side_area: {module: helpers.shape, source: 7ea4b9b99b62}
+  util.shape.get_max_side_area: {module: helpers.shape, source: bc9e93085c68}
+  util.shape.get_outer_surface_area: {module: helpers.shape, source: a4c3a3593313}
+  util.shape.get_footprint_perimeter: {module: helpers.shape, source: 2ba15a84bb08}
+  util.shape.get_total_edge_length: {module: helpers.shape, source: 0acc38098098}
   util.date.parse_duration: {module: helpers.date, source: [b2d73dca5b0c, b524e1a94833]}
   util.date.timedelta2duration: {module: helpers.date, source: [06610bf8f44c, 1a6c6a3ec691]}
   util.date.ifc2datetime: {module: helpers.date, source: f125d79ce53a}
@@ -682,7 +693,8 @@ rules:
       value: $value
     when: entity | kind == "entity" and index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0
     output: '{{ entity | emit }}.set({{ index.value }}, {{ value | emit }});'
-  # Entity equality: two handles of one entity are equal (same identity() in the same file).
+  # Entity equality: two handles of one entity are equal (same identity() in the same file). Values of
+  # unknown type may be entities too; for other values lang.same is ===.
   - input:
       node: Compare
       left: $left
@@ -690,7 +702,7 @@ rules:
         - $op
       comparators:
         - $right
-    when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "entity" or right | kind == "entity") and not (left.__class__.__name__ == "Constant" or right.__class__.__name__ == "Constant")
+    when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "entity" or right | kind == "entity" or left | kind == "unknown" and right | kind == "unknown") and not (left.__class__.__name__ == "Constant" or right.__class__.__name__ == "Constant")
     output: '{{ "!" if op.__class__.__name__ == "NotEq" }}{{ "helpers.lang" | use("lang") }}.same({{ left | emit }}, {{ right | emit }})'
   # Ordering of values of unknown type (dates from ifc2datetime, for example).
   - input:
@@ -875,12 +887,16 @@ rules:
       args: []
       keywords: []
     output: '{{ "helpers.dates" | use("dates") }}.isoformat({{ value | emit }})'
+  # entity.walk(f, g, value): g applied to the values that match f, also inside lists.
   - input:
       node: Call
       func:
         node: Attribute
         attr: walk
-    output: '{{ "entity_instance.walk has no TS counterpart" | unsupported }}'
+      args: $args
+      keywords: []
+    when: args | length == 3
+    output: '{{ "helpers.lang" | use("lang") }}.walk({{ args | map("emit") | join(", ") }})'
   # File.toDelete (util.element collects entities to remove in one batch).
   - input:
       node: Attribute

@@ -878,8 +878,15 @@ class Transpiler:
         self.runtime_names = {}
         # Top-level names of all imported modules, for overloading_modules.
         self.imported_modules = {
-            alias.name.split(".")[0] for node in ast.walk(module) if isinstance(node, ast.Import) for alias in node.names
-        } | {node.module.split(".")[0] for node in ast.walk(module) if isinstance(node, ast.ImportFrom) and node.module and node.level == 0}
+            alias.name.split(".")[0]
+            for node in ast.walk(module)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        } | {
+            node.module.split(".")[0]
+            for node in ast.walk(module)
+            if isinstance(node, ast.ImportFrom) and node.module and node.level == 0
+        }
         runtime = self.rules.get("runtime_modules", {})
         for node in ast.walk(module):
             # Python modules with a hand-written TypeScript counterpart: local name -> (module, member).
@@ -1139,7 +1146,11 @@ class Transpiler:
                     and n.func.attr in ("add", "discard", "remove", "update", "clear", "pop")
                 }
                 for a in function.args.args + function.args.kwonlyargs:
-                    if a.annotation and a.arg in mutated and ast.unparse(a.annotation).startswith(("set[", "Set[", "set")):
+                    if (
+                        a.annotation
+                        and a.arg in mutated
+                        and ast.unparse(a.annotation).startswith(("set[", "Set[", "set"))
+                    ):
                         a.widened = True
                     annotated = self.emit(a.annotation, "annotation_kinds") if a.annotation else None
                     # Checked with isinstance, then rebound (x = [x]): the value is not of its annotated type.
