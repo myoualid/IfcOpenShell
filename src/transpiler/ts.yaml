@@ -444,7 +444,8 @@ rules:
       value: $value
     when: entity | kind == "entity" and index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0
     output: '{{ entity | emit }}.set({{ index.value }}, {{ value | emit }});'
-  # Entity equality: two handles of one entity are equal (same identity() in the same file).
+  # Entity equality: two handles of one entity are equal (same identity() in the same file). Values of
+  # unknown type may be entities too; for other values lang.same is ===.
   - input:
       node: Compare
       left: $left
@@ -452,7 +453,7 @@ rules:
         - $op
       comparators:
         - $right
-    when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "entity" or right | kind == "entity") and not (left.__class__.__name__ == "Constant" or right.__class__.__name__ == "Constant")
+    when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "entity" or right | kind == "entity" or left | kind == "unknown" and right | kind == "unknown") and not (left.__class__.__name__ == "Constant" or right.__class__.__name__ == "Constant")
     output: '{{ "!" if op.__class__.__name__ == "NotEq" }}{{ "helpers.lang" | use("lang") }}.same({{ left | emit }}, {{ right | emit }})'
   # Ordering of values of unknown type (dates from ifc2datetime, for example).
   - input:
@@ -637,12 +638,16 @@ rules:
       args: []
       keywords: []
     output: '{{ value | emit }}.toISOString()'
+  # entity.walk(f, g, value): g applied to the values that match f, also inside lists.
   - input:
       node: Call
       func:
         node: Attribute
         attr: walk
-    output: '{{ "entity_instance.walk has no TS counterpart" | unsupported }}'
+      args: $args
+      keywords: []
+    when: args | length == 3
+    output: '{{ "helpers.lang" | use("lang") }}.walk({{ args | map("emit") | join(", ") }})'
   # File.toDelete (util.element collects entities to remove in one batch).
   - input:
       node: Attribute
