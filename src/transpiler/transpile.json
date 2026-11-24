@@ -1,0 +1,2322 @@
+{
+ "api/aggregate/assign_object": {
+  "functions": 1,
+  "source": "ifcopenshell/api/aggregate/assign_object.py",
+  "stubs": {}
+ },
+ "api/aggregate/unassign_object": {
+  "functions": 1,
+  "source": "ifcopenshell/api/aggregate/unassign_object.py",
+  "stubs": {}
+ },
+ "api/alignment/_add_segment_to_curve": {
+  "functions": 3,
+  "source": "ifcopenshell/api/alignment/_add_segment_to_curve.py",
+  "stubs": {
+   "_add_curve_segment_to_composite_curve": "No types rule at line 48: np.array",
+   "_add_segment_to_curve": "No types rule at line 122: np.array"
+  }
+ },
+ "api/alignment/_add_segment_to_layout": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_add_segment_to_layout.py",
+  "stubs": {
+   "_add_segment_to_layout": "No types rule at line 34: np.array"
+  }
+ },
+ "api/alignment/_add_zero_length_segment": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_add_zero_length_segment.py",
+  "stubs": {}
+ },
+ "api/alignment/_create_geometric_representation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_create_geometric_representation.py",
+  "stubs": {
+   "_create_geometric_representation": "misspelled create method creatIfcShapeRepresentation in the Python source"
+  }
+ },
+ "api/alignment/_create_offset_curve_representation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_create_offset_curve_representation.py",
+  "stubs": {}
+ },
+ "api/alignment/_create_polyline_representation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_create_polyline_representation.py",
+  "stubs": {}
+ },
+ "api/alignment/_get_cant_segment": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_get_cant_segment.py",
+  "stubs": {}
+ },
+ "api/alignment/_get_key_point_tag": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_get_key_point_tag.py",
+  "stubs": {}
+ },
+ "api/alignment/_get_segment_endpoint": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_get_segment_endpoint.py",
+  "stubs": {
+   "_get_segment_endpoint": "No rules rule at line 89: uses module np"
+  }
+ },
+ "api/alignment/_get_segment_start_point_label": {
+  "functions": 5,
+  "source": "ifcopenshell/api/alignment/_get_segment_start_point_label.py",
+  "stubs": {}
+ },
+ "api/alignment/_map_alignment_cant_segment": {
+  "functions": 12,
+  "source": "ifcopenshell/api/alignment/_map_alignment_cant_segment.py",
+  "stubs": {}
+ },
+ "api/alignment/_map_alignment_horizontal_segment": {
+  "functions": 12,
+  "source": "ifcopenshell/api/alignment/_map_alignment_horizontal_segment.py",
+  "stubs": {
+   "_map_helmert_curve": "No rules rule at line 243: ifcopenshell_wrapper.helmert_curve_point(A0_1, A1_1, A2_1, length / 2)"
+  }
+ },
+ "api/alignment/_map_alignment_segment": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_map_alignment_segment.py",
+  "stubs": {}
+ },
+ "api/alignment/_map_alignment_vertical_segment": {
+  "functions": 6,
+  "source": "ifcopenshell/api/alignment/_map_alignment_vertical_segment.py",
+  "stubs": {}
+ },
+ "api/alignment/_referent_distance_along": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_referent_distance_along.py",
+  "stubs": {}
+ },
+ "api/alignment/_sort_nest": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_sort_nest.py",
+  "stubs": {}
+ },
+ "api/alignment/_update_curve_segment_transition_code": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/_update_curve_segment_transition_code.py",
+  "stubs": {}
+ },
+ "api/alignment/_update_zero_length_segment_placement": {
+  "functions": 2,
+  "source": "ifcopenshell/api/alignment/_update_zero_length_segment_placement.py",
+  "stubs": {
+   "_cant_cross_slope": "No types rule at line 29: np.array",
+   "_update_zero_length_segment_placement": "No types rule at line 40: np.array"
+  }
+ },
+ "api/alignment/add_positioning_referent": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/add_positioning_referent.py",
+  "stubs": {}
+ },
+ "api/alignment/add_stationing_referent": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/add_stationing_referent.py",
+  "stubs": {}
+ },
+ "api/alignment/add_vertical_layout": {
+  "functions": 2,
+  "source": "ifcopenshell/api/alignment/add_vertical_layout.py",
+  "stubs": {}
+ },
+ "api/alignment/add_zero_length_segment": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/add_zero_length_segment.py",
+  "stubs": {
+   "add_zero_length_segment": "numpy indexing (a tuple index)"
+  }
+ },
+ "api/alignment/create": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/create.py",
+  "stubs": {}
+ },
+ "api/alignment/create_as_offset_curve": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/create_as_offset_curve.py",
+  "stubs": {}
+ },
+ "api/alignment/create_as_polyline": {
+  "functions": 2,
+  "source": "ifcopenshell/api/alignment/create_as_polyline.py",
+  "stubs": {}
+ },
+ "api/alignment/create_by_pi_method": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/create_by_pi_method.py",
+  "stubs": {}
+ },
+ "api/alignment/create_from_csv": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/create_from_csv.py",
+  "stubs": {
+   "create_from_csv": "No rules rule at line 66: uses module csv"
+  }
+ },
+ "api/alignment/create_layout_segment": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/create_layout_segment.py",
+  "stubs": {
+   "create_layout_segment": "No types rule at line 30: np.array"
+  }
+ },
+ "api/alignment/create_representation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/create_representation.py",
+  "stubs": {}
+ },
+ "api/alignment/create_segment_representations": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/create_segment_representations.py",
+  "stubs": {}
+ },
+ "api/alignment/distance_along_from_station": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/distance_along_from_station.py",
+  "stubs": {}
+ },
+ "api/alignment/get_alignment": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_alignment.py",
+  "stubs": {}
+ },
+ "api/alignment/get_alignment_layout_nest": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_alignment_layout_nest.py",
+  "stubs": {}
+ },
+ "api/alignment/get_alignment_layouts": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_alignment_layouts.py",
+  "stubs": {}
+ },
+ "api/alignment/get_alignment_segment_nest": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_alignment_segment_nest.py",
+  "stubs": {}
+ },
+ "api/alignment/get_alignment_start_station": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_alignment_start_station.py",
+  "stubs": {}
+ },
+ "api/alignment/get_axis_subcontext": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_axis_subcontext.py",
+  "stubs": {}
+ },
+ "api/alignment/get_basis_curve": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_basis_curve.py",
+  "stubs": {}
+ },
+ "api/alignment/get_cant_layout": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_cant_layout.py",
+  "stubs": {}
+ },
+ "api/alignment/get_child_alignments": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_child_alignments.py",
+  "stubs": {}
+ },
+ "api/alignment/get_curve": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_curve.py",
+  "stubs": {}
+ },
+ "api/alignment/get_curve_segment": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_curve_segment.py",
+  "stubs": {}
+ },
+ "api/alignment/get_curve_segment_transition_code": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_curve_segment_transition_code.py",
+  "stubs": {
+   "get_curve_segment_transition_code": "No rules rule at line 60: uses module np"
+  }
+ },
+ "api/alignment/get_horizontal_layout": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_horizontal_layout.py",
+  "stubs": {}
+ },
+ "api/alignment/get_layout": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_layout.py",
+  "stubs": {}
+ },
+ "api/alignment/get_layout_curve": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_layout_curve.py",
+  "stubs": {}
+ },
+ "api/alignment/get_layout_segments": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_layout_segments.py",
+  "stubs": {}
+ },
+ "api/alignment/get_mapped_segments": {
+  "functions": 2,
+  "source": "ifcopenshell/api/alignment/get_mapped_segments.py",
+  "stubs": {}
+ },
+ "api/alignment/get_parent_alignment": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_parent_alignment.py",
+  "stubs": {}
+ },
+ "api/alignment/get_stationing_nest": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_stationing_nest.py",
+  "stubs": {}
+ },
+ "api/alignment/get_vertical_layout": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/get_vertical_layout.py",
+  "stubs": {}
+ },
+ "api/alignment/has_zero_length_segment": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/has_zero_length_segment.py",
+  "stubs": {}
+ },
+ "api/alignment/layout_horizontal_alignment_by_pi_method": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/layout_horizontal_alignment_by_pi_method.py",
+  "stubs": {}
+ },
+ "api/alignment/layout_vertical_alignment_by_pi_method": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/layout_vertical_alignment_by_pi_method.py",
+  "stubs": {}
+ },
+ "api/alignment/name_segments": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/name_segments.py",
+  "stubs": {}
+ },
+ "api/alignment/update_alignment_parameter_segment_tags": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/update_alignment_parameter_segment_tags.py",
+  "stubs": {}
+ },
+ "api/alignment/update_end_point": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/update_end_point.py",
+  "stubs": {
+   "update_end_point": "No rules rule at line 60: uses module np"
+  }
+ },
+ "api/alignment/update_fallback_position": {
+  "functions": 1,
+  "source": "ifcopenshell/api/alignment/update_fallback_position.py",
+  "stubs": {
+   "update_fallback_position": "numpy indexing (a tuple index)"
+  }
+ },
+ "api/alignment/update_key_point_referents": {
+  "functions": 3,
+  "source": "ifcopenshell/api/alignment/update_key_point_referents.py",
+  "stubs": {}
+ },
+ "api/alignment/update_layout_segments": {
+  "functions": 5,
+  "source": "ifcopenshell/api/alignment/update_layout_segments.py",
+  "stubs": {}
+ },
+ "api/alignment/util": {
+  "functions": 8,
+  "source": "ifcopenshell/api/alignment/util.py",
+  "stubs": {
+   "evaluate_representation": "No rules rule at line 49: uses module np",
+   "evaluate_segment": "No rules rule at line 72: uses module np",
+   "generate_vertices": "No rules rule at line 100: uses module np"
+  }
+ },
+ "api/attribute/edit_attributes": {
+  "functions": 1,
+  "source": "ifcopenshell/api/attribute/edit_attributes.py",
+  "stubs": {}
+ },
+ "api/boundary/assign_connection_geometry": {
+  "functions": 2,
+  "source": "ifcopenshell/api/boundary/assign_connection_geometry.py",
+  "stubs": {
+   "Usecase": "No rules rule at line 119: uses module np"
+  }
+ },
+ "api/boundary/copy_boundary": {
+  "functions": 1,
+  "source": "ifcopenshell/api/boundary/copy_boundary.py",
+  "stubs": {}
+ },
+ "api/boundary/edit_attributes": {
+  "functions": 1,
+  "source": "ifcopenshell/api/boundary/edit_attributes.py",
+  "stubs": {}
+ },
+ "api/boundary/remove_boundary": {
+  "functions": 1,
+  "source": "ifcopenshell/api/boundary/remove_boundary.py",
+  "stubs": {}
+ },
+ "api/classification/add_classification": {
+  "functions": 2,
+  "source": "ifcopenshell/api/classification/add_classification.py",
+  "stubs": {}
+ },
+ "api/classification/add_reference": {
+  "functions": 2,
+  "source": "ifcopenshell/api/classification/add_reference.py",
+  "stubs": {}
+ },
+ "api/classification/edit_classification": {
+  "functions": 1,
+  "source": "ifcopenshell/api/classification/edit_classification.py",
+  "stubs": {}
+ },
+ "api/classification/edit_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/classification/edit_reference.py",
+  "stubs": {}
+ },
+ "api/classification/remove_classification": {
+  "functions": 2,
+  "source": "ifcopenshell/api/classification/remove_classification.py",
+  "stubs": {}
+ },
+ "api/classification/remove_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/classification/remove_reference.py",
+  "stubs": {}
+ },
+ "api/cogo/add_survey_point": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cogo/add_survey_point.py",
+  "stubs": {}
+ },
+ "api/cogo/assign_survey_point": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cogo/assign_survey_point.py",
+  "stubs": {}
+ },
+ "api/cogo/bearing2dd": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cogo/bearing2dd.py",
+  "stubs": {}
+ },
+ "api/cogo/edit_survey_point": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cogo/edit_survey_point.py",
+  "stubs": {}
+ },
+ "api/constraint/add_metric": {
+  "functions": 1,
+  "source": "ifcopenshell/api/constraint/add_metric.py",
+  "stubs": {}
+ },
+ "api/constraint/add_metric_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/constraint/add_metric_reference.py",
+  "stubs": {}
+ },
+ "api/constraint/add_objective": {
+  "functions": 1,
+  "source": "ifcopenshell/api/constraint/add_objective.py",
+  "stubs": {}
+ },
+ "api/constraint/assign_constraint": {
+  "functions": 2,
+  "source": "ifcopenshell/api/constraint/assign_constraint.py",
+  "stubs": {}
+ },
+ "api/constraint/edit_metric": {
+  "functions": 1,
+  "source": "ifcopenshell/api/constraint/edit_metric.py",
+  "stubs": {}
+ },
+ "api/constraint/edit_objective": {
+  "functions": 1,
+  "source": "ifcopenshell/api/constraint/edit_objective.py",
+  "stubs": {}
+ },
+ "api/constraint/remove_constraint": {
+  "functions": 1,
+  "source": "ifcopenshell/api/constraint/remove_constraint.py",
+  "stubs": {}
+ },
+ "api/constraint/remove_metric": {
+  "functions": 2,
+  "source": "ifcopenshell/api/constraint/remove_metric.py",
+  "stubs": {}
+ },
+ "api/constraint/unassign_constraint": {
+  "functions": 2,
+  "source": "ifcopenshell/api/constraint/unassign_constraint.py",
+  "stubs": {}
+ },
+ "api/context/add_context": {
+  "functions": 2,
+  "source": "ifcopenshell/api/context/add_context.py",
+  "stubs": {}
+ },
+ "api/context/edit_context": {
+  "functions": 1,
+  "source": "ifcopenshell/api/context/edit_context.py",
+  "stubs": {}
+ },
+ "api/context/remove_context": {
+  "functions": 1,
+  "source": "ifcopenshell/api/context/remove_context.py",
+  "stubs": {}
+ },
+ "api/control/assign_control": {
+  "functions": 1,
+  "source": "ifcopenshell/api/control/assign_control.py",
+  "stubs": {}
+ },
+ "api/control/unassign_control": {
+  "functions": 1,
+  "source": "ifcopenshell/api/control/unassign_control.py",
+  "stubs": {}
+ },
+ "api/cost/add_cost_item": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/add_cost_item.py",
+  "stubs": {}
+ },
+ "api/cost/add_cost_item_quantity": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/add_cost_item_quantity.py",
+  "stubs": {}
+ },
+ "api/cost/add_cost_schedule": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/add_cost_schedule.py",
+  "stubs": {
+   "add_cost_schedule": "No rules rule at line 62: uses module datetime"
+  }
+ },
+ "api/cost/add_cost_value": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/add_cost_value.py",
+  "stubs": {}
+ },
+ "api/cost/assign_cost_item_quantity": {
+  "error": "No rules rule at line 248: uses module ast",
+  "functions": 5,
+  "source": "ifcopenshell/api/cost/assign_cost_item_quantity.py"
+ },
+ "api/cost/assign_cost_value": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/assign_cost_value.py",
+  "stubs": {}
+ },
+ "api/cost/calculate_cost_item_resource_value": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/calculate_cost_item_resource_value.py",
+  "stubs": {}
+ },
+ "api/cost/copy_cost_item": {
+  "functions": 2,
+  "source": "ifcopenshell/api/cost/copy_cost_item.py",
+  "stubs": {}
+ },
+ "api/cost/copy_cost_item_values": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/copy_cost_item_values.py",
+  "stubs": {}
+ },
+ "api/cost/copy_cost_schedule": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/copy_cost_schedule.py",
+  "stubs": {}
+ },
+ "api/cost/edit_cost_item": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/edit_cost_item.py",
+  "stubs": {}
+ },
+ "api/cost/edit_cost_item_quantity": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/edit_cost_item_quantity.py",
+  "stubs": {}
+ },
+ "api/cost/edit_cost_schedule": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/edit_cost_schedule.py",
+  "stubs": {}
+ },
+ "api/cost/edit_cost_value": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/edit_cost_value.py",
+  "stubs": {}
+ },
+ "api/cost/edit_cost_value_formula": {
+  "functions": 2,
+  "source": "ifcopenshell/api/cost/edit_cost_value_formula.py",
+  "stubs": {}
+ },
+ "api/cost/remove_cost_item": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/remove_cost_item.py",
+  "stubs": {}
+ },
+ "api/cost/remove_cost_item_quantity": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/remove_cost_item_quantity.py",
+  "stubs": {}
+ },
+ "api/cost/remove_cost_schedule": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/remove_cost_schedule.py",
+  "stubs": {}
+ },
+ "api/cost/remove_cost_value": {
+  "functions": 1,
+  "source": "ifcopenshell/api/cost/remove_cost_value.py",
+  "stubs": {}
+ },
+ "api/cost/unassign_cost_item_quantity": {
+  "functions": 2,
+  "source": "ifcopenshell/api/cost/unassign_cost_item_quantity.py",
+  "stubs": {}
+ },
+ "api/document/add_information": {
+  "functions": 1,
+  "source": "ifcopenshell/api/document/add_information.py",
+  "stubs": {}
+ },
+ "api/document/add_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/document/add_reference.py",
+  "stubs": {}
+ },
+ "api/document/assign_document": {
+  "functions": 1,
+  "source": "ifcopenshell/api/document/assign_document.py",
+  "stubs": {}
+ },
+ "api/document/edit_information": {
+  "functions": 1,
+  "source": "ifcopenshell/api/document/edit_information.py",
+  "stubs": {}
+ },
+ "api/document/edit_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/document/edit_reference.py",
+  "stubs": {}
+ },
+ "api/document/remove_information": {
+  "functions": 1,
+  "source": "ifcopenshell/api/document/remove_information.py",
+  "stubs": {}
+ },
+ "api/document/remove_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/document/remove_reference.py",
+  "stubs": {}
+ },
+ "api/document/unassign_document": {
+  "functions": 1,
+  "source": "ifcopenshell/api/document/unassign_document.py",
+  "stubs": {}
+ },
+ "api/drawing/assign_product": {
+  "functions": 1,
+  "source": "ifcopenshell/api/drawing/assign_product.py",
+  "stubs": {}
+ },
+ "api/drawing/edit_text_literal": {
+  "functions": 1,
+  "source": "ifcopenshell/api/drawing/edit_text_literal.py",
+  "stubs": {}
+ },
+ "api/drawing/unassign_product": {
+  "functions": 1,
+  "source": "ifcopenshell/api/drawing/unassign_product.py",
+  "stubs": {}
+ },
+ "api/feature/add_feature": {
+  "functions": 1,
+  "source": "ifcopenshell/api/feature/add_feature.py",
+  "stubs": {}
+ },
+ "api/feature/add_filling": {
+  "functions": 1,
+  "source": "ifcopenshell/api/feature/add_filling.py",
+  "stubs": {}
+ },
+ "api/feature/remove_feature": {
+  "functions": 1,
+  "source": "ifcopenshell/api/feature/remove_feature.py",
+  "stubs": {}
+ },
+ "api/feature/remove_filling": {
+  "functions": 1,
+  "source": "ifcopenshell/api/feature/remove_filling.py",
+  "stubs": {}
+ },
+ "api/geometry/add_axis_representation": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/add_axis_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/add_boolean": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/add_boolean.py",
+  "stubs": {}
+ },
+ "api/geometry/add_door_representation": {
+  "functions": 6,
+  "source": "ifcopenshell/api/geometry/add_door_representation.py",
+  "stubs": {
+   "create_ifc_box": "No rules rule at line 90: uses module np",
+   "create_ifc_door_lining": "No rules rule at line 78: uses module np"
+  }
+ },
+ "api/geometry/add_footprint_representation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/add_footprint_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/add_mesh_representation": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/add_mesh_representation.py",
+  "stubs": {
+   "add_mesh_representation": "No rules rule at line 80: uses module np"
+  }
+ },
+ "api/geometry/add_profile_representation": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/add_profile_representation.py",
+  "stubs": {
+   "Usecase": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed"
+  }
+ },
+ "api/geometry/add_railing_representation": {
+  "functions": 18,
+  "source": "ifcopenshell/api/geometry/add_railing_representation.py",
+  "stubs": {
+   "_add_arcs_on_turning_points": "No rules rule at line 213: uses module np",
+   "_add_cap": "No rules rule at line 427: uses module np",
+   "_collect_supports": "No rules rule at line 283: uses module np",
+   "_collinear": "No rules rule at line 138: uses module np",
+   "_get_arc_indices": "No rules rule at line 449: uses module np",
+   "_get_fillet_points": "No rules rule at line 159: uses module np",
+   "compute_wall_mounted_handrail_geometry": "No rules rule at line 516: uses module np"
+  }
+ },
+ "api/geometry/add_representation": {
+  "error": "No rules rule at line 38: uses module Vector",
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/add_representation.py"
+ },
+ "api/geometry/add_shape_aspect": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/add_shape_aspect.py",
+  "stubs": {}
+ },
+ "api/geometry/add_slab_representation": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/add_slab_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/add_topology_representation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/add_topology_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/add_wall_representation": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/add_wall_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/add_window_representation": {
+  "functions": 7,
+  "source": "ifcopenshell/api/geometry/add_window_representation.py",
+  "stubs": {
+   "create_ifc_window_frame_simple": "No rules rule at line 75: uses module np"
+  }
+ },
+ "api/geometry/assign_representation": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/assign_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/clip_solid": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/clip_solid.py",
+  "stubs": {}
+ },
+ "api/geometry/clip_solid_bounded": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/clip_solid_bounded.py",
+  "stubs": {
+   "clip_solid_bounded": "No rules rule at line 83: uses module np"
+  }
+ },
+ "api/geometry/connect_element": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/connect_element.py",
+  "stubs": {}
+ },
+ "api/geometry/connect_path": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/connect_path.py",
+  "stubs": {}
+ },
+ "api/geometry/connect_wall": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/connect_wall.py",
+  "stubs": {
+   "connect_wall": "No rules rule at line 36: uses module np"
+  }
+ },
+ "api/geometry/copy_representation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/copy_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/create_2pt_wall": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/create_2pt_wall.py",
+  "stubs": {
+   "create_2pt_wall": "No rules rule at line 79: uses module np"
+  }
+ },
+ "api/geometry/disconnect_element": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/disconnect_element.py",
+  "stubs": {}
+ },
+ "api/geometry/disconnect_path": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/disconnect_path.py",
+  "stubs": {}
+ },
+ "api/geometry/edit_object_placement": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/edit_object_placement.py",
+  "stubs": {
+   "Usecase": "No rules rule at line 84: uses module np",
+   "edit_object_placement": "No rules rule at line 63: uses module np"
+  }
+ },
+ "api/geometry/map_representation": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/map_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/regenerate_wall_representation": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/regenerate_wall_representation.py",
+  "stubs": {
+   "Regenerator": "No rules rule at line 135: uses module np"
+  }
+ },
+ "api/geometry/remove_boolean": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/remove_boolean.py",
+  "stubs": {}
+ },
+ "api/geometry/remove_representation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/remove_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/unassign_representation": {
+  "functions": 2,
+  "source": "ifcopenshell/api/geometry/unassign_representation.py",
+  "stubs": {}
+ },
+ "api/geometry/validate_type": {
+  "functions": 1,
+  "source": "ifcopenshell/api/geometry/validate_type.py",
+  "stubs": {}
+ },
+ "api/georeference/add_georeferencing": {
+  "functions": 1,
+  "source": "ifcopenshell/api/georeference/add_georeferencing.py",
+  "stubs": {}
+ },
+ "api/georeference/edit_georeferencing": {
+  "functions": 1,
+  "source": "ifcopenshell/api/georeference/edit_georeferencing.py",
+  "stubs": {}
+ },
+ "api/georeference/edit_true_north": {
+  "functions": 1,
+  "source": "ifcopenshell/api/georeference/edit_true_north.py",
+  "stubs": {}
+ },
+ "api/georeference/edit_wcs": {
+  "functions": 1,
+  "source": "ifcopenshell/api/georeference/edit_wcs.py",
+  "stubs": {
+   "edit_wcs": "No rules rule at line 68: uses module np"
+  }
+ },
+ "api/georeference/remove_georeferencing": {
+  "functions": 1,
+  "source": "ifcopenshell/api/georeference/remove_georeferencing.py",
+  "stubs": {}
+ },
+ "api/grid/create_axis_curve": {
+  "functions": 1,
+  "source": "ifcopenshell/api/grid/create_axis_curve.py",
+  "stubs": {
+   "create_axis_curve": "No rules rule at line 81: uses module np"
+  }
+ },
+ "api/grid/create_grid_axis": {
+  "functions": 1,
+  "source": "ifcopenshell/api/grid/create_grid_axis.py",
+  "stubs": {}
+ },
+ "api/grid/remove_grid_axis": {
+  "functions": 1,
+  "source": "ifcopenshell/api/grid/remove_grid_axis.py",
+  "stubs": {}
+ },
+ "api/group/add_group": {
+  "functions": 1,
+  "source": "ifcopenshell/api/group/add_group.py",
+  "stubs": {}
+ },
+ "api/group/assign_group": {
+  "functions": 1,
+  "source": "ifcopenshell/api/group/assign_group.py",
+  "stubs": {}
+ },
+ "api/group/edit_group": {
+  "functions": 1,
+  "source": "ifcopenshell/api/group/edit_group.py",
+  "stubs": {}
+ },
+ "api/group/remove_group": {
+  "functions": 1,
+  "source": "ifcopenshell/api/group/remove_group.py",
+  "stubs": {}
+ },
+ "api/group/unassign_group": {
+  "functions": 1,
+  "source": "ifcopenshell/api/group/unassign_group.py",
+  "stubs": {}
+ },
+ "api/group/update_group_products": {
+  "functions": 1,
+  "source": "ifcopenshell/api/group/update_group_products.py",
+  "stubs": {}
+ },
+ "api/layer/add_layer": {
+  "functions": 1,
+  "source": "ifcopenshell/api/layer/add_layer.py",
+  "stubs": {}
+ },
+ "api/layer/add_layer_with_style": {
+  "functions": 1,
+  "source": "ifcopenshell/api/layer/add_layer_with_style.py",
+  "stubs": {}
+ },
+ "api/layer/assign_layer": {
+  "functions": 1,
+  "source": "ifcopenshell/api/layer/assign_layer.py",
+  "stubs": {}
+ },
+ "api/layer/edit_layer": {
+  "functions": 1,
+  "source": "ifcopenshell/api/layer/edit_layer.py",
+  "stubs": {}
+ },
+ "api/layer/remove_layer": {
+  "functions": 1,
+  "source": "ifcopenshell/api/layer/remove_layer.py",
+  "stubs": {}
+ },
+ "api/layer/unassign_layer": {
+  "functions": 1,
+  "source": "ifcopenshell/api/layer/unassign_layer.py",
+  "stubs": {}
+ },
+ "api/library/add_library": {
+  "functions": 1,
+  "source": "ifcopenshell/api/library/add_library.py",
+  "stubs": {}
+ },
+ "api/library/add_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/library/add_reference.py",
+  "stubs": {}
+ },
+ "api/library/assign_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/library/assign_reference.py",
+  "stubs": {
+   "assign_reference": "products is annotated as one entity_instance but used as a list"
+  }
+ },
+ "api/library/edit_library": {
+  "functions": 1,
+  "source": "ifcopenshell/api/library/edit_library.py",
+  "stubs": {}
+ },
+ "api/library/edit_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/library/edit_reference.py",
+  "stubs": {}
+ },
+ "api/library/remove_library": {
+  "functions": 1,
+  "source": "ifcopenshell/api/library/remove_library.py",
+  "stubs": {}
+ },
+ "api/library/remove_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/library/remove_reference.py",
+  "stubs": {}
+ },
+ "api/library/unassign_reference": {
+  "functions": 1,
+  "source": "ifcopenshell/api/library/unassign_reference.py",
+  "stubs": {}
+ },
+ "api/material/add_constituent": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/add_constituent.py",
+  "stubs": {}
+ },
+ "api/material/add_layer": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/add_layer.py",
+  "stubs": {}
+ },
+ "api/material/add_list_item": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/add_list_item.py",
+  "stubs": {}
+ },
+ "api/material/add_material": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/add_material.py",
+  "stubs": {}
+ },
+ "api/material/add_material_set": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/add_material_set.py",
+  "stubs": {}
+ },
+ "api/material/add_profile": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/add_profile.py",
+  "stubs": {}
+ },
+ "api/material/assign_material": {
+  "functions": 2,
+  "source": "ifcopenshell/api/material/assign_material.py",
+  "stubs": {}
+ },
+ "api/material/assign_profile": {
+  "functions": 2,
+  "source": "ifcopenshell/api/material/assign_profile.py",
+  "stubs": {}
+ },
+ "api/material/copy_material": {
+  "functions": 2,
+  "source": "ifcopenshell/api/material/copy_material.py",
+  "stubs": {}
+ },
+ "api/material/edit_assigned_material": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/edit_assigned_material.py",
+  "stubs": {}
+ },
+ "api/material/edit_constituent": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/edit_constituent.py",
+  "stubs": {}
+ },
+ "api/material/edit_layer": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/edit_layer.py",
+  "stubs": {}
+ },
+ "api/material/edit_layer_usage": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/edit_layer_usage.py",
+  "stubs": {}
+ },
+ "api/material/edit_material": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/edit_material.py",
+  "stubs": {}
+ },
+ "api/material/edit_profile": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/edit_profile.py",
+  "stubs": {}
+ },
+ "api/material/edit_profile_usage": {
+  "functions": 2,
+  "source": "ifcopenshell/api/material/edit_profile_usage.py",
+  "stubs": {
+   "Usecase": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed"
+  }
+ },
+ "api/material/remove_constituent": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/remove_constituent.py",
+  "stubs": {}
+ },
+ "api/material/remove_layer": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/remove_layer.py",
+  "stubs": {}
+ },
+ "api/material/remove_list_item": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/remove_list_item.py",
+  "stubs": {}
+ },
+ "api/material/remove_material": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/remove_material.py",
+  "stubs": {}
+ },
+ "api/material/remove_material_set": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/remove_material_set.py",
+  "stubs": {}
+ },
+ "api/material/remove_profile": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/remove_profile.py",
+  "stubs": {}
+ },
+ "api/material/reorder_set_item": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/reorder_set_item.py",
+  "stubs": {}
+ },
+ "api/material/set_shape_aspect_constituents": {
+  "functions": 1,
+  "source": "ifcopenshell/api/material/set_shape_aspect_constituents.py",
+  "stubs": {}
+ },
+ "api/material/unassign_material": {
+  "functions": 2,
+  "source": "ifcopenshell/api/material/unassign_material.py",
+  "stubs": {}
+ },
+ "api/nest/assign_object": {
+  "functions": 1,
+  "source": "ifcopenshell/api/nest/assign_object.py",
+  "stubs": {}
+ },
+ "api/nest/change_nest": {
+  "functions": 1,
+  "source": "ifcopenshell/api/nest/change_nest.py",
+  "stubs": {}
+ },
+ "api/nest/reorder_nesting": {
+  "functions": 1,
+  "source": "ifcopenshell/api/nest/reorder_nesting.py",
+  "stubs": {}
+ },
+ "api/nest/unassign_object": {
+  "functions": 1,
+  "source": "ifcopenshell/api/nest/unassign_object.py",
+  "stubs": {}
+ },
+ "api/owner/add_actor": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/add_actor.py",
+  "stubs": {}
+ },
+ "api/owner/add_address": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/add_address.py",
+  "stubs": {}
+ },
+ "api/owner/add_application": {
+  "functions": 2,
+  "source": "ifcopenshell/api/owner/add_application.py",
+  "stubs": {}
+ },
+ "api/owner/add_organisation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/add_organisation.py",
+  "stubs": {}
+ },
+ "api/owner/add_person": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/add_person.py",
+  "stubs": {}
+ },
+ "api/owner/add_person_and_organisation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/add_person_and_organisation.py",
+  "stubs": {}
+ },
+ "api/owner/add_role": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/add_role.py",
+  "stubs": {}
+ },
+ "api/owner/assign_actor": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/assign_actor.py",
+  "stubs": {}
+ },
+ "api/owner/create_owner_history": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/create_owner_history.py",
+  "stubs": {}
+ },
+ "api/owner/edit_actor": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/edit_actor.py",
+  "stubs": {}
+ },
+ "api/owner/edit_address": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/edit_address.py",
+  "stubs": {}
+ },
+ "api/owner/edit_application": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/edit_application.py",
+  "stubs": {}
+ },
+ "api/owner/edit_organisation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/edit_organisation.py",
+  "stubs": {}
+ },
+ "api/owner/edit_person": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/edit_person.py",
+  "stubs": {}
+ },
+ "api/owner/edit_role": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/edit_role.py",
+  "stubs": {}
+ },
+ "api/owner/remove_actor": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/remove_actor.py",
+  "stubs": {}
+ },
+ "api/owner/remove_address": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/remove_address.py",
+  "stubs": {}
+ },
+ "api/owner/remove_application": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/remove_application.py",
+  "stubs": {}
+ },
+ "api/owner/remove_organisation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/remove_organisation.py",
+  "stubs": {}
+ },
+ "api/owner/remove_person": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/remove_person.py",
+  "stubs": {}
+ },
+ "api/owner/remove_person_and_organisation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/remove_person_and_organisation.py",
+  "stubs": {}
+ },
+ "api/owner/remove_role": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/remove_role.py",
+  "stubs": {}
+ },
+ "api/owner/settings": {
+  "functions": 4,
+  "source": "ifcopenshell/api/owner/settings.py",
+  "stubs": {}
+ },
+ "api/owner/unassign_actor": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/unassign_actor.py",
+  "stubs": {}
+ },
+ "api/owner/update_owner_history": {
+  "functions": 1,
+  "source": "ifcopenshell/api/owner/update_owner_history.py",
+  "stubs": {}
+ },
+ "api/profile/add_arbitrary_profile": {
+  "functions": 2,
+  "source": "ifcopenshell/api/profile/add_arbitrary_profile.py",
+  "stubs": {}
+ },
+ "api/profile/add_arbitrary_profile_with_voids": {
+  "functions": 2,
+  "source": "ifcopenshell/api/profile/add_arbitrary_profile_with_voids.py",
+  "stubs": {}
+ },
+ "api/profile/add_parameterized_profile": {
+  "functions": 1,
+  "source": "ifcopenshell/api/profile/add_parameterized_profile.py",
+  "stubs": {}
+ },
+ "api/profile/copy_profile": {
+  "functions": 1,
+  "source": "ifcopenshell/api/profile/copy_profile.py",
+  "stubs": {}
+ },
+ "api/profile/edit_profile": {
+  "functions": 1,
+  "source": "ifcopenshell/api/profile/edit_profile.py",
+  "stubs": {}
+ },
+ "api/profile/remove_profile": {
+  "functions": 1,
+  "source": "ifcopenshell/api/profile/remove_profile.py",
+  "stubs": {}
+ },
+ "api/project/append_asset": {
+  "functions": 3,
+  "source": "ifcopenshell/api/project/append_asset.py",
+  "stubs": {
+   "Usecase": "No rules rule at line 790: type(tuple_)"
+  }
+ },
+ "api/project/assign_declaration": {
+  "functions": 1,
+  "source": "ifcopenshell/api/project/assign_declaration.py",
+  "stubs": {}
+ },
+ "api/project/create_file": {
+  "functions": 1,
+  "source": "ifcopenshell/api/project/create_file.py",
+  "stubs": {
+   "create_file": "No rules rule at line 56: uses module datetime"
+  }
+ },
+ "api/project/unassign_declaration": {
+  "functions": 1,
+  "source": "ifcopenshell/api/project/unassign_declaration.py",
+  "stubs": {}
+ },
+ "api/pset/add_pset": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset/add_pset.py",
+  "stubs": {}
+ },
+ "api/pset/add_qto": {
+  "functions": 2,
+  "source": "ifcopenshell/api/pset/add_qto.py",
+  "stubs": {}
+ },
+ "api/pset/assign_pset": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset/assign_pset.py",
+  "stubs": {}
+ },
+ "api/pset/edit_pset": {
+  "functions": 2,
+  "source": "ifcopenshell/api/pset/edit_pset.py",
+  "stubs": {}
+ },
+ "api/pset/edit_qto": {
+  "functions": 3,
+  "source": "ifcopenshell/api/pset/edit_qto.py",
+  "stubs": {}
+ },
+ "api/pset/remove_pset": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset/remove_pset.py",
+  "stubs": {}
+ },
+ "api/pset/unassign_pset": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset/unassign_pset.py",
+  "stubs": {}
+ },
+ "api/pset/unshare_pset": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset/unshare_pset.py",
+  "stubs": {}
+ },
+ "api/pset_template/add_prop_template": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset_template/add_prop_template.py",
+  "stubs": {}
+ },
+ "api/pset_template/add_pset_template": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset_template/add_pset_template.py",
+  "stubs": {}
+ },
+ "api/pset_template/edit_prop_template": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset_template/edit_prop_template.py",
+  "stubs": {}
+ },
+ "api/pset_template/edit_pset_template": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset_template/edit_pset_template.py",
+  "stubs": {}
+ },
+ "api/pset_template/remove_prop_template": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset_template/remove_prop_template.py",
+  "stubs": {}
+ },
+ "api/pset_template/remove_pset_template": {
+  "functions": 1,
+  "source": "ifcopenshell/api/pset_template/remove_pset_template.py",
+  "stubs": {}
+ },
+ "api/resource/add_resource": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/add_resource.py",
+  "stubs": {}
+ },
+ "api/resource/add_resource_quantity": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/add_resource_quantity.py",
+  "stubs": {}
+ },
+ "api/resource/add_resource_time": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/add_resource_time.py",
+  "stubs": {}
+ },
+ "api/resource/assign_resource": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/assign_resource.py",
+  "stubs": {}
+ },
+ "api/resource/calculate_resource_usage": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/calculate_resource_usage.py",
+  "stubs": {}
+ },
+ "api/resource/calculate_resource_work": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/calculate_resource_work.py",
+  "stubs": {}
+ },
+ "api/resource/edit_resource": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/edit_resource.py",
+  "stubs": {}
+ },
+ "api/resource/edit_resource_quantity": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/edit_resource_quantity.py",
+  "stubs": {}
+ },
+ "api/resource/edit_resource_time": {
+  "functions": 2,
+  "source": "ifcopenshell/api/resource/edit_resource_time.py",
+  "stubs": {}
+ },
+ "api/resource/remove_resource": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/remove_resource.py",
+  "stubs": {}
+ },
+ "api/resource/remove_resource_quantity": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/remove_resource_quantity.py",
+  "stubs": {}
+ },
+ "api/resource/unassign_resource": {
+  "functions": 1,
+  "source": "ifcopenshell/api/resource/unassign_resource.py",
+  "stubs": {}
+ },
+ "api/root/copy_class": {
+  "functions": 2,
+  "source": "ifcopenshell/api/root/copy_class.py",
+  "stubs": {}
+ },
+ "api/root/create_entity": {
+  "functions": 2,
+  "source": "ifcopenshell/api/root/create_entity.py",
+  "stubs": {}
+ },
+ "api/root/reassign_class": {
+  "functions": 2,
+  "source": "ifcopenshell/api/root/reassign_class.py",
+  "stubs": {}
+ },
+ "api/root/remove_product": {
+  "functions": 1,
+  "source": "ifcopenshell/api/root/remove_product.py",
+  "stubs": {}
+ },
+ "api/sequence/add_date_time": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/add_date_time.py",
+  "stubs": {}
+ },
+ "api/sequence/add_task": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/add_task.py",
+  "stubs": {}
+ },
+ "api/sequence/add_task_time": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/add_task_time.py",
+  "stubs": {}
+ },
+ "api/sequence/add_time_period": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/add_time_period.py",
+  "stubs": {}
+ },
+ "api/sequence/add_work_calendar": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/add_work_calendar.py",
+  "stubs": {}
+ },
+ "api/sequence/add_work_plan": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/add_work_plan.py",
+  "stubs": {
+   "add_work_plan": "No rules rule at line 62: uses module datetime"
+  }
+ },
+ "api/sequence/add_work_schedule": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/add_work_schedule.py",
+  "stubs": {
+   "add_work_schedule": "No rules rule at line 77: uses module datetime"
+  }
+ },
+ "api/sequence/add_work_time": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/add_work_time.py",
+  "stubs": {}
+ },
+ "api/sequence/assign_lag_time": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/assign_lag_time.py",
+  "stubs": {}
+ },
+ "api/sequence/assign_process": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/assign_process.py",
+  "stubs": {}
+ },
+ "api/sequence/assign_product": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/assign_product.py",
+  "stubs": {}
+ },
+ "api/sequence/assign_recurrence_pattern": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/assign_recurrence_pattern.py",
+  "stubs": {}
+ },
+ "api/sequence/assign_sequence": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/assign_sequence.py",
+  "stubs": {}
+ },
+ "api/sequence/assign_work_plan": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/assign_work_plan.py",
+  "stubs": {}
+ },
+ "api/sequence/calculate_task_duration": {
+  "functions": 2,
+  "source": "ifcopenshell/api/sequence/calculate_task_duration.py",
+  "stubs": {}
+ },
+ "api/sequence/cascade_schedule": {
+  "functions": 2,
+  "source": "ifcopenshell/api/sequence/cascade_schedule.py",
+  "stubs": {
+   "Usecase": "No rules rule at line 142: uses module datetime"
+  }
+ },
+ "api/sequence/copy_work_schedule": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/copy_work_schedule.py",
+  "stubs": {}
+ },
+ "api/sequence/create_baseline": {
+  "functions": 2,
+  "source": "ifcopenshell/api/sequence/create_baseline.py",
+  "stubs": {}
+ },
+ "api/sequence/duplicate_task": {
+  "functions": 2,
+  "source": "ifcopenshell/api/sequence/duplicate_task.py",
+  "stubs": {}
+ },
+ "api/sequence/edit_lag_time": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/edit_lag_time.py",
+  "stubs": {}
+ },
+ "api/sequence/edit_recurrence_pattern": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/edit_recurrence_pattern.py",
+  "stubs": {}
+ },
+ "api/sequence/edit_sequence": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/edit_sequence.py",
+  "stubs": {}
+ },
+ "api/sequence/edit_task": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/edit_task.py",
+  "stubs": {}
+ },
+ "api/sequence/edit_task_time": {
+  "functions": 2,
+  "source": "ifcopenshell/api/sequence/edit_task_time.py",
+  "stubs": {
+   "Usecase": "No rules rule at line 132: uses module datetime"
+  }
+ },
+ "api/sequence/edit_work_calendar": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/edit_work_calendar.py",
+  "stubs": {}
+ },
+ "api/sequence/edit_work_plan": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/edit_work_plan.py",
+  "stubs": {}
+ },
+ "api/sequence/edit_work_schedule": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/edit_work_schedule.py",
+  "stubs": {}
+ },
+ "api/sequence/edit_work_time": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/edit_work_time.py",
+  "stubs": {}
+ },
+ "api/sequence/recalculate_schedule": {
+  "functions": 2,
+  "source": "ifcopenshell/api/sequence/recalculate_schedule.py",
+  "stubs": {
+   "Usecase": "No rules rule at line 114: uses module nx"
+  }
+ },
+ "api/sequence/remove_task": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/remove_task.py",
+  "stubs": {}
+ },
+ "api/sequence/remove_time_period": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/remove_time_period.py",
+  "stubs": {}
+ },
+ "api/sequence/remove_work_calendar": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/remove_work_calendar.py",
+  "stubs": {}
+ },
+ "api/sequence/remove_work_plan": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/remove_work_plan.py",
+  "stubs": {}
+ },
+ "api/sequence/remove_work_schedule": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/remove_work_schedule.py",
+  "stubs": {}
+ },
+ "api/sequence/remove_work_time": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/remove_work_time.py",
+  "stubs": {}
+ },
+ "api/sequence/unassign_lag_time": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/unassign_lag_time.py",
+  "stubs": {}
+ },
+ "api/sequence/unassign_process": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/unassign_process.py",
+  "stubs": {}
+ },
+ "api/sequence/unassign_product": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/unassign_product.py",
+  "stubs": {}
+ },
+ "api/sequence/unassign_recurrence_pattern": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/unassign_recurrence_pattern.py",
+  "stubs": {}
+ },
+ "api/sequence/unassign_sequence": {
+  "functions": 1,
+  "source": "ifcopenshell/api/sequence/unassign_sequence.py",
+  "stubs": {}
+ },
+ "api/spatial/assign_container": {
+  "functions": 1,
+  "source": "ifcopenshell/api/spatial/assign_container.py",
+  "stubs": {}
+ },
+ "api/spatial/dereference_structure": {
+  "functions": 1,
+  "source": "ifcopenshell/api/spatial/dereference_structure.py",
+  "stubs": {}
+ },
+ "api/spatial/reference_structure": {
+  "functions": 1,
+  "source": "ifcopenshell/api/spatial/reference_structure.py",
+  "stubs": {}
+ },
+ "api/spatial/unassign_container": {
+  "functions": 1,
+  "source": "ifcopenshell/api/spatial/unassign_container.py",
+  "stubs": {}
+ },
+ "api/structural/add_structural_activity": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/add_structural_activity.py",
+  "stubs": {}
+ },
+ "api/structural/add_structural_analysis_model": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/add_structural_analysis_model.py",
+  "stubs": {}
+ },
+ "api/structural/add_structural_boundary_condition": {
+  "functions": 2,
+  "source": "ifcopenshell/api/structural/add_structural_boundary_condition.py",
+  "stubs": {}
+ },
+ "api/structural/add_structural_load": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/add_structural_load.py",
+  "stubs": {}
+ },
+ "api/structural/add_structural_load_case": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/add_structural_load_case.py",
+  "stubs": {}
+ },
+ "api/structural/add_structural_load_combination": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/add_structural_load_combination.py",
+  "stubs": {}
+ },
+ "api/structural/add_structural_load_group": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/add_structural_load_group.py",
+  "stubs": {}
+ },
+ "api/structural/add_structural_member_connection": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/add_structural_member_connection.py",
+  "stubs": {}
+ },
+ "api/structural/assign_product": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/assign_product.py",
+  "stubs": {}
+ },
+ "api/structural/assign_structural_analysis_model": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/assign_structural_analysis_model.py",
+  "stubs": {}
+ },
+ "api/structural/assign_structural_load_combination": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/assign_structural_load_combination.py",
+  "stubs": {}
+ },
+ "api/structural/assign_structural_load_group": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/assign_structural_load_group.py",
+  "stubs": {}
+ },
+ "api/structural/assign_to_building": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/assign_to_building.py",
+  "stubs": {}
+ },
+ "api/structural/edit_structural_analysis_model": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/edit_structural_analysis_model.py",
+  "stubs": {}
+ },
+ "api/structural/edit_structural_boundary_condition": {
+  "functions": 2,
+  "source": "ifcopenshell/api/structural/edit_structural_boundary_condition.py",
+  "stubs": {}
+ },
+ "api/structural/edit_structural_connection_cs": {
+  "functions": 2,
+  "source": "ifcopenshell/api/structural/edit_structural_connection_cs.py",
+  "stubs": {}
+ },
+ "api/structural/edit_structural_item_axis": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/edit_structural_item_axis.py",
+  "stubs": {}
+ },
+ "api/structural/edit_structural_load": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/edit_structural_load.py",
+  "stubs": {}
+ },
+ "api/structural/edit_structural_load_case": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/edit_structural_load_case.py",
+  "stubs": {}
+ },
+ "api/structural/remove_structural_activity": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/remove_structural_activity.py",
+  "stubs": {}
+ },
+ "api/structural/remove_structural_analysis_model": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/remove_structural_analysis_model.py",
+  "stubs": {}
+ },
+ "api/structural/remove_structural_boundary_condition": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/remove_structural_boundary_condition.py",
+  "stubs": {}
+ },
+ "api/structural/remove_structural_connection_condition": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/remove_structural_connection_condition.py",
+  "stubs": {}
+ },
+ "api/structural/remove_structural_load": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/remove_structural_load.py",
+  "stubs": {}
+ },
+ "api/structural/remove_structural_load_case": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/remove_structural_load_case.py",
+  "stubs": {}
+ },
+ "api/structural/remove_structural_load_group": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/remove_structural_load_group.py",
+  "stubs": {}
+ },
+ "api/structural/unassign_from_building": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/unassign_from_building.py",
+  "stubs": {}
+ },
+ "api/structural/unassign_structural_analysis_model": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/unassign_structural_analysis_model.py",
+  "stubs": {}
+ },
+ "api/structural/unassign_structural_load_combination": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/unassign_structural_load_combination.py",
+  "stubs": {}
+ },
+ "api/structural/unassign_structural_load_group": {
+  "functions": 1,
+  "source": "ifcopenshell/api/structural/unassign_structural_load_group.py",
+  "stubs": {}
+ },
+ "api/style/add_style": {
+  "functions": 1,
+  "source": "ifcopenshell/api/style/add_style.py",
+  "stubs": {}
+ },
+ "api/style/add_surface_style": {
+  "functions": 1,
+  "source": "ifcopenshell/api/style/add_surface_style.py",
+  "stubs": {}
+ },
+ "api/style/add_surface_textures": {
+  "functions": 3,
+  "source": "ifcopenshell/api/style/add_surface_textures.py",
+  "stubs": {
+   "Usecase": "No rules rule at line 200: uses module tool",
+   "add_surface_textures": "No types rule at line 36: bpy.types.Material"
+  }
+ },
+ "api/style/assign_item_style": {
+  "functions": 1,
+  "source": "ifcopenshell/api/style/assign_item_style.py",
+  "stubs": {}
+ },
+ "api/style/assign_material_style": {
+  "functions": 2,
+  "source": "ifcopenshell/api/style/assign_material_style.py",
+  "stubs": {}
+ },
+ "api/style/assign_representation_styles": {
+  "functions": 2,
+  "source": "ifcopenshell/api/style/assign_representation_styles.py",
+  "stubs": {}
+ },
+ "api/style/edit_presentation_style": {
+  "functions": 1,
+  "source": "ifcopenshell/api/style/edit_presentation_style.py",
+  "stubs": {}
+ },
+ "api/style/edit_surface_style": {
+  "functions": 2,
+  "source": "ifcopenshell/api/style/edit_surface_style.py",
+  "stubs": {}
+ },
+ "api/style/remove_style": {
+  "functions": 2,
+  "source": "ifcopenshell/api/style/remove_style.py",
+  "stubs": {}
+ },
+ "api/style/remove_styled_representation": {
+  "functions": 1,
+  "source": "ifcopenshell/api/style/remove_styled_representation.py",
+  "stubs": {}
+ },
+ "api/style/remove_surface_style": {
+  "functions": 1,
+  "source": "ifcopenshell/api/style/remove_surface_style.py",
+  "stubs": {}
+ },
+ "api/style/unassign_material_style": {
+  "functions": 1,
+  "source": "ifcopenshell/api/style/unassign_material_style.py",
+  "stubs": {}
+ },
+ "api/style/unassign_representation_styles": {
+  "functions": 2,
+  "source": "ifcopenshell/api/style/unassign_representation_styles.py",
+  "stubs": {}
+ },
+ "api/system/add_port": {
+  "functions": 1,
+  "source": "ifcopenshell/api/system/add_port.py",
+  "stubs": {}
+ },
+ "api/system/add_system": {
+  "functions": 1,
+  "source": "ifcopenshell/api/system/add_system.py",
+  "stubs": {}
+ },
+ "api/system/assign_flow_control": {
+  "functions": 1,
+  "source": "ifcopenshell/api/system/assign_flow_control.py",
+  "stubs": {}
+ },
+ "api/system/assign_port": {
+  "functions": 2,
+  "source": "ifcopenshell/api/system/assign_port.py",
+  "stubs": {}
+ },
+ "api/system/assign_system": {
+  "functions": 1,
+  "source": "ifcopenshell/api/system/assign_system.py",
+  "stubs": {}
+ },
+ "api/system/connect_port": {
+  "functions": 2,
+  "source": "ifcopenshell/api/system/connect_port.py",
+  "stubs": {}
+ },
+ "api/system/disconnect_port": {
+  "functions": 1,
+  "source": "ifcopenshell/api/system/disconnect_port.py",
+  "stubs": {}
+ },
+ "api/system/edit_system": {
+  "functions": 1,
+  "source": "ifcopenshell/api/system/edit_system.py",
+  "stubs": {}
+ },
+ "api/system/remove_system": {
+  "functions": 1,
+  "source": "ifcopenshell/api/system/remove_system.py",
+  "stubs": {}
+ },
+ "api/system/unassign_flow_control": {
+  "functions": 1,
+  "source": "ifcopenshell/api/system/unassign_flow_control.py",
+  "stubs": {}
+ },
+ "api/system/unassign_port": {
+  "functions": 2,
+  "source": "ifcopenshell/api/system/unassign_port.py",
+  "stubs": {}
+ },
+ "api/system/unassign_system": {
+  "functions": 1,
+  "source": "ifcopenshell/api/system/unassign_system.py",
+  "stubs": {}
+ },
+ "api/type/assign_type": {
+  "functions": 2,
+  "source": "ifcopenshell/api/type/assign_type.py",
+  "stubs": {}
+ },
+ "api/type/map_type_representations": {
+  "functions": 1,
+  "source": "ifcopenshell/api/type/map_type_representations.py",
+  "stubs": {}
+ },
+ "api/type/unassign_type": {
+  "functions": 1,
+  "source": "ifcopenshell/api/type/unassign_type.py",
+  "stubs": {}
+ },
+ "api/unit/add_context_dependent_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/add_context_dependent_unit.py",
+  "stubs": {}
+ },
+ "api/unit/add_conversion_based_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/add_conversion_based_unit.py",
+  "stubs": {}
+ },
+ "api/unit/add_derived_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/add_derived_unit.py",
+  "stubs": {}
+ },
+ "api/unit/add_monetary_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/add_monetary_unit.py",
+  "stubs": {}
+ },
+ "api/unit/add_si_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/add_si_unit.py",
+  "stubs": {}
+ },
+ "api/unit/assign_unit": {
+  "functions": 3,
+  "source": "ifcopenshell/api/unit/assign_unit.py",
+  "stubs": {}
+ },
+ "api/unit/edit_derived_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/edit_derived_unit.py",
+  "stubs": {}
+ },
+ "api/unit/edit_monetary_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/edit_monetary_unit.py",
+  "stubs": {}
+ },
+ "api/unit/edit_named_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/edit_named_unit.py",
+  "stubs": {}
+ },
+ "api/unit/remove_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/remove_unit.py",
+  "stubs": {}
+ },
+ "api/unit/unassign_unit": {
+  "functions": 1,
+  "source": "ifcopenshell/api/unit/unassign_unit.py",
+  "stubs": {}
+ },
+ "util/alignment": {
+  "functions": 4,
+  "source": "ifcopenshell/util/alignment.py",
+  "stubs": {}
+ },
+ "util/attribute": {
+  "functions": 3,
+  "source": "ifcopenshell/util/attribute.py",
+  "stubs": {
+   "get_primitive_type": "isinstance of ifcopenshell_wrapper.attribute needs explicit schema casts"
+  }
+ },
+ "util/boundary": {
+  "error": "No rules rule at line 45: uses module logging",
+  "functions": 17,
+  "source": "ifcopenshell/util/boundary.py"
+ },
+ "util/brick": {
+  "error": "No rules rule at line 32: uses module os",
+  "functions": 2,
+  "source": "ifcopenshell/util/brick.py"
+ },
+ "util/classification": {
+  "functions": 4,
+  "source": "ifcopenshell/util/classification.py",
+  "stubs": {}
+ },
+ "util/constraint": {
+  "functions": 7,
+  "source": "ifcopenshell/util/constraint.py",
+  "stubs": {}
+ },
+ "util/cost": {
+  "functions": 22,
+  "source": "ifcopenshell/util/cost.py",
+  "stubs": {}
+ },
+ "util/data": {
+  "functions": 1,
+  "source": "ifcopenshell/util/data.py",
+  "stubs": {
+   "Clipping": "No rules rule at line 87: uses module np"
+  }
+ },
+ "util/date": {
+  "functions": 10,
+  "source": "ifcopenshell/util/date.py",
+  "stubs": {
+   "canonicalise_time": "No types rule at line 267: datetime.datetime",
+   "datetime2ifc": "No rules rule at line 152: uses module isodate",
+   "ifc2datetime": "No rules rule at line 58: uses module datetime",
+   "parse_duration": "No rules rule at line 226: uses module isodate",
+   "string_to_date": "No rules rule at line 191: uses module parser",
+   "string_to_duration": "No rules rule at line 217: uses module isodate",
+   "timedelta2duration": "No rules rule at line 40: uses module isodate"
+  }
+ },
+ "util/doc": {
+  "error": "not ported",
+  "functions": 18,
+  "source": "ifcopenshell/util/doc.py"
+ },
+ "util/element": {
+  "functions": 68,
+  "source": "ifcopenshell/util/element.py",
+  "stubs": {
+   "replace_attribute": "entity_instance.walk has no TS counterpart"
+  }
+ },
+ "util/file": {
+  "functions": 2,
+  "source": "ifcopenshell/util/file.py",
+  "stubs": {
+   "IfcHeaderExtractor": "No rules rule at line 113: uses module zipfile"
+  }
+ },
+ "util/fm": {
+  "functions": 4,
+  "source": "ifcopenshell/util/fm.py",
+  "stubs": {}
+ },
+ "util/generate_pset_templates": {
+  "error": "not ported",
+  "functions": 1,
+  "source": "ifcopenshell/util/generate_pset_templates.py"
+ },
+ "util/geolocation": {
+  "functions": 22,
+  "source": "ifcopenshell/util/geolocation.py",
+  "stubs": {
+   "auto_enh2xyz": "No rules rule at line 210: uses module np",
+   "auto_global2local": "the @ operator needs numpy",
+   "auto_local2global": "No rules rule at line 466: uses module np",
+   "auto_xyz2enh": "No rules rule at line 173: uses module np",
+   "dd2dms": "No rules rule at line 70: uses module Decimal",
+   "global2local": "No rules rule at line 508: uses module np",
+   "local2global": "No rules rule at line 420: uses module np"
+  }
+ },
+ "util/ifc4x3dev_scrape_data_for_docs": {
+  "error": "not ported",
+  "functions": 8,
+  "source": "ifcopenshell/util/ifc4x3dev_scrape_data_for_docs.py"
+ },
+ "util/mvd_info": {
+  "error": "No rules rule at line 25: uses module importlib",
+  "functions": 3,
+  "source": "ifcopenshell/util/mvd_info.py"
+ },
+ "util/placement": {
+  "functions": 7,
+  "source": "ifcopenshell/util/placement.py",
+  "stubs": {
+   "get_grid_axis_coordinates": "No rules rule at line 219: uses module np"
+  }
+ },
+ "util/profiler": {
+  "error": "not ported",
+  "functions": 1,
+  "source": "ifcopenshell/util/profiler.py"
+ },
+ "util/pset": {
+  "functions": 6,
+  "source": "ifcopenshell/util/pset.py",
+  "stubs": {}
+ },
+ "util/representation": {
+  "functions": 14,
+  "source": "ifcopenshell/util/representation.py",
+  "stubs": {
+   "get_reference_line": "No rules rule at line 523: uses module np",
+   "resolve_items": "No rules rule at line 329: uses module np"
+  }
+ },
+ "util/resource": {
+  "functions": 13,
+  "source": "ifcopenshell/util/resource.py",
+  "stubs": {}
+ },
+ "util/schema": {
+  "functions": 11,
+  "source": "ifcopenshell/util/schema.py",
+  "stubs": {
+   "BatchReassignClass": "entity_instance.walk has no TS counterpart",
+   "Migrator": "No rules rule at line 334: uses module os"
+  }
+ },
+ "util/selector": {
+  "error": "Lark.js needs a literal grammar with the LALR parser",
+  "functions": 9,
+  "source": "ifcopenshell/util/selector.py"
+ },
+ "util/sequence": {
+  "functions": 27,
+  "source": "ifcopenshell/util/sequence.py",
+  "stubs": {
+   "count_working_days": "No rules rule at line 100: uses module datetime",
+   "get_recent_working_day": "No rules rule at line 171: uses module datetime",
+   "get_soonest_working_day": "No rules rule at line 161: uses module datetime",
+   "get_start_or_finish_date": "No rules rule at line 125: uses module datetime",
+   "is_day_in_work_time": "No rules rule at line 206: uses module datetime",
+   "is_work_time_applicable_to_day": "No rules rule at line 231: uses module datetime",
+   "offset_date": "No rules rule at line 141: uses module datetime"
+  }
+ },
+ "util/shape": {
+  "functions": 47,
+  "source": "ifcopenshell/util/shape.py",
+  "stubs": {
+   "_extend_line": "No rules rule at line 779: uses module np",
+   "_merge_coplanar_ngons": "No rules rule at line 1005: uses module np",
+   "bisect_mesh_plane_vf": "No rules rule at line 815: uses module np",
+   "get_area_vf": "No rules rule at line 463: uses module np",
+   "get_bbox": "No rules rule at line 450: uses module np",
+   "get_bbox_centroid": "No rules rule at line 175: uses module np",
+   "get_bottom_elevation": "No rules rule at line 370: uses module np",
+   "get_edges": "No rules rule at line 253: uses module np",
+   "get_edges_representation_item_ids": "No rules rule at line 318: uses module np",
+   "get_element_bbox_centroid": "No rules rule at line 206: uses module np",
+   "get_element_vertices": "No rules rule at line 360: uses module np",
+   "get_faces": "No rules rule at line 268: uses module np",
+   "get_faces_material_style_ids": "No rules rule at line 304: uses module np",
+   "get_faces_representation_item_ids": "No rules rule at line 309: uses module np",
+   "get_footprint_area": "No rules rule at line 584: uses module np",
+   "get_footprint_perimeter": "No rules rule at line 671: uses module np",
+   "get_material_colors": "No rules rule at line 279: uses module np",
+   "get_normals": "No rules rule at line 290: uses module np",
+   "get_outer_surface_area": "No rules rule at line 645: uses module np",
+   "get_shape_bbox_centroid": "No rules rule at line 222: uses module np",
+   "get_shape_matrix": "No rules rule at line 163: uses module np",
+   "get_shape_vertices": "No rules rule at line 336: uses module np",
+   "get_side_area": "No rules rule at line 520: uses module np",
+   "get_top_elevation": "No rules rule at line 380: uses module np",
+   "get_total_edge_length": "No rules rule at line 767: uses module np",
+   "get_vert_centroid": "No rules rule at line 186: uses module np",
+   "get_vertices": "No rules rule at line 237: uses module np",
+   "get_x": "No rules rule at line 107: uses module np",
+   "get_y": "No rules rule at line 117: uses module np",
+   "get_z": "No rules rule at line 127: uses module np"
+  }
+ },
+ "util/shape_builder": {
+  "functions": 24,
+  "source": "ifcopenshell/util/shape_builder.py",
+  "stubs": {
+   "ShapeBuilder": "No rules rule at line 478: uses module np",
+   "V": "No rules rule at line 74: uses module np",
+   "ifc_safe_vector_type": "No rules rule at line 83: uses module np",
+   "np_angle": "No rules rule at line 157: uses module np",
+   "np_angle_signed": "No rules rule at line 166: uses module np",
+   "np_apply_matrix": "numpy indexing (a tuple index)",
+   "np_intersect_line_line": "No rules rule at line 268: uses module np",
+   "np_lerp": "No rules rule at line 113: uses module np",
+   "np_matrix_normalized": "No rules rule at line 106: uses module np",
+   "np_matrix_to_euler": "No rules rule at line 237: uses module np",
+   "np_normal": "No rules rule at line 250: uses module np",
+   "np_normalized": "No rules rule at line 101: uses module np",
+   "np_rotation_matrix": "No rules rule at line 200: uses module np",
+   "np_round_to_precision": "No rules rule at line 97: uses module np",
+   "np_to_3d": "No rules rule at line 120: uses module np",
+   "np_to_4d": "No rules rule at line 130: uses module np",
+   "np_to_4x4": "No rules rule at line 138: uses module np",
+   "np_translation_matrix": "No rules rule at line 178: uses module np"
+  }
+ },
+ "util/space": {
+  "functions": 15,
+  "source": "ifcopenshell/util/space.py",
+  "stubs": {
+   "_build_local_shapes": "No rules rule at line 554: ifcopenshell.geom.iterator(settings, ifc_file)",
+   "_footprint_coords": "No types rule at line 467: shapely.Polygon",
+   "build_bounding_tree": "No rules rule at line 77: uses module multiprocessing",
+   "build_brep_space": "No rules rule at line 600: uses module np",
+   "build_extruded_clipped_space": "No rules rule at line 493: uses module np",
+   "detect_space_volume_strategy": "No rules rule at line 445: uses module np",
+   "get_auto_space_height": "No types rule at line 159: shapely.Polygon",
+   "get_boundary_lines": "No rules rule at line 124: uses module shapely",
+   "get_height_from_elements_above": "No rules rule at line 261: uses module shapely",
+   "get_height_from_top_connections": "No rules rule at line 220: uses module shapely",
+   "get_space_polygon": "No rules rule at line 144: uses module shapely",
+   "get_vertical_bounding_planes": "No rules rule at line 346: uses module np"
+  }
+ },
+ "util/structural": {
+  "functions": 16,
+  "source": "ifcopenshell/util/structural.py",
+  "stubs": {
+   "_linked": "No rules rule at line 268: dict.fromkeys((c for c in candidates if c.is_a(ifc_class)))",
+   "get_global_axes": "No rules rule at line 210: uses module np",
+   "get_group_activities": "No rules rule at line 141: dict.fromkeys(candidates)",
+   "get_model_items": "No rules rule at line 61: dict.fromkeys((o for o in rel.RelatedObjects if o.is_a('IfcStructuralItem')))",
+   "get_model_load_cases": "No rules rule at line 92: dict.fromkeys((c for c in candidates if c.PredefinedType == 'LOAD_CASE'))"
+  }
+ },
+ "util/system": {
+  "functions": 9,
+  "source": "ifcopenshell/util/system.py",
+  "stubs": {}
+ },
+ "util/type": {
+  "functions": 9,
+  "source": "ifcopenshell/util/type.py",
+  "stubs": {}
+ },
+ "util/unit": {
+  "functions": 34,
+  "source": "ifcopenshell/util/unit.py",
+  "stubs": {
+   "format_length": "No rules rule at line 976: uses module Fraction",
+   "is_attr_type": "isinstance of ifcopenshell_wrapper.aggregation_type needs explicit schema casts",
+   "iter_element_and_attributes_per_type": "iterating a file gives entities of no proven type"
+  }
+ }
+}

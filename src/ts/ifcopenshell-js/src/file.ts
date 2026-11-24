@@ -1,8 +1,7 @@
 
 import { IfcOpenshellFile } from '@ifcopenshell/wasm/api';
 import type { AttributeValueType, EntityInstance } from './entity_instance.js';
-import { forgetFile, forgetInstance } from './entity_instance.js';
-import { IfcOpenShellError, abortError, nativeModule } from './init.js';
+import { IfcOpenShellError, abortError, ifcopenshell } from './init.js';
 
 /** Options controlling IFC byte-stream loading. */
 export interface OpenOptions {
@@ -17,97 +16,58 @@ export interface GetInverseOptions {
   withAttributeIndices?: boolean;
 }
 
-/** Open files by native pointer, so entities can return their File. */
-const openFiles = new Map<number, WeakRef<File>>();
+/** Open files by native file pointer, so that an entity can return its File. */
+const openFiles = new Map<number, File>();
 
 /** High-level wrapper for an IFC file and its entity graph. */
 export class File extends IfcOpenshellFile {
-  /** Unit cache keyed by unit type, as Python `file.units`; see `ifcopenshell/util/unit`. */
-  units?: Record<string, EntityInstance>;
+  /** Project units by unit type, which `util/unit` caches here. */
+  units: Record<string, EntityInstance> = {};
 
-  /** Entities queued for removal by `ifcopenshell/util/element`, as Python `file.to_delete`. */
-  to_delete: Set<EntityInstance> | null = null;
+  private toDeleteSet: Set<EntityInstance> | null = null;
 
-  /** @internal The File wrapping a native file pointer, if it is still open. */
-  static fromPointer(pointer: number): File | null {
-    return (pointer && openFiles.get(pointer)?.deref()) || null;
+  /**
+   * Entities that `util/element` collects to remove in one batch, or null outside a batch.
+   * Membership follows entity identity.
+   */
+  get toDelete(): Set<EntityInstance> | null {
+    return this.toDeleteSet;
+  }
+
+  set toDelete(value: Iterable<EntityInstance> | null) {
+    this.toDeleteSet = value ? new EntityInstanceSet(value) : null;
+  }
+
+  /** @internal The open File with this native file pointer, or null. */
+  static byPointer(pointer: number): File | null {
+    return openFiles.get(pointer) ?? null;
   }
 
   /** Create an empty file, or take ownership of an existing native file handle. */
   constructor(schemaOrHandle: string | IfcOpenshellFile = 'IFC4') {
     const handle = typeof schemaOrHandle === 'string'
-      ? nativeModule().parse.newFile(schemaOrHandle, 0, '')
+      ? ifcopenshell.parse.newFile(schemaOrHandle, 0, '')
       : schemaOrHandle;
     if (!handle || handle.ptr === 0) throw new IfcOpenShellError('Failed to create IFC file');
     super(handle);
-    openFiles.set(this.filePointer(), new WeakRef(this));
+    this.pointer = this.filePointer();
+    openFiles.set(this.pointer, this);
   }
 
-  /**
-   * The STEP header with Python's attribute names, as Python `file.header`: for example
-   * `file.stepHeader.file_name.name = 'model.ifc'`. Reads and writes go to the native header.
-   */
-  get stepHeader(): StepHeader {
-    const header = this.header();
-    if (!header) throw new IfcOpenShellError('File has no header');
-    const name = header.fileName();
-    const description = header.fileDescription();
-    return {
-      file_name: {
-        get name() { return name.name(); },
-        set name(v) { name.setname(v); },
-        get time_stamp() { return name.timeStamp(); },
-        set time_stamp(v) { name.settimeStamp(v); },
-        get author() { return name.author(); },
-        set author(v) { name.setauthor([...v]); },
-        get organization() { return name.organization(); },
-        set organization(v) { name.setorganization([...v]); },
-        get preprocessor_version() { return name.preprocessorVersion(); },
-        set preprocessor_version(v) { name.setpreprocessorVersion(v); },
-        get originating_system() { return name.originatingSystem(); },
-        set originating_system(v) { name.setoriginatingSystem(v); },
-        get authorization() { return name.authorization(); },
-        set authorization(v) { name.setauthorization(v); },
-      },
-      file_description: {
-        get description() { return description.description(); },
-        set description(v) { description.setdescription([...v]); },
-        get implementation_level() { return description.implementationLevel(); },
-        set implementation_level(v) { description.setimplementationLevel(v); },
-      },
-    };
+  private readonly pointer: number;
+
+  private forget(): void {
+    if (openFiles.get(this.pointer) === this) openFiles.delete(this.pointer);
   }
 
-  /** Copy the STEP header of another file, as Python `file.assign_header_from`. */
-  assignHeaderFrom(other: File): void {
-    const source = other.stepHeader;
-    const target = this.stepHeader;
-    for (const group of ['file_name', 'file_description'] as const) {
-      for (const key of Object.keys(source[group])) {
-        try {
-          (target[group] as Record<string, unknown>)[key] = (source[group] as Record<string, unknown>)[key];
-        } catch {
-          // An invalid header value is skipped, as in Python.
-        }
-      }
-    }
+  override destroy(): void {
+    this.forget();
+    super.destroy();
   }
 
   override dispose(): void {
-    const pointer = this.filePointer();
-    openFiles.delete(pointer);
-    forgetFile(pointer);
+    this.forget();
     super.dispose();
-  }
-
-  override remove(entity: EntityInstance): void {
-    forgetInstance(entity);
-    super.remove(entity);
-  }
-
-  /** Parse IFC STEP text, as Python `ifcopenshell.file.from_string`. */
-  static fromString(text: string, options: OpenOptions = {}): File {
-    return File.open(new TextEncoder().encode(text), undefined, options);
   }
 
   /** Open IFC STEP bytes and retain ownership of the native file. */
@@ -119,13 +79,18 @@ export class File extends IfcOpenshellFile {
     if (options.signal?.aborted) {
       throw abortError('Opening IFC file was aborted', options.signal.reason);
     }
-    const handle = nativeModule().parse.openBytes(bytes, filename, options.readonly ?? false);
+    const handle = ifcopenshell.parse.openBytes(bytes, filename, options.readonly ?? false);
     if (options.signal?.aborted) {
       handle?.destroy();
       throw abortError('Opening IFC file was aborted', options.signal.reason);
     }
     if (!handle || handle.ptr === 0) throw new IfcOpenShellError('Failed to open IFC file');
     return new File(handle);
+  }
+
+  /** Parse IFC STEP text. */
+  static fromString(text: string, options: OpenOptions = {}): File {
+    return File.open(new TextEncoder().encode(text), undefined, options);
   }
 
   get maxId(): number {
@@ -141,11 +106,6 @@ export class File extends IfcOpenshellFile {
     return this.ids.length;
   }
 
-  /** Entities in id order, as iterating a Python `ifcopenshell.file`. */
-  *[Symbol.iterator](): IterableIterator<EntityInstance> {
-    for (const id of this.ids) yield this.byId(id) as EntityInstance;
-  }
-
   declare byId: (id: number) => EntityInstance;
   declare byGuid: (guid: string) => EntityInstance;
   declare byType: (typeName: string) => EntityInstance[];
@@ -154,18 +114,21 @@ export class File extends IfcOpenshellFile {
   declare traverseBreadthFirst: (entity: EntityInstance, maxDepth: number) => EntityInstance[];
 
   /**
-   * Create an entity with any of its IFC attributes, by schema name, or by position when
-   * given an array, as Python `file.create_entity(ifc_class, *args, **kwargs)`. Positional and named
-   * attributes combine as `{ 0: guid, Name: 'Wall' }` (or `{ ...[guid], Name: 'Wall' }`).
+   * Create an entity with any of its IFC attributes: by schema name in an object, or by
+   * position in an array. Give `id` to create the entity with that id.
    */
-  create(ifcClass: string, attributes: Record<string, AttributeValueType> | AttributeValueType[] = {}, id?: number | null): EntityInstance {
+  create(
+    ifcClass: string,
+    attributes: Record<string, AttributeValueType> | AttributeValueType[] = {},
+    id?: number,
+  ): EntityInstance {
     const entity = (id ? this.createEntityByNameWithId(ifcClass, id) : this.createEntityByName(ifcClass)) as EntityInstance | null;
     if (!entity) throw new IfcOpenShellError(`Failed to create ${ifcClass}`);
     try {
       const entries = Array.isArray(attributes)
         ? attributes.map((value, index) => [index, value] as const)
-        : Object.entries(attributes).map(([name, value]) => [/^\d+$/.test(name) ? Number(name) : name, value] as const);
-      for (const [name, value] of entries) entity.set(name, value);
+        : Object.entries(attributes);
+      for (const [nameOrIndex, value] of entries) entity.set(nameOrIndex, value);
       return entity;
     } catch (error) {
       this.remove(entity);
@@ -173,13 +136,13 @@ export class File extends IfcOpenshellFile {
     }
   }
 
-  /** Whether every entity referencing `entity` has one of `ids`, as Python `file._is_referenced_only_in`. */
+  /** Whether every entity that references `entity` has one of `ids`. */
   isReferencedOnlyIn(entity: EntityInstance, ids: Iterable<number>): boolean {
     const allowed = new Set(ids);
     return this.getInverseList(entity).every(inverse => allowed.has(inverse.id()));
   }
 
-  /** The ids, of those given, referenced only by entities among them, as Python `file._ids_referenced_only_within`. */
+  /** The ids, of those given, whose referencing entities all have an id among them. */
   idsReferencedOnlyWithin(ids: Iterable<number>): number[] {
     const within = new Set(ids);
     return [...within].filter(id => this.getInverseList(this.byId(id)).every(inverse => within.has(inverse.id())));
@@ -268,25 +231,20 @@ export function open(bytes: Uint8Array | ArrayBuffer, filename?: string, options
 const resources = new Map<string, Uint8Array>();
 
 /**
- * Provide the bytes of a file that generated code opens by path, such as the property set
- * templates of `ifcopenshell/util/pset`. Browsers have no file system to read them from.
- * The key is the file name or a suffix of its path or URL.
+ * Provide the bytes of a data file that code opens by path, such as the property set
+ * templates that `util/pset` reads. Browsers have no file system to read them from.
+ * The key is the file name, or the end of its path or URL.
  */
 export function registerResource(path: string, bytes: Uint8Array | ArrayBuffer): void {
   resources.set(path.replace(/\\/g, '/'), bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
 }
 
-/** Open an IFC file by path or file URL, as Python `ifcopenshell.open(path)`; see {@link registerResource}. */
-export function openPath(path: string, options?: OpenOptions): File {
-  return File.open(readResource(path), String(path).replace(/\\/g, '/'), options);
-}
-
 /**
- * Read a data file by path or file URL: bytes given to {@link registerResource} for a matching
- * path, else the file system (Node). Used for data files that Python modules read next to themselves.
+ * Read a data file by path or file URL: the bytes given to {@link registerResource} for a
+ * matching path, else the file system when one is available (Node).
  */
 export function readResource(path: string): Uint8Array {
-  const normalized = String(path).replace(/\\/g, '/');
+  const normalized = path.replace(/\\/g, '/');
   for (const [key, bytes] of resources) {
     if (normalized === key || normalized.endsWith(`/${key}`)) return bytes;
   }
@@ -297,16 +255,7 @@ export function readResource(path: string): Uint8Array {
   return fs.readFileSync(normalized.startsWith('file:') ? new URL(normalized) : normalized);
 }
 
-/** The STEP header of a file with Python's attribute names; see {@link File.stepHeader}. */
-export interface StepHeader {
-  file_name: {
-    name: string;
-    time_stamp: string;
-    author: string[];
-    organization: string[];
-    preprocessor_version: string;
-    originating_system: string;
-    authorization: string;
-  };
-  file_description: { description: string[]; implementation_level: string };
+/** Open an IFC file by path or file URL; see {@link registerResource}. */
+export function openPath(path: string, options?: OpenOptions): File {
+  return File.open(readResource(path), path.replace(/\\/g, '/'), options);
 }

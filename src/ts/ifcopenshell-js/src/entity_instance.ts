@@ -2,7 +2,7 @@
 
 import { IfcOpenshellInstance } from '@ifcopenshell/wasm/api';
 import type { AttributeValueType as NativeAttributeValueType } from '@ifcopenshell/wasm/api';
-import { IfcOpenShellError, downcasting, indexDeclarations } from './init.js';
+import { IfcOpenShellError } from './init.js';
 import { File } from './file.js';
 
 /** Values decoded by the native WASM attribute typemap. */
@@ -58,7 +58,7 @@ export class EntityInstance extends IfcOpenshellInstance {
   get(nameOrIndex: string | number): AttributeValueType {
     if (typeof nameOrIndex === 'string') {
       // Inverse attributes are served through the same accessor, as getattr() does in Python.
-      if (inverseNameSet(this).has(nameOrIndex)) {
+      if (this.inverseAttributes().includes(nameOrIndex)) {
         return this.inverse(nameOrIndex) as unknown as AttributeValueType;
       }
       return this.getArgumentByName(nameOrIndex) as AttributeValueType;
@@ -70,33 +70,9 @@ export class EntityInstance extends IfcOpenshellInstance {
     return this.getAttributeNames();
   }
 
-  /** Whether this is an entity rather than an inline typed value such as IfcLabel, as Python `entity.is_entity()`. */
-  isEntity(): boolean {
-    return super.declaration().asEntity() !== null;
-  }
-
-  /** Schema declaration of this entity's class, downcast as Python `entity.declaration`. */
-  override declaration(): ReturnType<IfcOpenshellInstance['declaration']> {
-    const declaration = super.declaration();
-    indexDeclarations(declaration.schema());
-    return downcasting(declaration);
-  }
-
-  /** The file containing this entity, as Python `entity.file`; null for instances outside a file. */
+  /** The open File that contains this entity, or null. */
   override file(): File | null {
-    return File.fromPointer(this.filePointer());
-  }
-
-  /** Replace values matching `f` with `g(value)`, recursing into lists, as Python `entity.walk`. */
-  walk(f: (value: unknown) => boolean, g: (value: unknown) => unknown, value: unknown): unknown {
-    if (Array.isArray(value)) return value.map(item => this.walk(f, g, item));
-    return f(value) ? g(value) : value;
-  }
-
-  /** Forward attribute values in schema order, as iterating a Python entity. */
-  *[Symbol.iterator](): IterableIterator<AttributeValueType> {
-    const count = this.attributes().length;
-    for (let index = 0; index < count; index++) yield this.getArgument(index) as AttributeValueType;
+    return File.byPointer(this.filePointer());
   }
 
   entries(): [string, AttributeValueType][] {
@@ -174,25 +150,8 @@ export class EntityInstance extends IfcOpenshellInstance {
   }
 
   /** Set an attribute by name or index. Prefer `entity.Name = value`. */
-  /**
-   * Write an attribute by index. Typed values such as IfcLabel('x') created in another file are
-   * recreated in this one, since they have no identity; Python accepts them the same way.
-   */
-  override setArgument(index: number, value: AttributeValueType): void {
-    super.setArgument(index, this.ownValue(value) as never);
-  }
-
-  private ownValue(value: unknown): unknown {
-    if (Array.isArray(value)) return value.map(item => this.ownValue(item));
-    if (value instanceof EntityInstance && value.id() === 0 && value.filePointer() !== this.filePointer()) {
-      const file = this.file();
-      if (file) return file.create(value.isA(), [this.ownValue(value.wrappedValue) as AttributeValueType]);
-    }
-    return value;
-  }
-
   set(nameOrIndex: string | number, value: AttributeValueType): void {
-    if (typeof nameOrIndex === 'string' && inverseNameSet(this).has(nameOrIndex)) {
+    if (typeof nameOrIndex === 'string' && this.inverseAttributes().includes(nameOrIndex)) {
       throw new IfcOpenShellError(`Cannot set inverse attribute ${nameOrIndex}`);
     }
     this.setArgument(typeof nameOrIndex === 'number' ? nameOrIndex : this.getArgumentIndex(nameOrIndex), value);
@@ -210,48 +169,14 @@ Object.setPrototypeOf(EntityInstance.prototype, new Proxy(IfcOpenshellInstance.p
     return target;
   },
   get(target, key, receiver) {
-    // entity[0] reads the first attribute, as Python entity indexing.
-    if (typeof key === 'string' && /^\d+$/.test(key)) return (receiver as EntityInstance).getArgument(Number(key));
-    if (key === 'Dim' && !(key in target)) {
-      // Derived attribute of geometric items, which Python computes from the schema's EXPRESS rules.
-      const dim = dimensionCount(receiver as EntityInstance);
-      if (dim !== null) return dim;
-    }
     if (typeof key === 'string' && /^[A-Z]/.test(key) && !(key in target)) throw noAttribute(receiver, key);
     return Reflect.get(target, key, receiver);
   },
   set(target, key, value, receiver) {
-    if (typeof key === 'string' && /^\d+$/.test(key)) {
-      (receiver as EntityInstance).set(Number(key), value);
-      return true;
-    }
     if (typeof key === 'string' && !(key in target)) throw noAttribute(receiver, key);
     return Reflect.set(target, key, value, receiver);
   },
 }));
-
-/** The derived `Dim` (IfcDimensionCount) of a geometric representation item, or null where it has none. */
-function dimensionCount(entity: EntityInstance): number | null {
-  const e = entity as unknown as Record<string, unknown>;
-  const first = (values: unknown) => (values ? Array.from(values as Iterable<unknown>)[0] : undefined);
-  const of = (item: unknown): number | null => (item ? dimensionCount(item as EntityInstance) : null);
-  const is = (name: string) => entity.isA(name);
-  if (is('IfcCartesianPoint')) return Array.from(e.Coordinates as Iterable<unknown>).length;
-  if (is('IfcDirection')) return Array.from(e.DirectionRatios as Iterable<unknown>).length;
-  if (is('IfcCartesianPointList2D') || is('IfcAxis2Placement2D') || is('IfcCartesianTransformationOperator2D') || is('IfcOffsetCurve2D')) return 2;
-  if (is('IfcCartesianPointList3D') || is('IfcAxis2Placement3D') || is('IfcAxis1Placement') || is('IfcCartesianTransformationOperator3D') || is('IfcOffsetCurve3D') || is('IfcSurface') || is('IfcSolidModel')) return 3;
-  if (is('IfcPlacement')) return of(e.Location);
-  if (is('IfcVector')) return of(e.Orientation);
-  if (is('IfcPolyline')) return of(first(e.Points));
-  if (is('IfcIndexedPolyCurve')) return of(e.Points);
-  if (is('IfcLine')) return of(e.Pnt);
-  if (is('IfcConic')) return of(e.Position);
-  if (is('IfcTrimmedCurve') || is('IfcOffsetCurve') || is('IfcPointOnCurve')) return of(e.BasisCurve);
-  if (is('IfcCompositeCurve')) return of(first(e.Segments));
-  if (is('IfcCompositeCurveSegment')) return of(e.ParentCurve);
-  if (is('IfcBSplineCurve')) return of(first(e.ControlPointsList));
-  return null;
-}
 
 function noAttribute(entity: EntityInstance, name: string): IfcOpenShellError {
   return new IfcOpenShellError(`entity instance of type '${entity.className(true)}' has no attribute '${name}'`);
@@ -260,43 +185,11 @@ function noAttribute(entity: EntityInstance, name: string): IfcOpenShellError {
 /** One generated subclass per schema-qualified IFC class, carrying its attribute accessors. */
 const instanceClasses = new Map<string, typeof EntityInstance>();
 
-/** Per-class set of inverse attribute names, stored on each generated prototype. */
-const inverseNames = Symbol('inverseNames');
-
-function inverseNameSet(entity: EntityInstance): Set<string> {
-  const cached = (entity as unknown as { [inverseNames]?: Set<string> })[inverseNames];
-  return cached ?? new Set(entity.getInverseAttributeNames());
-}
-
-/**
- * One wrapper per native instance and file, so that entities compare with `===` and work
- * as `Set` members and `Map` keys, like Python entity equality and hashing.
- */
-const canonical = new Map<number, Map<number, WeakRef<EntityInstance>>>();
-const collected = new FinalizationRegistry<[number, number]>(([file, identity]) => {
-  const wrappers = canonical.get(file);
-  if (wrappers && !wrappers.get(identity)?.deref()) wrappers.delete(identity);
-});
-
-/** @internal Drop the canonical wrapper of a removed instance. */
-export function forgetInstance(entity: IfcOpenshellInstance): void {
-  canonical.get(entity.filePointer())?.delete(entity.identity());
-}
-
-/** @internal Drop all canonical wrappers of a file that is being destroyed. */
-export function forgetFile(filePointer: number): void {
-  canonical.delete(filePointer);
-}
-
 /**
  * @internal Wrap a native instance, installing `entity.AttributeName` accessors for its class.
  * Registered as the WASM instance factory.
  */
 export function adoptInstance(handle: IfcOpenshellInstance): EntityInstance {
-  const file = handle.filePointer();
-  const identity = file ? handle.identity() : 0;
-  const cached = file ? canonical.get(file)?.get(identity)?.deref() : undefined;
-  if (cached) return cached;
   const key = handle.className(true);
   let InstanceClass = instanceClasses.get(key);
   if (!InstanceClass) {
@@ -305,17 +198,9 @@ export function adoptInstance(handle: IfcOpenshellInstance): EntityInstance {
     // Chrome labels objects by the compiled class name, ignoring the `name` override above.
     Object.defineProperty(InstanceClass.prototype, Symbol.toStringTag, { value: handle.className(false) });
     defineAttributeAccessors(InstanceClass.prototype, handle);
-    Object.defineProperty(InstanceClass.prototype, inverseNames, { value: new Set(handle.getInverseAttributeNames()) });
     instanceClasses.set(key, InstanceClass);
   }
-  const entity = new InstanceClass(handle);
-  if (file) {
-    let wrappers = canonical.get(file);
-    if (!wrappers) canonical.set(file, wrappers = new Map());
-    wrappers.set(identity, new WeakRef(entity));
-    collected.register(entity, [file, identity]);
-  }
-  return entity;
+  return new InstanceClass(handle);
 }
 
 /** Non-enumerable, so listing an entity does not read every attribute. */

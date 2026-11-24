@@ -314,4 +314,53 @@ END-ISO-10303-21;`;
     expect(() => integer.set(0, 1.5)).toThrow();
     expect(() => integer.set(0, 1n << 63n)).toThrow();
   });
+  it('creates entities by position and with a given id', () => {
+    using file = new ifcopenshell.File('IFC4');
+    const wall = file.create('IfcWall', ['0SAozgFqvA6voDVczQIpmj', null, 'Wall']);
+    expect(wall.get('GlobalId')).toBe('0SAozgFqvA6voDVczQIpmj');
+    expect(wall.get('Name')).toBe('Wall');
+    const slab = file.create('IfcSlab', { Name: 'Slab' }, 42);
+    expect(slab.id()).toBe(42);
+    expect(file.byId(42)!.get('Name')).toBe('Slab');
+  });
+
+  it('parses IFC STEP text', () => {
+    using source = new ifcopenshell.File('IFC4');
+    source.create('IfcWall', { Name: 'Wall' });
+    using parsed = ifcopenshell.File.fromString(source.toString());
+    expect(parsed.byType('IfcWall').map(wall => wall.get('Name'))).toEqual(['Wall']);
+  });
+  it('checks which entities reference an entity', () => {
+    using file = new ifcopenshell.File('IFC4');
+    const point = file.create('IfcCartesianPoint', { Coordinates: [0, 0, 0] });
+    const placement = file.create('IfcAxis2Placement3D', { Location: point });
+    const other = file.create('IfcAxis2Placement3D', { Location: point });
+    const lonely = file.create('IfcCartesianPoint', { Coordinates: [1, 0, 0] });
+    expect(file.isReferencedOnlyIn(point, [placement.id()])).toBe(false);
+    expect(file.isReferencedOnlyIn(point, [placement.id(), other.id()])).toBe(true);
+    expect(file.isReferencedOnlyIn(lonely, [])).toBe(true);
+    expect(file.idsReferencedOnlyWithin([point.id(), placement.id()])).toEqual([placement.id()]);
+    expect(file.idsReferencedOnlyWithin([point.id(), placement.id(), other.id()]).sort())
+      .toEqual([point.id(), placement.id(), other.id()].sort());
+  });
+  it('returns the open File of an entity', () => {
+    const file = new ifcopenshell.File('IFC4');
+    const wall = file.create('IfcWall', { Name: 'Wall' });
+    expect(wall.file()).toBe(file);
+    expect(file.byType('IfcWall')[0]!.file()).toBe(file);
+    file.dispose();
+    expect(ifcopenshell.File.byPointer(0)).toBeNull();
+  });
+  it('collects entities to remove by identity', () => {
+    using file = new ifcopenshell.File('IFC4');
+    const wall = file.create('IfcWall', { Name: 'Wall' });
+    expect(file.toDelete).toBeNull();
+    file.toDelete = new Set();
+    file.toDelete!.add(wall);
+    file.toDelete!.add(file.byId(wall.id())!);
+    expect(file.toDelete!.size).toBe(1);
+    file.toDelete = null;
+    expect(file.toDelete).toBeNull();
+    expect(file.units).toEqual({});
+  });
 });

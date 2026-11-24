@@ -34,37 +34,6 @@ if (iterator.initialize()) do {
 } while (iterator.next());
 ```
 
-## ifcopenshell.util and ifcopenshell.api (experimental)
-
-`ifcopenshell/util/<module>` and `ifcopenshell/api/<package>` are transpiled from the
-Python `ifcopenshell.util` and `ifcopenshell.api` by `src/transpiler`, when the package
-is built after `npm run generate`. Names are camelCase, and optional Python parameters go
-into a trailing options object:
-
-```ts
-import { getProjectUnit } from 'ifcopenshell/util/unit';
-import { createEntity } from 'ifcopenshell/api/root';
-
-const unit = getProjectUnit(file, 'LENGTHUNIT');
-const wall = createEntity(file, { ifcClass: 'IfcWall', name: 'Wall' });
-```
-
-`ifcopenshell/api` and `ifcopenshell/util` also give every package and module at once, as
-namespaces named as in Python (`ifcopenshell/util` keeps its hand-written helpers too):
-
-```ts
-import * as api from 'ifcopenshell/api';
-import * as util from 'ifcopenshell/util';
-
-const file = api.project.createFile();
-const wall = api.root.createEntity(file, { ifcClass: 'IfcWall' });
-api.geometry.editObjectPlacement(file, wall, { matrix: util.placement.a2p([1, 0, 0], [0, 0, 1], [1, 0, 0]) });
-const builder = new util.shape_builder.ShapeBuilder(file);
-```
-
-`src/python` holds the generated code (not committed) and its hand-written runtime.
-See `src/transpiler/README.md` for how it is generated and tested.
-
 ## Examples
 
 [`examples/threejs.html`](./examples/threejs.html) and [`examples/babylon.html`](./examples/babylon.html) load `ifcopenshell` and `@ifcopenshell/wasm` from the jsDelivr CDN. Serve `src/ts` over HTTP and open either page.

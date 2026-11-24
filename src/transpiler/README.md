@@ -4,18 +4,18 @@
 
 Transpiles `ifcopenshell.util` and `ifcopenshell.api` into the `ifcopenshell` npm
 package (`src/ts/ifcopenshell-js`), as `ifcopenshell/util/<module>` and
-`ifcopenshell/api/<package>`. [PLAN.md](PLAN.md) describes the design, the status and
-what remains. From the repository root (Python dependencies: `requirements.txt`):
+`ifcopenshell/api/<package>`. From the repository root (Python dependencies: `requirements.txt`):
 
 ```shell
-python src/transpiler/generate.py            # write src/ts/ifcopenshell-js/src/python/{util,api}
+python src/transpiler/generate.py            # write src/ts/ifcopenshell-js/src/{util,api}
 python src/transpiler/generate.py --report   # also write TRACKING.md: per module, what remains, what is tested, what is done
 python src/transpiler/transpile.py src/ifcopenshell-python/ifcopenshell/util/unit.py   # one module to stdout
 ```
 
 The generated code is build output and not committed. Unsupported functions become
 throwing stubs, listed with the first unsupported construct in
-`src/ts/ifcopenshell-js/src/python/transpile.json`. Unsupported module-level code makes
+`src/transpiler/transpile.json`. That file is committed as the coverage baseline: after a
+change to the rules or the Python source, its diff shows which functions changed status. Unsupported module-level code makes
 the whole file a module of throwing functions rather than disappearing.
 `precomputed.json` holds the results of the functions listed under `precomputed` in
 `ts.yaml`; refresh it with `generate.py --precompute`, which needs an installed
@@ -25,8 +25,8 @@ ifcopenshell close to this checkout.
 
 `transpile.py` parses Python, discovers bindings, matches patterns and renders
 Jinja templates. All translation rules, including types, syntax, API names,
-imports and data-shape inference, live in `ts.yaml`. Rules emit native TypeScript operations where the types are known, and
-call the runtime modules below where Python semantics need it.
+imports and data-shape inference, live in `ts.yaml`. Rules emit plain TypeScript. Where a function needs a Python library without a TS
+counterpart, or a type that cannot be proven, it becomes a stub.
 Pass `--rules another.yaml` to use a different rule set. Treat rule files as trusted code.
 
 Patterns use Python AST field names, with `node` specifying the AST class.
@@ -80,76 +80,39 @@ string/enum decoding, attribute writes, caches and schema-specific casts also
 need decisions. Dynamic attribute types currently come from a small explicit
 YAML table. No C++ compilation or runtime validation was attempted.
 
-## Runtime modules
+## Types
 
-Python libraries without a direct JS equivalent are ported by hand once, in
-`src/ts/ifcopenshell-js/src/python/_*.ts`, and `ts.yaml` maps imports of them there
-(`runtime_modules`): `_py.ts` (Python semantics: truthiness, operators, indexing,
-`str.format`, ...), `_numpy.ts`, `_datetime.ts`, `_isodate.ts`, `_dateutil.ts`,
-`_os.ts` and `_itertools.ts`. They contain what the generated code uses, and are
-checked against values computed with Python in
-`src/ts/ifcopenshell-js/tests/python/runtime.test.ts`.
+`mypy_types.py` proves the types of expressions with mypy, and `ts.yaml` asks for them through the
+`kind` and `nullable` filters. A plugin gives IFC attributes their types from `attributes.json`,
+which `generate.py --precompute` refreshes. Results are cached in `types.json` (not committed) and
+recomputed when the Python source changes; that takes a minute or two. `requirements.txt` installs
+the pure Python build of mypy, since `mypy_types.py` subclasses its visitors.
 
-Two more cover what Python gets from libraries without rules:
+## Unsupported modules
 
-- `_geom.ts`: `ifcopenshell.geom.map_shape(ifcopenshell.geom.settings(), placement).components`
-  (the matrix `util.placement.get_placement` builds) is composed in JS from the
-  IfcLocalPlacement / IfcAxis2Placement chain, grid and linear placements and
-  transformation operators, without the geometry kernel. A rule in `ts.yaml` maps the call.
-- `_cost.ts`: the Lark grammar of cost formulas (`util.cost.CostValueUnserialiser`).
-  `hand_written` in `ts.yaml` lists such classes and functions; the generated module imports
-  and re-exports them in place of a stub.
+The generated code does not emulate Python libraries. Functions that use `numpy`, `datetime`
+arithmetic, `isodate`, `dateutil`, `lark`, `shapely`, Blender modules or native functions that
+the WASM build does not expose become stubs that throw with the reason; `transpile.json` lists
+them. `src/ts/ifcopenshell-js/src/helpers/lang.ts` holds the few Python semantics that plain TS
+does not give, such as the truthiness of empty containers.
+
+LALR grammars (`lark.Lark(grammar, parser="lalr")`) become [Lark.js](https://github.com/lark-parser/lark.js)
+parsers: `generate.py` runs lark-js on the same grammar and writes `<module>_grammar<n>.cjs`, with its type
+declarations, next to the generated module. Install `requirements.txt` in its own environment, as it pins
+`lark` for lark-js.
 
 `generate.py` also writes `api/index.ts` and `util/index.ts`, which export every package and
 module as a namespace (`ifcopenshell/api`, `ifcopenshell/util`; the latter re-exports the
-hand-written `src/util` helpers, which used to be the whole `ifcopenshell/util` entry).
-`tests/python/transpiled.test.ts` checks calls that once failed against Python's results.
+hand-written helpers of `src/helpers`).
 
-## Running the tests
-
-The tests are part of `src/ts/ifcopenshell-js` and run against its build (`dist/`):
-
-| Test | Checks | Needs |
-|---|---|---|
-| `tests/python/runtime.test.ts` | the runtime modules against values computed with Python | a build |
-| `tests/python/parity.test.ts` | replays every call the Python tests of the recorded util and api modules make | also the generated code, the WASM build and recordings |
-
-### Once
-
-1. Get a WASM build of IfcOpenShell and point `IFCOPENSHELL_WASM_DIR` at the folder
-   containing `ifcopenshell_wasm.wasm`, as for the other tests of `ifcopenshell-js`.
-   Either download the `ifcopenshell-native-wasm` artifact of the
-   `build-ifcopenshell-native-wasm.yml` workflow
-   (`gh run download <run id> --repo IfcOpenShell/IfcOpenShell --name ifcopenshell-native-wasm`),
-   use `/opt/ifcopenshell-wasm` in the Docker image (see `docker/README.md`), or build it
-   with `nix/build-all.py --native-wasm`. Then stage it:
-   `cd src/ts/ifcopenshell-wasm && npm ci && npm run stage`.
-2. Install the generator's dependencies: `pip install -r src/transpiler/requirements.txt`.
-   Recording also needs `pytest` and an installed `ifcopenshell` close to this checkout
-   (`pip install ifcopenshell pytest`; the numbers in [PLAN.md](PLAN.md) use 0.9.0.post1).
-
-### Each time
+## Building
 
 ```shell
 cd src/ts/ifcopenshell-js
 npm ci
-npm run generate   # transpile into src/python/util and src/python/api
-npm run build      # type-checks and compiles the generated code into dist/python
-npm run record     # run the Python tests, write src/transpiler/parity/golden/*.json
-npm test           # all tests of the package, including tests/python
+npm run generate   # transpile into src/util and src/api (a few minutes: mypy)
+npm run build      # type-checks and compiles the generated code into dist/util and dist/api
 ```
 
-Neither the generated code nor the recordings are committed, so run `generate` and `build`
-after changing the rules, the runtime or the Python source, and `record` after changing the
-Python source or its tests. Without `IFCOPENSHELL_WASM_DIR`, or without recordings, the
-replay is skipped.
-
-- **Only these tests:** `npx vitest run tests/python`.
-- **Tracking:** `npm run test:report` also writes `src/transpiler/parity/results.json`, which
-  `generate.py --report` reads for the test columns of `TRACKING.md`. Neither is committed.
-- **One module:** `npx vitest run tests/python -t util.date` replays one recorded module, and
-  `python ../../transpiler/parity/record.py util.date` records one. The modules recorded by
-  default are `DEFAULT_MODULES` in `parity/record.py`.
-- **Skipped calls:** a call is skipped, with the reason in its test name, when its Python
-  test failed, its function is a stub, its module did not transpile, or its arguments could
-  not be recorded. Skips are what is still to be ported.
+The generated code is not committed, so run `generate` and `build` after changing the rules or
+the Python source.
