@@ -341,6 +341,12 @@ types:
     when: kind in ['Any', 'Iterator', 'Generator', 'Callable']
     output: any
 rules:
+  # m[i, j] and m[:, j] index numpy arrays; they need the hand-written TypedArray code (see hand_written).
+  - input:
+      node: Subscript
+      slice:
+        node: Tuple
+    output: '{{ "numpy indexing (a tuple index)" | unsupported }}'
   # Python indexes an entity by attribute position: entity[0] is its first attribute.
   - input:
       node: Subscript
