@@ -1106,7 +1106,18 @@ class Transpiler:
                     and isinstance(n.args[0], ast.Name)
                 }
                 narrowed = rebound | checked
+                # Set parameters accept any Iterable, unless the function changes them in place.
+                mutated = {
+                    n.func.value.id
+                    for n in ast.walk(function)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                    and isinstance(n.func.value, ast.Name)
+                    and n.func.attr in ("add", "discard", "remove", "update", "clear", "pop")
+                }
                 for a in function.args.args + function.args.kwonlyargs:
+                    if a.annotation and a.arg in mutated and ast.unparse(a.annotation).startswith(("set[", "Set[", "set")):
+                        a.widened = True
                     annotated = self.emit(a.annotation, "annotation_kinds") if a.annotation else None
                     # Checked with isinstance, then rebound (x = [x]): the value is not of its annotated type.
                     if a.annotation and (
