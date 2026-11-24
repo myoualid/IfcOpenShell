@@ -132,7 +132,7 @@ get_element_grammar = lark.Lark("""start: keys
     WS: /[ \\t\\f\\r\\n]/+
 
     %ignore WS // Disregard spaces in text
- """)
+ """, parser="lalr")
 
 format_grammar = lark.Lark("""start: expression
 
@@ -194,7 +194,7 @@ format_grammar = lark.Lark("""start: expression
     NEWLINE: (CR? LF)+
 
     %ignore WS // Disregard spaces in text
-""")
+""", parser="lalr")
 
 
 class FormatTransformer(lark.Transformer):
