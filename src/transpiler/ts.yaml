@@ -368,7 +368,7 @@ rules:
         attr: $method
       args: $args
       keywords: []
-    when: name in module_globals and name not in functions and name not in classes and name not in shadowed and not method.startswith("_")
+    when: name in module_globals and name not in functions and name not in classes and name not in shadowed and not method.startswith("_") and node.func.value | kind == "unknown"
     output: '{{ name | ident }}.{{ method | camel }}({{ args | map("emit") | join(", ") }})'
   # text * n: String.prototype.repeat.
   - input:
@@ -1860,9 +1860,35 @@ rules:
           node: Name
           id: pathlib
         attr: Path
+      args:
+        - $value
+      keywords: []
+    # A path is its text: pathlib.Path(__file__).parent.joinpath(...) locates data files.
+    output: 'String({{ value | emit }})'
+  - input:
+      node: Attribute
+      value: $value
+      attr: parent
+    when: value | kind == "path"
+    output: '{{ value | emit }}.replace(/[\\/][^\\/]*[\\/]?$/, "")'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
       args: $args
       keywords: []
-    output: '{{ "pathlib.Path (file system)" | unsupported }}'
+    when: value | kind == "path" and method in ["absolute", "resolve", "joinpath"]
+    output: '{% if method == "joinpath" %}[{{ value | emit }}, {{ args | map("emit") | join(", ") }}].join("/"){% else %}{{ value | emit }}{% endif %}'
+  - input:
+      node: BinOp
+      left: $left
+      op:
+        node: Div
+      right: $right
+    when: left | kind == "path"
+    output: '[{{ left | emit }}, {{ right | emit }}].join("/")'
   - input:
       node: Call
       func:
@@ -2927,6 +2953,33 @@ inference:
         id: $name
     when: name in ["tuple", "list", "range", "str"]
     output: '{{ "array" if name in ["tuple", "list", "range"] else "string" }}'
+  # Paths are text (see pathlib.Path in the rules).
+  - input:
+      node: Call
+      func: $callee
+    when: callee | source in ["pathlib.Path", "Path"]
+    output: path
+  - input:
+      node: Attribute
+      value: $value
+      attr: parent
+    when: value | kind == "path"
+    output: path
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
+    when: method in ["absolute", "resolve", "joinpath"] and value | kind == "path"
+    output: path
+  # Lark trees, in modules that use Lark: children is a list, data the rule name.
+  - input:
+      node: Attribute
+      value: $value
+      attr: $attr
+    when: attr in ["children", "data"] and "lark" in imported_modules and value | kind == "unknown"
+    output: '{{ "array" if attr == "children" else "string" }}'
   # getattr(entity, "Attribute", default) of an IFC attribute: the kind of that attribute name in the schemas.
   - input:
       node: Call

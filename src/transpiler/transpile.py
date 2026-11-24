@@ -287,6 +287,24 @@ def declaration_sites(function):
     return sites
 
 
+# str methods that no other value the generated code handles has.
+TEXT_METHODS = {
+    "upper",
+    "lower",
+    "strip",
+    "lstrip",
+    "rstrip",
+    "startswith",
+    "endswith",
+    "split",
+    "splitlines",
+    "capitalize",
+    "title",
+    "isdigit",
+    "zfill",
+}
+
+
 def attribute_kinds():
     """IFC attribute names whose declarations in all schemas have one kind: entity, string, number, boolean, array."""
     attributes = json.loads((Path(__file__).parent / "attributes.json").read_text(encoding="utf-8"))
@@ -336,6 +354,7 @@ class Transpiler:
         self.return_annotation = None
         self.generator = False
         self.loops = []
+        self.module_imports = set()
         self.declared = []
         self.list_names = set()
         self.list_constants = list_constants()
@@ -406,6 +425,7 @@ class Transpiler:
             list_constants=self.list_constants,
             # Python operators may dispatch to runtime objects (arrays, dates) in this module.
             overloading=any(m in self.rules.get("overloading_modules", ()) for m, _ in self.runtime_names.values()),
+            imported_modules=self.module_imports,
             **captures,
         )
 
@@ -999,6 +1019,14 @@ class Transpiler:
         self.symbols = {}
         self.imports = {}
         foreign = self.foreign = self.foreign_names(tree)
+        # Top-level names of the modules this module imports.
+        self.module_imports = {
+            a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names
+        } | {
+            n.module.split(".")[0]
+            for n in ast.walk(tree)
+            if isinstance(n, ast.ImportFrom) and n.module and n.level == 0
+        }
         self.unavailable = {}
         output = []
         for node in tree.body:
@@ -1055,6 +1083,43 @@ class Transpiler:
                         for a in function.args.args + function.args.kwonlyargs
                     }
                 )
+            # A parameter with no annotation that the function uses only as the receiver of text methods
+            # (text.upper(), text.split(...)) is text.
+            for function in functions:
+                for argument in function.args.args + function.args.kwonlyargs:
+                    if argument.annotation is not None:
+                        continue
+                    uses = [
+                        n
+                        for n in ast.walk(function)
+                        if isinstance(n, ast.Name) and n.id == argument.arg and isinstance(n.ctx, ast.Load)
+                    ]
+                    receivers = {
+                        id(n.func.value)
+                        for n in ast.walk(function)
+                        if isinstance(n, ast.Call)
+                        and isinstance(n.func, ast.Attribute)
+                        and isinstance(n.func.value, ast.Name)
+                        and n.func.value.id == argument.arg
+                        and n.func.attr in TEXT_METHODS
+                    }
+                    rebound = any(
+                        isinstance(n, ast.Name) and n.id == argument.arg and isinstance(n.ctx, ast.Store)
+                        for n in ast.walk(function)
+                    )
+                    tested = {
+                        id(n)
+                        for n in ast.walk(function)
+                        for test in [getattr(n, "test", None)]
+                        if isinstance(test, ast.Name)
+                        and test.id == argument.arg
+                        or isinstance(test, ast.UnaryOp)
+                        and isinstance(test.operand, ast.Name)
+                        and test.operand.id == argument.arg
+                        for n in [test.operand if isinstance(test, ast.UnaryOp) else test]
+                    }
+                    if receivers and not rebound and all(id(n) in receivers | tested for n in uses):
+                        self.symbols[argument.arg] = "string"
             # A parameter defaulting to True or False is a flag, whatever its annotation says. A parameter
             # with no annotation and a number or text default has the kind of its default.
             for function in functions:
