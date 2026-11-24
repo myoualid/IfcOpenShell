@@ -494,6 +494,7 @@ class Transpiler:
         self.imports = {}
         self.import_aliases = {}
         self.runtime_names = {}
+        self.imported_modules = set()
         self.type_aliases = {}
         self.reassigned = set()
         self.typed_dicts = set()
@@ -588,7 +589,7 @@ class Transpiler:
             list_names=self.list_names,
             list_constants=self.list_constants,
             # Python operators may dispatch to runtime objects (arrays, dates) in this module.
-            overloading=any(m in self.rules.get("overloading_modules", ()) for m, _ in self.runtime_names.values()),
+            overloading=bool(self.imported_modules & set(self.rules.get("overloading_modules", ()))),
             imported_modules=self.module_imports,
             **captures,
         )
@@ -1299,6 +1300,10 @@ class Transpiler:
         """Local names bound by imports of other ifcopenshell modules."""
         self.import_aliases = {}
         self.runtime_names = {}
+        # Top-level names of all imported modules, for overloading_modules.
+        self.imported_modules = {
+            alias.name.split(".")[0] for node in ast.walk(module) if isinstance(node, ast.Import) for alias in node.names
+        } | {node.module.split(".")[0] for node in ast.walk(module) if isinstance(node, ast.ImportFrom) and node.module and node.level == 0}
         runtime = self.rules.get("runtime_modules", {})
         for node in ast.walk(module):
             # Python modules with a hand-written TypeScript counterpart: local name -> (module, member).
