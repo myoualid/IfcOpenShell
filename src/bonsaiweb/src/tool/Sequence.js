@@ -19,9 +19,10 @@ function text( value ) {
 
 }
 
+// util.date gives Temporal dates; their ISO 8601 text is that of Python isoformat().
 function iso( value ) {
 
-	return value ? value.isoformat() : null;
+	return value ? value.toString() : null;
 
 }
 
