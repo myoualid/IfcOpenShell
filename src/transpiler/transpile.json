@@ -502,9 +502,7 @@
  "api/cost/add_cost_schedule": {
   "functions": 1,
   "source": "ifcopenshell/api/cost/add_cost_schedule.py",
-  "stubs": {
-   "add_cost_schedule": "No rules rule at line 62: uses module datetime"
-  }
+  "stubs": {}
  },
  "api/cost/add_cost_value": {
   "functions": 1,
@@ -1307,9 +1305,7 @@
  "api/project/create_file": {
   "functions": 1,
   "source": "ifcopenshell/api/project/create_file.py",
-  "stubs": {
-   "create_file": "No rules rule at line 56: uses module datetime"
-  }
+  "stubs": {}
  },
  "api/project/unassign_declaration": {
   "functions": 1,
@@ -1409,9 +1405,7 @@
  "api/resource/calculate_resource_usage": {
   "functions": 1,
   "source": "ifcopenshell/api/resource/calculate_resource_usage.py",
-  "stubs": {
-   "calculate_resource_usage": "No rules rule at line 46: uses module datetime"
-  }
+  "stubs": {}
  },
  "api/resource/calculate_resource_work": {
   "functions": 1,
@@ -1496,16 +1490,12 @@
  "api/sequence/add_work_plan": {
   "functions": 1,
   "source": "ifcopenshell/api/sequence/add_work_plan.py",
-  "stubs": {
-   "add_work_plan": "No rules rule at line 62: uses module datetime"
-  }
+  "stubs": {}
  },
  "api/sequence/add_work_schedule": {
   "functions": 1,
   "source": "ifcopenshell/api/sequence/add_work_schedule.py",
-  "stubs": {
-   "add_work_schedule": "No rules rule at line 77: uses module datetime"
-  }
+  "stubs": {}
  },
  "api/sequence/add_work_time": {
   "functions": 1,
@@ -1545,16 +1535,12 @@
  "api/sequence/calculate_task_duration": {
   "functions": 2,
   "source": "ifcopenshell/api/sequence/calculate_task_duration.py",
-  "stubs": {
-   "Usecase": "No rules rule at line 126: uses module datetime"
-  }
+  "stubs": {}
  },
  "api/sequence/cascade_schedule": {
   "functions": 2,
   "source": "ifcopenshell/api/sequence/cascade_schedule.py",
-  "stubs": {
-   "Usecase": "No rules rule at line 155: uses module datetime"
-  }
+  "stubs": {}
  },
  "api/sequence/copy_work_schedule": {
   "functions": 1,
@@ -1594,9 +1580,7 @@
  "api/sequence/edit_task_time": {
   "functions": 2,
   "source": "ifcopenshell/api/sequence/edit_task_time.py",
-  "stubs": {
-   "Usecase": "No rules rule at line 146: uses module datetime"
-  }
+  "stubs": {}
  },
  "api/sequence/edit_work_calendar": {
   "functions": 1,
@@ -2075,15 +2059,7 @@
  "util/date": {
   "functions": 10,
   "source": "ifcopenshell/util/date.py",
-  "stubs": {
-   "canonicalise_time": "No types rule at line 268: datetime.datetime",
-   "datetime2ifc": "No rules rule at line 153: uses module isodate",
-   "ifc2datetime": "No rules rule at line 59: uses module datetime",
-   "parse_duration": "No rules rule at line 227: uses module isodate",
-   "string_to_date": "No rules rule at line 192: uses module parser",
-   "string_to_duration": "No rules rule at line 218: uses module isodate",
-   "timedelta2duration": "No rules rule at line 41: uses module isodate"
-  }
+  "stubs": {}
  },
  "util/doc": {
   "error": "not ported",
@@ -2163,9 +2139,7 @@
  "util/resource": {
   "functions": 14,
   "source": "ifcopenshell/util/resource.py",
-  "stubs": {
-   "get_resource_required_work": "No rules rule at line 147: uses module datetime"
-  }
+  "stubs": {}
  },
  "util/schema": {
   "functions": 11,
@@ -2183,26 +2157,7 @@
  "util/sequence": {
   "functions": 38,
   "source": "ifcopenshell/util/sequence.py",
-  "stubs": {
-   "count_working_days": "No rules rule at line 102: uses module datetime",
-   "get_lag_time": "No rules rule at line 525: uses module datetime",
-   "get_recent_working_day": "No rules rule at line 360: uses module datetime",
-   "get_soonest_working_day": "No rules rule at line 350: uses module datetime",
-   "get_start_or_finish_date": "No rules rule at line 119: uses module datetime",
-   "get_time_periods": "No rules rule at line 394: uses module datetime",
-   "get_work_day_duration": "No rules rule at line 468: uses module datetime",
-   "get_work_duration": "No rules rule at line 472: uses module datetime",
-   "get_work_finish": "No rules rule at line 256: uses module datetime",
-   "get_work_periods": "No rules rule at line 402: uses module datetime",
-   "get_work_start": "No rules rule at line 241: uses module datetime",
-   "get_work_time": "No rules rule at line 214: uses module datetime",
-   "is_day_in_work_time": "No rules rule at line 545: uses module datetime",
-   "is_work_time_applicable_to_day": "No rules rule at line 561: uses module datetime",
-   "offset_date": "No rules rule at line 138: uses module datetime",
-   "offset_lag": "No rules rule at line 273: uses module datetime",
-   "offset_work_time": "No rules rule at line 173: uses module datetime",
-   "snap_date": "No rules rule at line 304: uses module datetime"
-  }
+  "stubs": {}
  },
  "util/shape": {
   "functions": 47,

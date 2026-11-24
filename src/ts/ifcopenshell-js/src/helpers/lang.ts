@@ -4,6 +4,8 @@
 // Python semantics for generated code, used only where a value's type is not known when
 // transpiling. Hand-written, unlike the transpiled util/ and api/ next to it.
 
+import { Temporal, add as addDuration, compare as compareDates } from './dates.js';
+
 function isDict(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 }
@@ -110,8 +112,9 @@ function extreme<T>(values: Iterable<T>, options: { key?: ((value: T) => unknown
   throw new Error(`ValueError: ${name}() iterable argument is empty`);
 }
 
-/** Python ordering, including objects such as dates that order by valueOf(). */
+/** Python ordering, including dates (Temporal objects) and objects that order by valueOf(). */
 function order(a: unknown, b: unknown): number {
+  if (isDate(a) && isDate(b)) return compareDates(a, b);
   if (typeof a === 'object' && a !== null && !Array.isArray(a)) return (a as unknown as number) < (b as unknown as number) ? -1 : (a as unknown as number) > (b as unknown as number) ? 1 : 0;
   return compare(a, b);
 }
@@ -490,13 +493,20 @@ function typeName(value: unknown): string {
   return typeof value === 'object' ? (value as object).constructor.name : typeof value;
 }
 
-/** Python `a + b`: lists and tuples concatenate. */
+function isDate(value: unknown): value is Temporal.PlainDate | Temporal.PlainDateTime {
+  return value instanceof Temporal.PlainDate || value instanceof Temporal.PlainDateTime;
+}
+
+/** Python `a + b`: lists and tuples concatenate; a date or datetime moves by a duration (see dates.ts). */
 export function add(a: any, b: any): any {
   if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];
+  if (isDate(a) && typeof b === 'number') return addDuration(a, b);
+  if (isDate(b) && typeof a === 'number') return addDuration(b, a);
   return binary('add', a, b, (x, y) => x + y);
 }
 
 export function sub(a: any, b: any): any {
+  if (isDate(a) && typeof b === 'number') return addDuration(a, -b);
   return binary('sub', a, b, (x, y) => x - y);
 }
 
@@ -525,6 +535,18 @@ export function iadd(a: any, b: any): any {
 }
 
 export const imul = mul;
+
+/** Python `a // b`: rounds towards negative infinity. */
+export function floordiv(a: number, b: number): number {
+  if (b === 0) throw new Error('ZeroDivisionError: integer division or modulo by zero');
+  return Math.floor(a / b);
+}
+
+/** Python `a % b`: the result has the sign of b. */
+export function mod(a: number, b: number): number {
+  if (b === 0) throw new Error('ZeroDivisionError: integer division or modulo by zero');
+  return a - Math.floor(a / b) * b;
+}
 export const isub = sub;
 /** Python `a == b`: lists and tuples by value, otherwise identity. */
 export function eq(a: any, b: any): boolean {
@@ -789,4 +811,15 @@ export function dictSetdefault<K, V>(dict: Map<K, V>, key: K, value: V): V {
 /** A Python set (see {@link IdentitySet}), typed as a plain Set. */
 export function identitySet<T = any>(values?: Iterable<T> | null): Set<T> {
   return new IdentitySet<T>(values);
+}
+
+/** Python `text.strip(chars)`, `lstrip(chars)` and `rstrip(chars)` with characters to remove. */
+export function strip(text: string, chars: string | null = null, side: 'both' | 'start' | 'end' = 'both'): string {
+  if (chars === null) return side === 'start' ? text.trimStart() : side === 'end' ? text.trimEnd() : text.trim();
+  const set = new Set(chars);
+  let start = 0;
+  let end = text.length;
+  if (side !== 'end') while (start < end && set.has(text[start]!)) start++;
+  if (side !== 'start') while (end > start && set.has(text[end - 1]!)) end--;
+  return text.slice(start, end);
 }

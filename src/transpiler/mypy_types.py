@@ -117,6 +117,15 @@ def classify(proper, types):
         return "set", False
     if name.startswith("numpy."):
         return "ndarray", False
+    # Dates are Temporal objects in TS; a timedelta is a number of microseconds.
+    if name == "datetime.datetime":
+        return "datetime", False
+    if name == "datetime.date":
+        return "date", False
+    if name == "datetime.time":
+        return "time", False
+    if name == "datetime.timedelta":
+        return "number", False
     if name.endswith((".entity_instance", ".entity_instance_mixin")):
         return "entity", False
     if name == "ifcopenshell.file.file":

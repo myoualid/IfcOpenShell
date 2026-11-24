@@ -1143,6 +1143,8 @@ class Transpiler:
                 if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and qualified in self.rules.get(
                     "hand_written", {}
                 ):
+                    if any(ast.unparse(d) in ("overload", "typing.overload") for d in node.decorator_list):
+                        continue  # The hand-written function has the signatures of all overloads.
                     entry = self.rules["hand_written"][qualified]
                     target = entry if isinstance(entry, str) else entry["module"]
                     if isinstance(entry, dict) and (actual := source_hash(node)) != entry["source"]:

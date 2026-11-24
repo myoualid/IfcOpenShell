@@ -64,7 +64,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@ifcopenshell/wasm": "^0.1.0"
+    "@ifcopenshell/wasm": "^0.1.0",
+    "temporal-polyfill": "^1.0.8"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
