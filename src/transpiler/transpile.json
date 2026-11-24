@@ -2025,9 +2025,23 @@
   }
  },
  "util/boundary": {
-  "error": "No rules rule at line 45: uses module logging",
   "functions": 17,
-  "source": "ifcopenshell/util/boundary.py"
+  "source": "ifcopenshell/util/boundary.py",
+  "stubs": {
+   "_assign_connection_geometry": "No types rule at line 983: shapely.Polygon",
+   "_best_element_for_gap": "No rules rule at line 911: uses module np",
+   "_compute_opening_polygon": "No rules rule at line 703: uses module shapely",
+   "_ensure_outward": "No rules rule at line 1050: uses module np",
+   "_face_matrix_from_verts": "No rules rule at line 953: uses module np",
+   "_face_normal": "No rules rule at line 939: uses module np",
+   "_fill_face_gaps": "No rules rule at line 784: uses module shapely",
+   "_match_element_to_space_face": "No rules rule at line 556: uses module np",
+   "_match_space_face_candidates": "No rules rule at line 481: uses module shapely",
+   "_union_coplanar_face_polygon": "No rules rule at line 86: uses module np",
+   "_union_openings_into_parent": "UndefinedError: 'undefined_isinstance_type' is undefined",
+   "_verts_to_polygon": "No rules rule at line 977: uses module shapely",
+   "auto_generate_boundaries": "No rules rule at line 158: uses module np"
+  }
  },
  "util/brick": {
   "error": "No rules rule at line 32: uses module os",

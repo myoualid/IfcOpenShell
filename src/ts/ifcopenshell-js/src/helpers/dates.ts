@@ -59,8 +59,9 @@ export function datetime(year: number, month: number, day: number, hour = 0, min
 }
 
 /** datetime.combine(date, time). */
-export function combine(day: Temporal.PlainDate, at: Temporal.PlainTime = time()): Temporal.PlainDateTime {
-  return day.toPlainDateTime(at);
+export function combine(day: DateLike, at: Temporal.PlainTime = time()): Temporal.PlainDateTime {
+  // Python accepts a datetime as the date part, as a datetime is a date.
+  return (day instanceof Temporal.PlainDateTime ? day.toPlainDate() : day).toPlainDateTime(at);
 }
 
 /** A date with a time, or a date alone, from ISO 8601 text: datetime.fromisoformat / date.fromisoformat. */

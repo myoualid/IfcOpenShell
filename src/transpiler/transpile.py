@@ -322,6 +322,7 @@ class Transpiler:
         self.imports = {}
         self.import_aliases = {}
         self.runtime_names = {}
+        self.imported_modules = set()
         self.type_aliases = {}
         self.reassigned = set()
         self.typed_dicts = set()
@@ -400,7 +401,7 @@ class Transpiler:
             list_names=self.list_names,
             list_constants=self.list_constants,
             # Python operators may dispatch to runtime objects (arrays, dates) in this module.
-            overloading=any(m in self.rules.get("overloading_modules", ()) for m, _ in self.runtime_names.values()),
+            overloading=bool(self.imported_modules & set(self.rules.get("overloading_modules", ()))),
             **captures,
         )
 
@@ -875,6 +876,10 @@ class Transpiler:
         """Local names bound by imports of other ifcopenshell modules."""
         self.import_aliases = {}
         self.runtime_names = {}
+        # Top-level names of all imported modules, for overloading_modules.
+        self.imported_modules = {
+            alias.name.split(".")[0] for node in ast.walk(module) if isinstance(node, ast.Import) for alias in node.names
+        } | {node.module.split(".")[0] for node in ast.walk(module) if isinstance(node, ast.ImportFrom) and node.module and node.level == 0}
         runtime = self.rules.get("runtime_modules", {})
         for node in ast.walk(module):
             # Python modules with a hand-written TypeScript counterpart: local name -> (module, member).
@@ -1124,7 +1129,18 @@ class Transpiler:
                     and isinstance(n.args[0], ast.Name)
                 }
                 narrowed = rebound | checked
+                # Set parameters accept any Iterable, unless the function changes them in place.
+                mutated = {
+                    n.func.value.id
+                    for n in ast.walk(function)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                    and isinstance(n.func.value, ast.Name)
+                    and n.func.attr in ("add", "discard", "remove", "update", "clear", "pop")
+                }
                 for a in function.args.args + function.args.kwonlyargs:
+                    if a.annotation and a.arg in mutated and ast.unparse(a.annotation).startswith(("set[", "Set[", "set")):
+                        a.widened = True
                     annotated = self.emit(a.annotation, "annotation_kinds") if a.annotation else None
                     # Checked with isinstance, then rebound (x = [x]): the value is not of its annotated type.
                     if a.annotation and (
@@ -1147,10 +1163,12 @@ class Transpiler:
                         continue  # The hand-written function has the signatures of all overloads.
                     entry = self.rules["hand_written"][qualified]
                     target = entry if isinstance(entry, str) else entry["module"]
-                    if isinstance(entry, dict) and (actual := source_hash(node)) != entry["source"]:
+                    accepted = entry.get("source") if isinstance(entry, dict) else None
+                    accepted = [accepted] if isinstance(accepted, str) else accepted
+                    if accepted is not None and (actual := source_hash(node)) not in accepted:
                         raise ValueError(
                             f"the hand-written TS in {target} is for another version of this function"
-                            f" (source hash {actual}, expected {entry['source']})"
+                            f" (source hash {actual}, expected {' or '.join(accepted)})"
                         )
                     output.append(
                         self.render(self.rules["hand_written_import"], {"name": node.name, "target": target}).rstrip()
