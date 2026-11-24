@@ -10,6 +10,11 @@ unsupported: |
   }{% else %}export function {{ name | camel }}(..._args: any[]): any {
     throw new Error({{ ("Unsupported Python in " ~ name ~ ": " ~ reason) | literal }});
   }{% endif %}
+# A method that cannot be translated, in a class whose other methods are (see method_stubs).
+unsupported_method: |-
+  {% if method == "__init__" %}constructor(..._args: any[]) {{ "{" }}{% else %}{{ "static " if static else "" }}{{ method if method.startswith("__") else method | camel }}(..._args: any[]): any {{ "{" }}{% endif %}
+    throw new Error({{ ("Unsupported Python in " ~ name ~ ": " ~ reason) | literal }});
+  }
 header: |-
   // This file was generated with the assistance of an AI coding tool.
   // SPDX-License-Identifier: LGPL-3.0-or-later
@@ -137,6 +142,41 @@ hand_written:
   util.shape.get_outer_surface_area: {module: helpers.shape, source: a4c3a3593313}
   util.shape.get_footprint_perimeter: {module: helpers.shape, source: 2ba15a84bb08}
   util.shape.get_total_edge_length: {module: helpers.shape, source: 0acc38098098}
+  api.geometry.edit_object_placement.edit_object_placement: {module: helpers.object_placement, source: ec5ea5756033}
+  api.geometry.edit_object_placement.Usecase: {module: helpers.object_placement, source: 254e91cd9855}
+  util.geolocation.auto_xyz2enh: {module: helpers.geolocation, source: e6939e1f0436}
+  util.geolocation.auto_enh2xyz: {module: helpers.geolocation, source: e64ab00283a3}
+  util.geolocation.local2global: {module: helpers.geolocation, source: 9a7b5b84f0fc}
+  util.geolocation.auto_local2global: {module: helpers.geolocation, source: c22b86dfbaa0}
+  util.geolocation.global2local: {module: helpers.geolocation, source: 5a8a94e86035}
+  util.geolocation.auto_global2local: {module: helpers.geolocation, source: 454a1791e619}
+  util.shape_builder.ifc_safe_vector_type: {module: helpers.shape_builder, source: f2034f2cc71e}
+  util.shape_builder.np_round_to_precision: {module: helpers.shape_builder, source: aa0e320b0a29}
+  util.shape_builder.np_normalized: {module: helpers.shape_builder, source: 2a712097ae84}
+  util.shape_builder.np_matrix_normalized: {module: helpers.shape_builder, source: 9ecdaac2c09a}
+  util.shape_builder.np_lerp: {module: helpers.shape_builder, source: 4390c8dab11d}
+  util.shape_builder.np_to_3d: {module: helpers.shape_builder, source: 4285cc5ac94b}
+  util.shape_builder.np_to_4d: {module: helpers.shape_builder, source: 0940e23095ee}
+  util.shape_builder.np_to_4x4: {module: helpers.shape_builder, source: e51b45763cc9}
+  util.shape_builder.np_apply_matrix: {module: helpers.shape_builder, source: d4e7ef265893}
+  util.shape_builder.np_angle: {module: helpers.shape_builder, source: 0bd1ae3c3315}
+  util.shape_builder.np_angle_signed: {module: helpers.shape_builder, source: cfd063299af6}
+  util.shape_builder.np_translation_matrix: {module: helpers.shape_builder, source: 0d60b1579c14}
+  util.shape_builder.np_rotation_matrix: {module: helpers.shape_builder, source: 99b698e9582d}
+  util.shape_builder.np_matrix_to_euler: {module: helpers.shape_builder, source: ec0358138b17}
+  util.shape_builder.np_normal: {module: helpers.shape_builder, source: 6acc2d016836}
+  util.shape_builder.np_intersect_line_line: {module: helpers.shape_builder, source: 4c05dc8bba2b}
+  util.shape_builder.ShapeBuilder.polyline: {module: helpers.shape_builder_methods, source: 8ed4c7da8471}
+  util.shape_builder.ShapeBuilder.get_rectangle_coords: {module: helpers.shape_builder_methods, source: 6fe6663a6fa8}
+  util.shape_builder.ShapeBuilder.plane: {module: helpers.shape_builder_methods, source: 89c48f5f4784}
+  util.shape_builder.ShapeBuilder.curve_between_two_points: {module: helpers.shape_builder_methods, source: e61b39cc00fe}
+  util.shape_builder.ShapeBuilder.translate: {module: helpers.shape_builder_methods, source: 9c8bd9c3ac53}
+  util.shape_builder.ShapeBuilder.rotate_2d_point: {module: helpers.shape_builder_methods, source: 0de482f9ee1e}
+  util.shape_builder.ShapeBuilder.mirror_2d_point: {module: helpers.shape_builder_methods, source: b8bd5d0fe053}
+  util.shape_builder.ShapeBuilder.create_axis2_placement_3d_from_matrix: {module: helpers.shape_builder_methods, source: 8fe006fb5d27}
+  util.shape_builder.ShapeBuilder.extrude: {module: helpers.shape_builder_methods, source: aacd208d736f}
+  util.shape_builder.ShapeBuilder.rotate_extrusion_kwargs_by_z: {module: helpers.shape_builder_methods, source: f0dd239ade8b}
+  util.shape_builder.ShapeBuilder.get_polyline_coords: {module: helpers.shape_builder_methods, source: 00f029a33f70}
   util.date.parse_duration: {module: helpers.date, source: [b2d73dca5b0c, b524e1a94833]}
   util.date.timedelta2duration: {module: helpers.date, source: [06610bf8f44c, 1a6c6a3ec691]}
   util.date.ifc2datetime: {module: helpers.date, source: f125d79ce53a}
@@ -147,12 +187,19 @@ hand_written:
 hand_written_import: |-
   import { {{ name | camel }} } from "{{ "../" * (this_module.split(".") | length - 1) }}{{ target | replace(".", "/") }}.js";
   export { {{ name | camel }} };
+# A method written by hand (key module.Class.method in hand_written): a function of the target module
+# named ClassMethod, with `this` as its first, typed parameter.
+hand_written_method: |-
+  {{ "static " if static else "" }}{{ method | camel }} = {{ target | use(target | replace(".", "_")) }}.{{ cls }}{{ (method | camel)[:1] | upper }}{{ (method | camel)[1:] }};
 # Functions whose types the rules cannot prove, so they stay stubs, with the reason.
 unsupported_functions:
   api.library.assign_reference.assign_reference: "products is annotated as one entity_instance but used as a list"
+  api.project.append_asset.append_asset: "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
   util.unit.iter_element_and_attributes_per_type: "iterating a file gives entities of no proven type"
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
+# Translate the methods of a class one by one: a method that cannot be translated becomes a stub, not its class.
+method_stubs: true
 # Declare locals where they are first bound, when their uses allow it.
 inline_locals: true
 # Take the kind of an expression from mypy_types when it is proven there.
@@ -373,7 +420,14 @@ types:
         id: $kind
     when: kind in ['Any', 'Iterator', 'Generator', 'Callable']
     output: any
+# Functions that return numpy arrays and are not written by hand: code that calls them is numpy code.
+numpy_functions: [util.shape_builder.V]
 rules:
+  - input:
+      node: Call
+      func: $callee
+    when: callee | resolve in numpy_functions
+    output: '{{ ("calls " ~ (callee | resolve) ~ ", which returns a numpy array") | unsupported }}'
   # m[i, j] and m[:, j] index numpy arrays; they need the hand-written TypedArray code (see hand_written).
   - input:
       node: Subscript
@@ -908,6 +962,21 @@ rules:
       attr: version
     when: node | source == "ifcopenshell.version"
     output: '{{ ifcopenshell_version | literal }}'
+  # Derived attributes: Python computes them with the generated EXPRESS rules (ifcopenshell.express.rules).
+  - input:
+      node: Attribute
+      attr: $name
+    when: name in ["Dim"] and node.ctx.__class__.__name__ == "Load"
+    output: '{{ ("the derived attribute " ~ name ~ " needs the EXPRESS rules") | unsupported }}'
+  # Methods of the native file that ifcopenshell-js does not expose.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $name
+    when: name in ["assign_header_from"] and value | kind == "file"
+    output: '{{ ("ifcopenshell.file." ~ name ~ " is not exposed") | unsupported }}'
   - input:
       node: Attribute
       attr: $name
@@ -949,6 +1018,16 @@ rules:
       keywords: $keywords
     when: value | kind in ["ndarray", "pyobject"] and not method.startswith("__")
     output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "helpers.lang" | use("lang") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+  # Python sets an attribute of an entity by position: entity[i] = value.
+  - input:
+      node: Assign
+      targets:
+        - node: Subscript
+          value: $container
+          slice: $index
+      value: $value
+    when: container | kind == "entity" and (index | kind == "number" or index.__class__.__name__ == "Constant" and index.value is integer)
+    output: '{{ container | emit }}.set({{ index | emit }}, {{ value | emit }});'
   # Subscripts of arrays, and of values of unknown type where operators are overloaded: Python
   # indexing (negative indices, slices, tuples of indices) through the runtime.
   - input:
@@ -1350,11 +1429,7 @@ rules:
             node: Name
             id: $name
       body: $body
-    output: |-
-      {
-        const {{ name | ident }} = {{ "helpers.lang" | use("lang") }}.open({{ args | map("emit") | join(", ") }});
-      {{ body | emit | indent(2, true) }}
-      }
+    output: '{{ "file access with open()" | unsupported }}'
   - input:
       node: With
       items:
@@ -1384,7 +1459,7 @@ rules:
       args:
         - $file
       keywords: []
-    output: 'JSON.parse({% if file.__class__.__name__ == "Call" and file.func.id is defined and file.func.id == "open" %}{{ "helpers.lang" | use("lang") }}.open({{ file.args | map("emit") | join(", ") }}){% else %}{{ file | emit }}{% endif %}.read())'
+    output: '{% if file.__class__.__name__ == "Call" and file.func.id is defined and file.func.id == "open" %}{{ "file access with open()" | unsupported }}{% else %}JSON.parse({{ file | emit }}.read()){% endif %}'
   - input:
       node: Global
     output: ''

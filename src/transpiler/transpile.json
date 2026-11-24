@@ -37,12 +37,16 @@
  "api/alignment/_create_offset_curve_representation": {
   "functions": 1,
   "source": "ifcopenshell/api/alignment/_create_offset_curve_representation.py",
-  "stubs": {}
+  "stubs": {
+   "_create_offset_curve_representation": "the derived attribute Dim needs the EXPRESS rules"
+  }
  },
  "api/alignment/_create_polyline_representation": {
   "functions": 1,
   "source": "ifcopenshell/api/alignment/_create_polyline_representation.py",
-  "stubs": {}
+  "stubs": {
+   "_create_polyline_representation": "the derived attribute Dim needs the EXPRESS rules"
+  }
  },
  "api/alignment/_get_cant_segment": {
   "functions": 1,
@@ -146,7 +150,9 @@
  "api/alignment/create_as_polyline": {
   "functions": 2,
   "source": "ifcopenshell/api/alignment/create_as_polyline.py",
-  "stubs": {}
+  "stubs": {
+   "_create_layout": "the derived attribute Dim needs the EXPRESS rules"
+  }
  },
  "api/alignment/create_by_pi_method": {
   "functions": 1,
@@ -351,7 +357,8 @@
   "functions": 2,
   "source": "ifcopenshell/api/boundary/assign_connection_geometry.py",
   "stubs": {
-   "Usecase": "No rules rule at line 119: uses module np"
+   "Usecase.create_polyline": "No rules rule at line 119: uses module np",
+   "assign_connection_geometry": "calls util.shape_builder.V, which returns a numpy array"
   }
  },
  "api/boundary/copy_boundary": {
@@ -417,7 +424,9 @@
  "api/cogo/edit_survey_point": {
   "functions": 1,
   "source": "ifcopenshell/api/cogo/edit_survey_point.py",
-  "stubs": {}
+  "stubs": {
+   "edit_survey_point": "the derived attribute Dim needs the EXPRESS rules"
+  }
  },
  "api/constraint/add_metric": {
   "functions": 1,
@@ -678,6 +687,7 @@
   "functions": 6,
   "source": "ifcopenshell/api/geometry/add_door_representation.py",
   "stubs": {
+   "Usecase.execute": "calls util.shape_builder.V, which returns a numpy array",
    "create_ifc_box": "No rules rule at line 90: uses module np",
    "create_ifc_door_lining": "No rules rule at line 78: uses module np"
   }
@@ -698,21 +708,14 @@
   "functions": 2,
   "source": "ifcopenshell/api/geometry/add_profile_representation.py",
   "stubs": {
-   "Usecase": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed"
+   "Usecase.get_x": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed",
+   "Usecase.get_y": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed"
   }
  },
  "api/geometry/add_railing_representation": {
+  "error": "calls util.shape_builder.V, which returns a numpy array",
   "functions": 18,
-  "source": "ifcopenshell/api/geometry/add_railing_representation.py",
-  "stubs": {
-   "_add_arcs_on_turning_points": "No rules rule at line 213: uses module np",
-   "_add_cap": "No rules rule at line 427: uses module np",
-   "_collect_supports": "No rules rule at line 283: uses module np",
-   "_collinear": "No rules rule at line 138: uses module np",
-   "_get_arc_indices": "No rules rule at line 449: uses module np",
-   "_get_fillet_points": "No rules rule at line 159: uses module np",
-   "compute_wall_mounted_handrail_geometry": "No rules rule at line 516: uses module np"
-  }
+  "source": "ifcopenshell/api/geometry/add_railing_representation.py"
  },
  "api/geometry/add_representation": {
   "error": "No rules rule at line 38: uses module Vector",
@@ -743,6 +746,8 @@
   "functions": 7,
   "source": "ifcopenshell/api/geometry/add_window_representation.py",
   "stubs": {
+   "Usecase.execute": "calls util.shape_builder.V, which returns a numpy array",
+   "create_ifc_window": "calls util.shape_builder.V, which returns a numpy array",
    "create_ifc_window_frame_simple": "No rules rule at line 75: uses module np"
   }
  },
@@ -805,10 +810,7 @@
  "api/geometry/edit_object_placement": {
   "functions": 2,
   "source": "ifcopenshell/api/geometry/edit_object_placement.py",
-  "stubs": {
-   "Usecase": "No rules rule at line 84: uses module np",
-   "edit_object_placement": "No rules rule at line 63: uses module np"
-  }
+  "stubs": {}
  },
  "api/geometry/map_representation": {
   "functions": 2,
@@ -819,7 +821,11 @@
   "functions": 2,
   "source": "ifcopenshell/api/geometry/regenerate_wall_representation.py",
   "stubs": {
-   "Regenerator": "No rules rule at line 135: uses module np"
+   "Regenerator.get_axes": "No rules rule at line 637: uses module np",
+   "Regenerator.get_join_vector": "No rules rule at line 621: uses module np",
+   "Regenerator.get_wall_vectors": "No rules rule at line 613: uses module np",
+   "Regenerator.join": "No rules rule at line 384: uses module np",
+   "Regenerator.regenerate": "No rules rule at line 135: uses module np"
   }
  },
  "api/geometry/remove_boolean": {
@@ -1067,7 +1073,7 @@
   "functions": 2,
   "source": "ifcopenshell/api/material/edit_profile_usage.py",
   "stubs": {
-   "Usecase": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed"
+   "Usecase.calculate_position": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed"
   }
  },
  "api/material/remove_constituent": {
@@ -1263,12 +1269,16 @@
  "api/profile/add_arbitrary_profile": {
   "functions": 2,
   "source": "ifcopenshell/api/profile/add_arbitrary_profile.py",
-  "stubs": {}
+  "stubs": {
+   "add_arbitrary_profile": "calls util.shape_builder.V, which returns a numpy array"
+  }
  },
  "api/profile/add_arbitrary_profile_with_voids": {
   "functions": 2,
   "source": "ifcopenshell/api/profile/add_arbitrary_profile_with_voids.py",
-  "stubs": {}
+  "stubs": {
+   "add_arbitrary_profile_with_voids": "calls util.shape_builder.V, which returns a numpy array"
+  }
  },
  "api/profile/add_parameterized_profile": {
   "functions": 1,
@@ -1294,7 +1304,8 @@
   "functions": 3,
   "source": "ifcopenshell/api/project/append_asset.py",
   "stubs": {
-   "Usecase": "No rules rule at line 790: type(tuple_)"
+   "Usecase.file_add": "No rules rule at line 790: type(tuple_)",
+   "append_asset": "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
   }
  },
  "api/project/assign_declaration": {
@@ -1606,7 +1617,7 @@
   "functions": 2,
   "source": "ifcopenshell/api/sequence/recalculate_schedule.py",
   "stubs": {
-   "Usecase": "No rules rule at line 115: uses module nx"
+   "Usecase.build_network_graph": "No rules rule at line 115: uses module nx"
   }
  },
  "api/sequence/remove_task": {
@@ -1828,7 +1839,14 @@
   "functions": 3,
   "source": "ifcopenshell/api/style/add_surface_textures.py",
   "stubs": {
-   "Usecase": "No rules rule at line 200: uses module tool",
+   "Usecase.create_surface_texture": "No rules rule at line 200: uses module tool",
+   "Usecase.detect_diffuse_map": "No types rule at line 183: bpy.types.Node",
+   "Usecase.detect_metallicroughness_map": "No types rule at line 155: bpy.types.Node",
+   "Usecase.detect_normal_map": "No types rule at line 139: bpy.types.Node",
+   "Usecase.detect_occlusion_map": "No types rule at line 165: bpy.types.Material",
+   "Usecase.detect_unlit_emissive_map": "No types rule at line 134: bpy.types.Node",
+   "Usecase.execute": "No types rule at line 78: bpy.types.Material",
+   "Usecase.process_texture_coordinates": "No types rule at line 206: bpy.types.ShaderNodeTexImage",
    "add_surface_textures": "No types rule at line 36: bpy.types.Material"
   }
  },
@@ -2067,7 +2085,8 @@
   "functions": 1,
   "source": "ifcopenshell/util/data.py",
   "stubs": {
-   "Clipping": "No rules rule at line 87: uses module np"
+   "Clipping.apply": "No rules rule at line 87: uses module np",
+   "Clipping.parse": "No rules rule at line 60: uses module np"
   }
  },
  "util/date": {
@@ -2089,7 +2108,9 @@
   "functions": 2,
   "source": "ifcopenshell/util/file.py",
   "stubs": {
-   "IfcHeaderExtractor": "No rules rule at line 113: uses module zipfile"
+   "IfcHeaderExtractor.extract": "file access with open()",
+   "IfcHeaderExtractor.extract_ifc_spf": "No types rule at line 87: IO[bytes]",
+   "IfcHeaderExtractor.extract_ifc_zip": "No rules rule at line 113: uses module zipfile"
   }
  },
  "util/fm": {
@@ -2106,13 +2127,7 @@
   "functions": 22,
   "source": "ifcopenshell/util/geolocation.py",
   "stubs": {
-   "auto_enh2xyz": "No rules rule at line 210: uses module np",
-   "auto_global2local": "the @ operator needs numpy",
-   "auto_local2global": "No rules rule at line 466: uses module np",
-   "auto_xyz2enh": "No rules rule at line 173: uses module np",
-   "dd2dms": "No rules rule at line 70: uses module Decimal",
-   "global2local": "No rules rule at line 508: uses module np",
-   "local2global": "No rules rule at line 420: uses module np"
+   "dd2dms": "No rules rule at line 70: uses module Decimal"
   }
  },
  "util/ifc4x3dev_scrape_data_for_docs": {
@@ -2145,6 +2160,7 @@
   "source": "ifcopenshell/util/representation.py",
   "stubs": {
    "get_reference_line": "No rules rule at line 523: uses module np",
+   "guess_type": "the derived attribute Dim needs the EXPRESS rules",
    "resolve_items": "No rules rule at line 329: uses module np"
   }
  },
@@ -2157,7 +2173,9 @@
   "functions": 11,
   "source": "ifcopenshell/util/schema.py",
   "stubs": {
-   "Migrator": "No rules rule at line 334: uses module os"
+   "Migrator.__init__": "No rules rule at line 334: uses module os",
+   "Migrator.migrate_attribute": "numpy indexing (a tuple index)",
+   "Migrator.preprocess": "ifcopenshell.file.assign_header_from is not exposed"
   }
  },
  "util/selector": {
@@ -2202,24 +2220,17 @@
   "functions": 24,
   "source": "ifcopenshell/util/shape_builder.py",
   "stubs": {
-   "ShapeBuilder": "No rules rule at line 478: uses module np",
-   "V": "No rules rule at line 74: uses module np",
-   "ifc_safe_vector_type": "No rules rule at line 83: uses module np",
-   "np_angle": "No rules rule at line 157: uses module np",
-   "np_angle_signed": "No rules rule at line 166: uses module np",
-   "np_apply_matrix": "numpy indexing (a tuple index)",
-   "np_intersect_line_line": "No rules rule at line 268: uses module np",
-   "np_lerp": "No rules rule at line 113: uses module np",
-   "np_matrix_normalized": "No rules rule at line 106: uses module np",
-   "np_matrix_to_euler": "No rules rule at line 237: uses module np",
-   "np_normal": "No rules rule at line 250: uses module np",
-   "np_normalized": "No rules rule at line 101: uses module np",
-   "np_rotation_matrix": "No rules rule at line 200: uses module np",
-   "np_round_to_precision": "No rules rule at line 97: uses module np",
-   "np_to_3d": "No rules rule at line 120: uses module np",
-   "np_to_4d": "No rules rule at line 130: uses module np",
-   "np_to_4x4": "No rules rule at line 138: uses module np",
-   "np_translation_matrix": "No rules rule at line 178: uses module np"
+   "ShapeBuilder.create_swept_disk_solid": "the derived attribute Dim needs the EXPRESS rules",
+   "ShapeBuilder.extrude_face_set": "No rules rule at line 1755: uses module np",
+   "ShapeBuilder.face_surface": "No rules rule at line 1033: uses module np",
+   "ShapeBuilder.get_trim_points_from_mask": "No rules rule at line 666: uses module np",
+   "ShapeBuilder.mep_bend_shape": "No rules rule at line 2249: uses module np",
+   "ShapeBuilder.mep_transition_calculate": "No rules rule at line 2104: uses module np",
+   "ShapeBuilder.mep_transition_length": "No rules rule at line 2031: uses module np",
+   "ShapeBuilder.mep_transition_shape": "No rules rule at line 1841: uses module np",
+   "ShapeBuilder.mirror": "No rules rule at line 1105: uses module np",
+   "ShapeBuilder.profile": "the derived attribute Dim needs the EXPRESS rules",
+   "V": "No rules rule at line 74: uses module np"
   }
  },
  "util/space": {

@@ -97,6 +97,9 @@ export function astimezone(value: Temporal.PlainDateTime): Temporal.ZonedDateTim
 }
 
 /** a - b when the type of b is not known: a date moved back by a duration, or the duration between two dates. */
+export function minus(a: DateLike, b: DateLike): number;
+export function minus(a: DateLike, b: number): DateLike;
+export function minus(a: DateLike, b: DateLike | number): DateLike | number;
 export function minus(a: DateLike, b: DateLike | number): DateLike | number {
   return typeof b === 'number' ? subtract(a, b) : between(a, b);
 }

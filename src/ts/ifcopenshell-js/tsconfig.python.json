@@ -12,6 +12,6 @@
     "noImplicitOverride": false,
     "declarationMap": false
   },
-  "include": ["src/util/**/*.ts", "src/api/**/*.ts", "src/helpers/lang.ts", "src/helpers/placement.ts"],
+  "include": ["src/util/**/*.ts", "src/api/**/*.ts", "src/helpers/lang.ts", "src/helpers/placement.ts", "src/helpers/object_placement.ts", "src/helpers/geolocation.ts", "src/helpers/shape_builder_methods.ts"],
   "exclude": []
 }

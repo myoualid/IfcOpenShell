@@ -115,7 +115,9 @@ export class File extends IfcOpenshellFile {
 
   /**
    * Create an entity with any of its IFC attributes: by schema name in an object, or by
-   * position in an array. Give `id` to create the entity with that id.
+   * position in an array. An object may also give positions as keys ("0", "1"), so that
+   * `{ ...[a], Name: b }` sets the first attribute and `Name`. Give `id` to create the
+   * entity with that id.
    */
   create(
     ifcClass: string,
@@ -127,7 +129,7 @@ export class File extends IfcOpenshellFile {
     try {
       const entries = Array.isArray(attributes)
         ? attributes.map((value, index) => [index, value] as const)
-        : Object.entries(attributes);
+        : Object.entries(attributes).map(([key, value]) => [/^\d+$/.test(key) ? Number(key) : key, value] as const);
       for (const [nameOrIndex, value] of entries) entity.set(nameOrIndex, value);
       return entity;
     } catch (error) {

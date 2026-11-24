@@ -27,5 +27,5 @@
   },
   "include": ["src/**/*.ts"],
   // Transpiled from ifcopenshell.util and ifcopenshell.api; built by tsconfig.python.json.
-  "exclude": ["src/util", "src/api", "src/helpers/lang.ts", "src/helpers/placement.ts"]
+  "exclude": ["src/util", "src/api", "src/helpers/lang.ts", "src/helpers/placement.ts", "src/helpers/object_placement.ts", "src/helpers/geolocation.ts", "src/helpers/shape_builder_methods.ts"]
 }
