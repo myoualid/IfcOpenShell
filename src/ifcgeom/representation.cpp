@@ -18,6 +18,7 @@
  ********************************************************************************/
 
 #include "representation.h"
+#include "mesh_metrics.h"
 
 
 
@@ -246,4 +247,8 @@ int ifcopenshell::geom::native::item_id(int i) const {
 	} else {
 		return 0;
 	}
+}
+
+double ifcopenshell::geom::triangulation::footprint_area(double x, double y, double z) const {
+	return ifcopenshell::geom::mesh_metrics::footprint_area(verts_, faces_, x, y, z);
 }
