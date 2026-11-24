@@ -189,8 +189,8 @@ def offset_work_time(
         midnight = datetime.datetime.combine(day, datetime.time(), start.tzinfo)
         periods = get_work_periods(day, calendar, work_day)
         days_without_work = 0 if periods else days_without_work + 1
-        for period_start, period_end in periods if sign > 0 else reversed(periods):
-            period_start, period_end = midnight + period_start, midnight + period_end
+        for begin, end in periods if sign > 0 else reversed(periods):
+            period_start, period_end = midnight + begin, midnight + end
             if sign > 0 and start < period_end:
                 start = max(start, period_start)
                 step = min(remaining, period_end - start)
