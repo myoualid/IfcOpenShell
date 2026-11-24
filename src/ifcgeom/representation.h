@@ -143,6 +143,10 @@ namespace ifcopenshell::geom {
 			const std::vector<int>& edges_item_ids() const { return edges_item_ids_; }
 			const std::vector<double>& rebase_offset() const { return rebase_offset_; }
 
+			/// Area of the footprint along a direction: the union of the triangles that face it, projected
+			/// onto the plane normal to it, as ifcopenshell.util.shape.get_footprint_area (see mesh_metrics.h).
+			double footprint_area(double x = 0., double y = 0., double z = 1.) const;
+
 			triangulation(const native& shape_model);
 
 			triangulation(
