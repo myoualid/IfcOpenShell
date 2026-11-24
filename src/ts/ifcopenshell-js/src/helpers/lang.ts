@@ -536,6 +536,11 @@ export function iadd(a: any, b: any): any {
 
 export const imul = mul;
 
+/** Python unary `-a` for numbers, and durations in microseconds. */
+export function neg(a: number): number {
+  return -a;
+}
+
 /** Python `a // b`: rounds towards negative infinity. */
 export function floordiv(a: number, b: number): number {
   if (b === 0) throw new Error('ZeroDivisionError: integer division or modulo by zero');

@@ -118,16 +118,16 @@ calls:
   list: Array.from<any>
 # Functions ported by hand into src/helpers, as they need TypedArrays in place of numpy: the generated
 # module imports and re-exports them. `source` is the hash of the Python function they were written
-# for (transpile.source_hash); when the Python changes, the function becomes a stub until the TS and
-# the hash are updated.
+# for (transpile.source_hash), or a list of them when one TS function covers several Python versions;
+# when the Python changes, the function becomes a stub until the TS and the hash are updated.
 hand_written:
   util.placement.a2p: {module: helpers.placement, source: f79f3a080af8}
   util.placement.get_placement: {module: helpers.placement, source: d6eaf3e9e086}
   util.placement._operator_placement: {module: helpers.placement, source: 641f28f6e22c}
   util.placement.get_mappeditem_transformation: {module: helpers.placement, source: a8ce8b023187}
   util.placement.rotation: {module: helpers.placement, source: 727f3b8e44cd}
-  util.date.parse_duration: {module: helpers.date, source: b2d73dca5b0c}
-  util.date.timedelta2duration: {module: helpers.date, source: 06610bf8f44c}
+  util.date.parse_duration: {module: helpers.date, source: [b2d73dca5b0c, b524e1a94833]}
+  util.date.timedelta2duration: {module: helpers.date, source: [06610bf8f44c, 1a6c6a3ec691]}
   util.date.ifc2datetime: {module: helpers.date, source: f125d79ce53a}
   util.date.datetime2ifc: {module: helpers.date, source: ff7475e7ea1a}
   util.date.string_to_date: {module: helpers.date, source: 29a5f637a588}
@@ -159,9 +159,9 @@ runtime_modules:
 # Functions of the ifcopenshell-js geom module, which rules call since `import ifcopenshell.geom` binds no local name.
 geom_functions:
   ifcopenshell.geom.create_shape: createShape
-# Runtime modules whose objects overload Python operators; in modules importing them,
-# operators and subscripts on values of unknown type dispatch at runtime.
-overloading_modules: []
+# In modules importing these, operators on values of unknown type go through lang (add, sub, ...), which
+# also moves dates by durations (see helpers/dates.ts).
+overloading_modules: [datetime]
 # Kind of values returned by runtime module functions; see `inference`.
 runtime_kinds: {}
 # numpy functions that return Python scalars or booleans rather than arrays.
@@ -177,7 +177,7 @@ dunder_operators:
   Pow: pow
   MatMult: matmul
 # Imported modules that rules translate (others are dropped and their users stubbed).
-supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field, itertools, chain, lark, datetime, relativedelta]
+supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field, itertools, chain, logging, lark, datetime, relativedelta]
 # Modules imported only for annotations.
 type_only_modules: [typing, typing_extensions, collections.abc, __future__, collections, functools]
 # Functions that introspect Python itself; generate.py runs them for each argument and
@@ -209,10 +209,11 @@ operators:
 types:
   - input: null
     output: any
-  # Dates: Temporal objects; a timedelta is a number of microseconds (src/helpers/dates.ts).
+  # Dates: Temporal objects; a timedelta is a number of microseconds (src/helpers/dates.ts). A date hint
+  # accepts a datetime too, as a Python datetime is a date.
   - input: $value
     when: value | source in ["datetime.datetime", "datetime.date", "datetime.time", "datetime", "date", "time"] and value | source not in classes
-    output: '{{ "helpers.dates" | use("dates") }}.Temporal.Plain{{ {"datetime": "DateTime", "date": "Date", "time": "Time"}[(value | source).split(".")[-1]] }}'
+    output: '{% set name = (value | source).split(".")[-1] %}{% if name == "date" %}{{ "helpers.dates" | use("dates") }}.DateLike{% else %}{{ "helpers.dates" | use("dates") }}.Temporal.Plain{{ {"datetime": "DateTime", "time": "Time"}[name] }}{% endif %}'
   - input: $value
     when: value | source in ["datetime.timedelta", "timedelta"]
     output: number
@@ -701,6 +702,22 @@ rules:
         - $right
     when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind == "unknown" or right | kind == "unknown") and left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant"
     output: '{{ "helpers.lang" | use("lang") }}.{{ {"Lt": "lt", "LtE": "le", "Gt": "gt", "GtE": "ge"}[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
+  # logging: the console. getLogger() gives the console; its methods take the same %s arguments.
+  - input:
+      node: Call
+      func: $callee
+    when: callee | source in ["logging.getLogger", "getLogger"]
+    output: console
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
+      args: $args
+      keywords: []
+    when: method in ["debug", "info", "warning", "error", "critical", "exception"] and value | source in ["logger", "log", "logging"]
+    output: 'console.{{ {"debug": "debug", "info": "info", "warning": "warn", "error": "error", "critical": "error", "exception": "error"}[method] }}({{ args | map("emit") | join(", ") }})'
   # Matrix multiplication needs numpy arrays, which the generated code does not have.
   - input:
       node: BinOp
