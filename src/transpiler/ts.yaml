@@ -27,7 +27,7 @@ header: |-
 # Generated modules live in src/util and src/api of the ifcopenshell package; the runtime is in
 # src/helpers: util.x is util/x.ts, api.p.u is api/p/u.ts and api.p is api/p/index.ts.
 import: |-
-  {% if target.startswith("!") %}import * as {{ alias }} from "./{{ target[1:] }}.cjs";{% else %}{% set there = target.split(".") %}{% set path = there | join("/") ~ ".js" if there[0] in ["util", "helpers", "geom"] or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ root }}{{ path }}";{% endif %}
+  {% if target.startswith("!") %}import * as {{ alias }} from "./{{ target[1:] }}.js";{% else %}{% set there = target.split(".") %}{% set path = there | join("/") ~ ".js" if there[0] in ["util", "helpers", "geom"] or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ root }}{{ path }}";{% endif %}
 # Classes of ifcopenshell_wrapper, as exported by ifcopenshell.wrapper.
 wrapper_classes:
   attribute: IfcOpenshellAttribute

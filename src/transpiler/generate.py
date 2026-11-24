@@ -75,9 +75,15 @@ def write_parsers(grammars, folder, source_path):
             grammar_file = Path(temporary) / f"{name}.lark"
             grammar_file.write_text(grammar, encoding="utf-8")
             # Python's Lark gives a None for each missing [optional] item; so does this parser.
-            command = [sys.executable, "-m", "larkjs", str(grammar_file), "-o", str(folder / f"{name}.cjs")]
+            output = Path(temporary) / f"{name}.cjs"
+            command = [sys.executable, "-m", "larkjs", str(grammar_file), "-o", str(output)]
             subprocess.run(command + ["--maybe_placeholders"], check=True)
-        (folder / f"{name}.d.cts").write_text(
+            # lark-js writes CommonJS; an ES module works in browsers, Node and bundlers alike.
+            code = output.read_text(encoding="utf-8")
+            if code.count("module.exports = {") != 1:
+                raise ValueError(f"Unexpected lark-js output for {name}")
+            (folder / f"{name}.js").write_text(code.replace("module.exports = {", "export {"), encoding="utf-8")
+        (folder / f"{name}.d.ts").write_text(
             f"// Lark.js parser of a grammar in ifcopenshell/{source_path.relative_to(PACKAGE).as_posix()}; written by generate.py.\n"
             "export function get_parser(options?: object): { parse(text: string): any };\n",
             encoding="utf-8",

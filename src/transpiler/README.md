@@ -100,7 +100,7 @@ the expression in the reason; typing the Python is the way to translate it. A `F
 wrapper per entity, so `===`, `Set` and `Map` compare entities by identity, as Python's `==` does.
 
 LALR grammars (`lark.Lark(grammar, parser="lalr")`) become [Lark.js](https://github.com/lark-parser/lark.js)
-parsers: `generate.py` runs lark-js on the same grammar and writes `<module>_grammar<n>.cjs`, with its type
+parsers: `generate.py` runs lark-js on the same grammar and writes `<module>_grammar<n>.js` (an ES module), with its type
 declarations, next to the generated module. Install `requirements.txt` in its own environment, as it pins
 `lark` for lark-js.
 
