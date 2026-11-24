@@ -163,7 +163,7 @@ dunder_operators:
   Pow: pow
   MatMult: matmul
 # Imported modules that rules translate (others are dropped and their users stubbed).
-supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field, itertools, chain]
+supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field, itertools, chain, logging]
 # Modules imported only for annotations.
 type_only_modules: [typing, typing_extensions, collections.abc, __future__, collections, functools]
 # Functions that introspect Python itself; generate.py runs them for each argument and
@@ -464,6 +464,22 @@ rules:
         - $right
     when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind == "unknown" or right | kind == "unknown") and left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant"
     output: '{{ "helpers.lang" | use("lang") }}.{{ {"Lt": "lt", "LtE": "le", "Gt": "gt", "GtE": "ge"}[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
+  # logging: the console. getLogger() gives the console; its methods take the same %s arguments.
+  - input:
+      node: Call
+      func: $callee
+    when: callee | source in ["logging.getLogger", "getLogger"]
+    output: console
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
+      args: $args
+      keywords: []
+    when: method in ["debug", "info", "warning", "error", "critical", "exception"] and value | source in ["logger", "log", "logging"]
+    output: 'console.{{ {"debug": "debug", "info": "info", "warning": "warn", "error": "error", "critical": "error", "exception": "error"}[method] }}({{ args | map("emit") | join(", ") }})'
   # Matrix multiplication needs numpy arrays, which the generated code does not have.
   - input:
       node: BinOp
