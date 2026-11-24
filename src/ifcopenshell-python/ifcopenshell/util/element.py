@@ -41,6 +41,26 @@ PrioritisedLayer = namedtuple("PrioritisedLayer", "priority material thickness")
 PrioritisedProfile = namedtuple("PrioritisedProfile", "priority material profile")
 
 
+@overload
+def get_pset(
+    element: ifcopenshell.entity_instance,
+    name: str,
+    prop: None = None,
+    psets_only: bool = False,
+    qtos_only: bool = False,
+    should_inherit: bool = True,
+    verbose: bool = False,
+) -> Optional[dict[str, Any]]: ...
+@overload
+def get_pset(
+    element: ifcopenshell.entity_instance,
+    name: str,
+    prop: str,
+    psets_only: bool = False,
+    qtos_only: bool = False,
+    should_inherit: bool = True,
+    verbose: bool = False,
+) -> Any: ...
 def get_pset(
     element: ifcopenshell.entity_instance,
     name: str,
