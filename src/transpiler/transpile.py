@@ -740,6 +740,12 @@ class Transpiler:
                 continue
             if isinstance(name, ast.Name) and isinstance(name.ctx, ast.Load) and name.id in foreign - bound:
                 raise ValueError(f"No rules rule at line {name.lineno}: uses module {name.id}")
+            if (
+                isinstance(name, ast.Name)
+                and isinstance(name.ctx, ast.Load)
+                and name.id in self.unavailable.keys() - bound
+            ):
+                raise ValueError(f"uses {name.id}, a module value that is not translated: {self.unavailable[name.id]}")
 
     def annotate(self, name, annotation, values_only=False):
         """Record the kind of an annotated name, and of its values (`name[]`) for dict[K, V]."""
@@ -993,6 +999,7 @@ class Transpiler:
         self.symbols = {}
         self.imports = {}
         foreign = self.foreign = self.foreign_names(tree)
+        self.unavailable = {}
         output = []
         for node in tree.body:
             functions = [node] if isinstance(node, ast.FunctionDef) else []
@@ -1227,6 +1234,19 @@ class Transpiler:
                 name = getattr(node, "name", f"line {node.lineno}")
                 reason = str(error) if isinstance(error, ValueError) else f"{type(error).__name__}: {error}"
                 self.unsupported.append(f"{name}: {reason}")
+                targets = [t for n in [node] if isinstance(n, ast.Assign) for t in n.targets] + (
+                    [node.target] if isinstance(node, ast.AnnAssign) else []
+                )
+                if targets and all(isinstance(t, ast.Name) for t in targets) and self.rules.get("module_value_stubs"):
+                    value = node.value
+                    if isinstance(value, ast.Call) and ast.unparse(value.func).split(".")[-1] in ("TypeVar", "NewType"):
+                        # A type variable that annotations use: any.
+                        output.append("\n".join(f"export type {t.id} = any;" for t in targets))
+                        continue
+                    # The module still loads; functions that use this value become stubs with this reason.
+                    self.unavailable.update({t.id: reason for t in targets})
+                    output.append("\n".join(f"export const {self.ident(t.id)}: any = undefined;" for t in targets))
+                    continue
                 if not isinstance(node, (ast.FunctionDef, ast.ClassDef)):
                     raise ValueError(reason) from error  # Never silently discard module data.
                 self.imports = imports  # Drop imports only the failed function needed.

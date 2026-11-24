@@ -134,6 +134,8 @@ unsupported_functions:
   util.unit.iter_element_and_attributes_per_type: "iterating a file gives entities of no proven type"
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
+# A module value that cannot be translated is undefined; the functions that use it become stubs.
+module_value_stubs: true
 # Translate the methods of a class one by one: a method that cannot be translated becomes a stub, not its class.
 method_stubs: true
 # Declare locals where they are first bound, when their uses allow it.
