@@ -115,6 +115,16 @@ def classify(proper, types):
         return "array", False
     if name in SETS:
         return "set", False
+    if name in ("builtins.dict", "typing.Mapping", "typing.MutableMapping"):
+        # dict[str, ...] is a JS object in the generated code; other keys (entities, numbers, tuples) a Map.
+        key = types.get_proper_type(proper.args[0]) if proper.args else None
+        if not isinstance(key, types.Instance):
+            return None
+        if key.type.fullname == "builtins.str":
+            return "dict", False
+        if key.type.fullname in ("builtins.int",) or key.type.fullname.endswith(".entity_instance"):
+            return "map", False
+        return None
     if name.startswith("numpy."):
         return "ndarray", False
     if name.endswith((".entity_instance", ".entity_instance_mixin")):

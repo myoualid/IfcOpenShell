@@ -287,6 +287,19 @@ def declaration_sites(function):
     return sites
 
 
+def attribute_kinds():
+    """IFC attribute names whose declarations in all schemas have one kind: entity, string, number, boolean, array."""
+    attributes = json.loads((Path(__file__).parent / "attributes.json").read_text(encoding="utf-8"))
+    kinds = {}
+    for name, entry in attributes.items():
+        found = {"array" if isinstance(t, list) else t for t in entry["types"]}
+        if len(found) == 1:
+            kinds[name] = found.pop()
+        elif found <= {"entity", "string", "number", "boolean"}:
+            kinds[name] = "scalar"  # Truthiness and equality are the same for these kinds in JS.
+    return kinds
+
+
 def unsupported(reason):
     """Make the function that a rule renders a stub, with this reason."""
     raise ValueError(reason)
@@ -296,6 +309,8 @@ class Transpiler:
     def __init__(self, rules, index=None, precomputed=None, types=None):
         self.types = types or {}
         self.rules = yaml.safe_load(Path(rules).read_text(encoding="utf-8"))
+        # The kind of each IFC attribute name, when all its declarations in the schemas have one kind.
+        self.rules["attribute_kinds"] = attribute_kinds()
         # The version of this checkout, for ifcopenshell.version.
         self.rules["ifcopenshell_version"] = (PACKAGE.parents[2] / "VERSION").read_text(encoding="utf-8").strip()
         self.index = index or {}
@@ -332,6 +347,7 @@ class Transpiler:
             emit_in=self.emit_in,
             type=lambda n: self.emit(n, "types"),
             kind=self.kind,
+            element_kind=self.element_kind,
             nullable=self.nullable,
             condition=lambda n: self.emit(n, context="condition"),
             iterable=lambda n: self.emit(n, context="iterable"),
@@ -828,6 +844,25 @@ class Transpiler:
         proven = self.proven(node)
         return proven[0] if proven else self.emit(node, "inference")
 
+    def element_kind(self, node):
+        """The kind of the elements of a list, tuple, set or comprehension; unknown when they differ."""
+        if isinstance(node, (ast.ListComp, ast.GeneratorExp, ast.SetComp)):
+            return self.kind(node.elt)
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)) and node.elts:
+            kinds = {self.kind(e) for e in node.elts}
+            return kinds.pop() if len(kinds) == 1 else "unknown"
+        if isinstance(node, ast.Name) and f"{node.id}[]" in self.symbols:
+            return self.symbols[f"{node.id}[]"]
+        if isinstance(node, ast.Name) and node.id in self.scope and node.id not in self.shadowed - set(self.scope):
+            annotation = ast.parse(self.scope[node.id]).body[0].value
+            if (
+                isinstance(annotation, ast.Subscript)
+                and ast.unparse(annotation.value) in ("list", "List", "Sequence", "set", "Set", "Iterable")
+                and not isinstance(annotation.slice, ast.Tuple)
+            ):
+                return self.emit(annotation.slice, "annotation_kinds")
+        return "unknown"
+
     def nullable(self, node):
         proven = self.proven(node)
         return not proven or proven[1]
@@ -1006,16 +1041,6 @@ class Transpiler:
             for n in ast.walk(node):
                 if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
                     self.annotate(n.target.id, n.annotation, values_only=True)
-            # A parameter defaulting to True or False is a flag, whatever its annotation says.
-            for function in functions:
-                arguments = function.args
-                positional = arguments.args[len(arguments.args) - len(arguments.defaults) :]
-                for argument, default in [
-                    *zip(positional, arguments.defaults),
-                    *zip(arguments.kwonlyargs, arguments.kw_defaults),
-                ]:
-                    if isinstance(default, ast.Constant) and isinstance(default.value, bool):
-                        self.symbols[argument.arg] = "boolean"
             for function in functions:
                 self.symbols.update(
                     {
@@ -1023,6 +1048,21 @@ class Transpiler:
                         for a in function.args.args + function.args.kwonlyargs
                     }
                 )
+            # A parameter defaulting to True or False is a flag, whatever its annotation says. A parameter
+            # with no annotation and a number or text default has the kind of its default.
+            for function in functions:
+                arguments = function.args
+                positional = arguments.args[len(arguments.args) - len(arguments.defaults) :]
+                for argument, default in [
+                    *zip(positional, arguments.defaults),
+                    *zip(arguments.kwonlyargs, arguments.kw_defaults),
+                ]:
+                    if not isinstance(default, ast.Constant):
+                        continue
+                    if isinstance(default.value, bool):
+                        self.symbols[argument.arg] = "boolean"
+                    elif argument.annotation is None and isinstance(default.value, (int, float, str)):
+                        self.symbols[argument.arg] = "string" if isinstance(default.value, str) else "number"
             # Resolve local data shapes without embedding target-language decisions here.
             bindings = [n for n in ast.walk(node) if isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr))]
             # A parameter annotated as a union of kinds (an entity or a list) keeps no single kind when
