@@ -575,6 +575,10 @@ def get_footprint_area(
     if direction is None:
         direction = {"X": (1.0, 0.0, 0.0), "Y": (0.0, 1.0, 0.0), "Z": (0.0, 0.0, 1.0)}[axis]
 
+    # The geometry library computes the same footprint in C++ (Boost.Geometry), when it has it.
+    if hasattr(geometry, "footprint_area"):
+        return geometry.footprint_area(*(float(d) for d in direction))
+
     vertices = get_vertices(geometry)
     faces = get_faces(geometry)
 
