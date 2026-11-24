@@ -1116,7 +1116,11 @@ class Transpiler:
                     and n.func.attr in ("add", "discard", "remove", "update", "clear", "pop")
                 }
                 for a in function.args.args + function.args.kwonlyargs:
-                    if a.annotation and a.arg in mutated and ast.unparse(a.annotation).startswith(("set[", "Set[", "set")):
+                    if (
+                        a.annotation
+                        and a.arg in mutated
+                        and ast.unparse(a.annotation).startswith(("set[", "Set[", "set"))
+                    ):
                         a.widened = True
                     annotated = self.emit(a.annotation, "annotation_kinds") if a.annotation else None
                     # Checked with isinstance, then rebound (x = [x]): the value is not of its annotated type.
