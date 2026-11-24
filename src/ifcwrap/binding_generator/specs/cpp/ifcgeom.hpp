@@ -108,6 +108,7 @@ IFCAPI_HANDLE(taxonomy_boolean_result, ifcopenshell::geom::taxonomy::boolean_res
 IFCAPI_DISCOVER_METHOD(triangulation, edges, edges)
 IFCAPI_DISCOVER_METHOD(triangulation, edges_item_ids, edges_item_ids)
 IFCAPI_DISCOVER_METHOD(triangulation, faces, faces)
+IFCAPI_DISCOVER_METHOD(triangulation, footprint_area, footprint_area, double, double, double)
 IFCAPI_DISCOVER_METHOD(triangulation, item_ids, item_ids)
 IFCAPI_DISCOVER_METHOD(triangulation, material_ids, material_ids)
 IFCAPI_DISCOVER_METHOD(triangulation, materials, materials)
