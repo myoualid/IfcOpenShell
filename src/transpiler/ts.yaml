@@ -10,6 +10,11 @@ unsupported: |
   }{% else %}export function {{ name | camel }}(..._args: any[]): any {
     throw new Error({{ ("Unsupported Python in " ~ name ~ ": " ~ reason) | literal }});
   }{% endif %}
+# A method that cannot be translated, in a class whose other methods are (see method_stubs).
+unsupported_method: |-
+  {% if method == "__init__" %}constructor(..._args: any[]) {{ "{" }}{% else %}{{ "static " if static else "" }}{{ method if method.startswith("__") else method | camel }}(..._args: any[]): any {{ "{" }}{% endif %}
+    throw new Error({{ ("Unsupported Python in " ~ name ~ ": " ~ reason) | literal }});
+  }
 header: |-
   // This file was generated with the assistance of an AI coding tool.
   // SPDX-License-Identifier: LGPL-3.0-or-later
@@ -125,9 +130,12 @@ hand_written_import: |-
 # Functions whose types the rules cannot prove, so they stay stubs, with the reason.
 unsupported_functions:
   api.library.assign_reference.assign_reference: "products is annotated as one entity_instance but used as a list"
+  api.project.append_asset.append_asset: "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
   util.unit.iter_element_and_attributes_per_type: "iterating a file gives entities of no proven type"
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
+# Translate the methods of a class one by one: a method that cannot be translated becomes a stub, not its class.
+method_stubs: true
 # Declare locals where they are first bound, when their uses allow it.
 inline_locals: true
 # Take the kind of an expression from mypy_types when it is proven there.
@@ -340,7 +348,14 @@ types:
         id: $kind
     when: kind in ['Any', 'Iterator', 'Generator', 'Callable']
     output: any
+# Functions that return numpy arrays and are not written by hand: code that calls them is numpy code.
+numpy_functions: [util.shape_builder.V]
 rules:
+  - input:
+      node: Call
+      func: $callee
+    when: callee | resolve in numpy_functions
+    output: '{{ ("calls " ~ (callee | resolve) ~ ", which returns a numpy array") | unsupported }}'
   # m[i, j] and m[:, j] index numpy arrays; they need the hand-written TypedArray code (see hand_written).
   - input:
       node: Subscript
@@ -659,6 +674,21 @@ rules:
       attr: version
     when: node | source == "ifcopenshell.version"
     output: '{{ ifcopenshell_version | literal }}'
+  # Derived attributes: Python computes them with the generated EXPRESS rules (ifcopenshell.express.rules).
+  - input:
+      node: Attribute
+      attr: $name
+    when: name in ["Dim"] and node.ctx.__class__.__name__ == "Load"
+    output: '{{ ("the derived attribute " ~ name ~ " needs the EXPRESS rules") | unsupported }}'
+  # Methods of the native file that ifcopenshell-js does not expose.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $name
+    when: name in ["assign_header_from"] and value | kind == "file"
+    output: '{{ ("ifcopenshell.file." ~ name ~ " is not exposed") | unsupported }}'
   - input:
       node: Attribute
       attr: $name
@@ -700,6 +730,16 @@ rules:
       keywords: $keywords
     when: value | kind in ["ndarray", "pyobject"] and not method.startswith("__")
     output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "helpers.lang" | use("lang") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+  # Python sets an attribute of an entity by position: entity[i] = value.
+  - input:
+      node: Assign
+      targets:
+        - node: Subscript
+          value: $container
+          slice: $index
+      value: $value
+    when: container | kind == "entity" and (index | kind == "number" or index.__class__.__name__ == "Constant" and index.value is integer)
+    output: '{{ container | emit }}.set({{ index | emit }}, {{ value | emit }});'
   # Subscripts of arrays, and of values of unknown type where operators are overloaded: Python
   # indexing (negative indices, slices, tuples of indices) through the runtime.
   - input:
@@ -1101,11 +1141,7 @@ rules:
             node: Name
             id: $name
       body: $body
-    output: |-
-      {
-        const {{ name | ident }} = {{ "helpers.lang" | use("lang") }}.open({{ args | map("emit") | join(", ") }});
-      {{ body | emit | indent(2, true) }}
-      }
+    output: '{{ "file access with open()" | unsupported }}'
   - input:
       node: With
       items:
@@ -1135,7 +1171,7 @@ rules:
       args:
         - $file
       keywords: []
-    output: 'JSON.parse({% if file.__class__.__name__ == "Call" and file.func.id is defined and file.func.id == "open" %}{{ "helpers.lang" | use("lang") }}.open({{ file.args | map("emit") | join(", ") }}){% else %}{{ file | emit }}{% endif %}.read())'
+    output: '{% if file.__class__.__name__ == "Call" and file.func.id is defined and file.func.id == "open" %}{{ "file access with open()" | unsupported }}{% else %}JSON.parse({{ file | emit }}.read()){% endif %}'
   - input:
       node: Global
     output: ''

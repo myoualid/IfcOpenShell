@@ -329,7 +329,7 @@ class Transpiler:
         self.env.tests["startswith"] = lambda value, prefix: str(value).startswith(prefix)
         self.env.filters.update(
             emit=self.emit,
-            emit_in=lambda n, context: self.emit(n, context=context),
+            emit_in=self.emit_in,
             type=lambda n: self.emit(n, "types"),
             kind=self.kind,
             nullable=self.nullable,
@@ -683,6 +683,25 @@ class Transpiler:
                     names |= {a.asname or a.name for a in node.names}
         return names - set(self.rules.get("supported_modules", ())) - set(self.runtime_names)
 
+    def emit_in(self, node, context):
+        """Emit a node in a context; with method_stubs, a method that cannot be translated becomes a stub."""
+        if context != "member" or not isinstance(node, ast.FunctionDef) or not self.rules.get("method_stubs"):
+            return self.emit(node, context=context)
+        imports = dict(self.imports)
+        try:
+            self.check_foreign(node, self.foreign)
+            return self.emit(node, context=context)
+        except Exception as error:
+            reason = str(error) if isinstance(error, ValueError) else f"{type(error).__name__}: {error}"
+            name = f"{self.current_class}.{node.name}"
+            self.unsupported.append(f"{name}: {reason}")
+            self.imports = imports  # Drop imports only the failed method needed.
+            static = "staticmethod" in [ast.unparse(d) for d in node.decorator_list]
+            return self.render(
+                self.rules["unsupported_method"],
+                {"name": name, "method": node.name, "reason": reason, "static": static},
+            )
+
     def check_foreign(self, node, foreign):
         """Reject code that uses a dropped import, rather than emit a reference that fails at runtime."""
         bound = {n.id for n in ast.walk(node) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
@@ -938,7 +957,7 @@ class Transpiler:
         self.unsupported = []
         self.symbols = {}
         self.imports = {}
-        foreign = self.foreign_names(tree)
+        foreign = self.foreign = self.foreign_names(tree)
         output = []
         for node in tree.body:
             functions = [node] if isinstance(node, ast.FunctionDef) else []
@@ -1156,7 +1175,13 @@ class Transpiler:
                 locates_module = isinstance(node, ast.Assign) and "__file__" in ast.unparse(node.value)
                 type_alias = isinstance(node, ast.Assign) and is_type(node.value)
                 if not isinstance(node, (ast.Import, ast.ImportFrom)) and not locates_module and not type_alias:
-                    self.check_foreign(node, foreign)
+                    if isinstance(node, ast.ClassDef) and self.rules.get("method_stubs"):
+                        # Methods are checked one by one in emit_in, so that one method does not stop its class.
+                        for part in node.bases + node.keywords + node.decorator_list + node.body:
+                            if not isinstance(part, ast.FunctionDef):
+                                self.check_foreign(part, foreign)
+                    else:
+                        self.check_foreign(node, foreign)
                 result = self.emit(node).rstrip()
             except Exception as error:
                 name = getattr(node, "name", f"line {node.lineno}")

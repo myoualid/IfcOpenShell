@@ -113,7 +113,7 @@ def tracking(manifest):
         group = groups[key if key.startswith("util/") else "/".join(key.split("/")[:2])]
         missing = {"(whole module)": entry["error"]} if "error" in entry else entry.get("stubs", {})
         group["total"] += entry["functions"]
-        group["done"] += 0 if "error" in entry else entry["functions"] - len(missing)
+        group["done"] += 0 if "error" in entry else entry["functions"] - len({k.split(".")[0] for k in missing})
         group["ported"] &= entry.get("error") != "not ported"
         if group["ported"]:
             group["missing"] += [(f"{Path(key).name}: {name}", reason) for name, reason in missing.items()]
@@ -273,10 +273,15 @@ def main():
     for scope in ("util", "api"):
         entries = [e for k, e in manifest.items() if k.startswith(f"{scope}/")]
         functions = sum(e["functions"] for e in entries)
-        stubs = sum(e["functions"] if "error" in e else len(e.get("stubs", {})) for e in entries)
+        # A class with a stubbed method (key "Class.method") counts as one stub, as a stubbed class does.
+        stubs = sum(
+            e["functions"] if "error" in e else len({k.split(".")[0] for k in e.get("stubs", {})}) for e in entries
+        )
+        methods = sum(len([k for k in e.get("stubs", {}) if "." in k]) for e in entries)
         failed = sum("error" in e for e in entries)
         print(
             f"ifcopenshell.{scope}: {len(entries) - failed}/{len(entries)} files, {functions - stubs}/{functions} functions translated"
+            f" ({methods} methods stubbed in otherwise translated classes)"
         )
     if args.report:
         tracking(manifest)
