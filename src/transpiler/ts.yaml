@@ -413,6 +413,57 @@ rules:
       keywords: []
     when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_aggregation_type")
     output: '{{ value | emit }}.asAggregationType().typeOfAggregationString()'
+  # Methods of entity declarations on a declaration that is not cast yet: cast it explicitly.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
+      args: $args
+      keywords: []
+    when: method in ["all_attributes", "all_inverse_attributes", "attribute_count", "attribute_index", "attribute_by_index", "derived", "is_abstract"] and value | kind != "entity" and not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_entity")
+    output: '{{ value | emit }}.asEntity().{{ method | camel }}({{ args | map("emit") | join(", ") }})'
+  # declared_type() is a method of named, simple and type declarations: cast explicitly.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: declared_type
+      args: []
+      keywords: []
+    output: '{{ "helpers.lang" | use("lang") }}.declaredType({{ value | emit }})'
+  # entity[0] = value: the attribute at that position.
+  - input:
+      node: Assign
+      targets:
+        - node: Subscript
+          value: $entity
+          slice: $index
+      value: $value
+    when: entity | kind == "entity" and index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0
+    output: '{{ entity | emit }}.set({{ index.value }}, {{ value | emit }});'
+  # Entity equality: two handles of one entity are equal (same identity() in the same file).
+  - input:
+      node: Compare
+      left: $left
+      ops:
+        - $op
+      comparators:
+        - $right
+    when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "entity" or right | kind == "entity") and not (left.__class__.__name__ == "Constant" or right.__class__.__name__ == "Constant")
+    output: '{{ "!" if op.__class__.__name__ == "NotEq" }}{{ "helpers.lang" | use("lang") }}.same({{ left | emit }}, {{ right | emit }})'
+  # Ordering of values of unknown type (dates from ifc2datetime, for example).
+  - input:
+      node: Compare
+      left: $left
+      ops:
+        - $op
+      comparators:
+        - $right
+    when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind == "unknown" or right | kind == "unknown") and left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant"
+    output: '{{ "helpers.lang" | use("lang") }}.{{ {"Lt": "lt", "LtE": "le", "Gt": "gt", "GtE": "ge"}[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
   # Matrix multiplication needs numpy arrays, which the generated code does not have.
   - input:
       node: BinOp
@@ -2028,7 +2079,7 @@ rules:
       args:
         - $item
       keywords: []
-    output: '{% set k = value | kind %}{% if k == "file" %}{{ value | emit }}.remove({{ item | emit }}){% elif k == "set" %}{{ value | emit }}.delete({{ item | emit }}){% elif k == "array" %}if ({{ value | emit }}.includes({{ item | emit }})) {{ value | emit }}.splice({{ value | emit }}.indexOf({{ item | emit }}), 1){% else %}{{ "helpers.lang" | use("lang") }}.remove({{ value | emit }}, {{ item | emit }}){% endif %}'
+    output: '{% set k = value | kind %}{% if k == "file" %}{{ value | emit }}.remove({{ item | emit }}){% elif k == "set" %}{{ value | emit }}.delete({{ item | emit }}){% elif k == "array" and item | kind in ["number", "string", "boolean"] %}if ({{ value | emit }}.includes({{ item | emit }})) {{ value | emit }}.splice({{ value | emit }}.indexOf({{ item | emit }}), 1){% else %}{{ "helpers.lang" | use("lang") }}.remove({{ value | emit }}, {{ item | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -2409,7 +2460,7 @@ rules:
       comparators:
         - $right
     when: op.__class__.__name__ in ["In", "NotIn"] and right | kind in ["array", "string"]
-    output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{{ right | emit }}.includes({{ left | emit }})'
+    output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{% if right | kind == "array" and left | kind not in ["number", "string", "boolean"] %}{{ "helpers.lang" | use("lang") }}.contains({{ right | emit }}, {{ left | emit }}){% else %}{{ right | emit }}.includes({{ left | emit }}){% endif %}'
   - input: *id001
     when: op.__class__.__name__ in ["In", "NotIn"] and right | kind == "dict"
     output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}Object.hasOwn({{ right | emit }}, {{ left | emit }})'
