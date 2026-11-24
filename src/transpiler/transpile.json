@@ -32,9 +32,7 @@
  "api/alignment/_create_geometric_representation": {
   "functions": 1,
   "source": "ifcopenshell/api/alignment/_create_geometric_representation.py",
-  "stubs": {
-   "_create_geometric_representation": "misspelled create method creatIfcShapeRepresentation in the Python source"
-  }
+  "stubs": {}
  },
  "api/alignment/_create_offset_curve_representation": {
   "functions": 1,
@@ -1411,7 +1409,9 @@
  "api/resource/calculate_resource_usage": {
   "functions": 1,
   "source": "ifcopenshell/api/resource/calculate_resource_usage.py",
-  "stubs": {}
+  "stubs": {
+   "calculate_resource_usage": "No rules rule at line 46: uses module datetime"
+  }
  },
  "api/resource/calculate_resource_work": {
   "functions": 1,
@@ -1545,13 +1545,15 @@
  "api/sequence/calculate_task_duration": {
   "functions": 2,
   "source": "ifcopenshell/api/sequence/calculate_task_duration.py",
-  "stubs": {}
+  "stubs": {
+   "Usecase": "No rules rule at line 126: uses module datetime"
+  }
  },
  "api/sequence/cascade_schedule": {
   "functions": 2,
   "source": "ifcopenshell/api/sequence/cascade_schedule.py",
   "stubs": {
-   "Usecase": "No rules rule at line 142: uses module datetime"
+   "Usecase": "No rules rule at line 155: uses module datetime"
   }
  },
  "api/sequence/copy_work_schedule": {
@@ -1593,7 +1595,7 @@
   "functions": 2,
   "source": "ifcopenshell/api/sequence/edit_task_time.py",
   "stubs": {
-   "Usecase": "No rules rule at line 132: uses module datetime"
+   "Usecase": "No rules rule at line 146: uses module datetime"
   }
  },
  "api/sequence/edit_work_calendar": {
@@ -1620,7 +1622,7 @@
   "functions": 2,
   "source": "ifcopenshell/api/sequence/recalculate_schedule.py",
   "stubs": {
-   "Usecase": "No rules rule at line 114: uses module nx"
+   "Usecase": "No rules rule at line 115: uses module nx"
   }
  },
  "api/sequence/remove_task": {
@@ -1709,7 +1711,7 @@
   "stubs": {}
  },
  "api/structural/add_structural_boundary_condition": {
-  "functions": 2,
+  "functions": 1,
   "source": "ifcopenshell/api/structural/add_structural_boundary_condition.py",
   "stubs": {}
  },
@@ -1753,11 +1755,6 @@
   "source": "ifcopenshell/api/structural/assign_structural_load_combination.py",
   "stubs": {}
  },
- "api/structural/assign_structural_load_group": {
-  "functions": 1,
-  "source": "ifcopenshell/api/structural/assign_structural_load_group.py",
-  "stubs": {}
- },
  "api/structural/assign_to_building": {
   "functions": 1,
   "source": "ifcopenshell/api/structural/assign_to_building.py",
@@ -1793,11 +1790,6 @@
   "source": "ifcopenshell/api/structural/edit_structural_load_case.py",
   "stubs": {}
  },
- "api/structural/remove_structural_activity": {
-  "functions": 1,
-  "source": "ifcopenshell/api/structural/remove_structural_activity.py",
-  "stubs": {}
- },
  "api/structural/remove_structural_analysis_model": {
   "functions": 1,
   "source": "ifcopenshell/api/structural/remove_structural_analysis_model.py",
@@ -1828,11 +1820,6 @@
   "source": "ifcopenshell/api/structural/remove_structural_load_group.py",
   "stubs": {}
  },
- "api/structural/unassign_from_building": {
-  "functions": 1,
-  "source": "ifcopenshell/api/structural/unassign_from_building.py",
-  "stubs": {}
- },
  "api/structural/unassign_structural_analysis_model": {
   "functions": 1,
   "source": "ifcopenshell/api/structural/unassign_structural_analysis_model.py",
@@ -1841,11 +1828,6 @@
  "api/structural/unassign_structural_load_combination": {
   "functions": 1,
   "source": "ifcopenshell/api/structural/unassign_structural_load_combination.py",
-  "stubs": {}
- },
- "api/structural/unassign_structural_load_group": {
-  "functions": 1,
-  "source": "ifcopenshell/api/structural/unassign_structural_load_group.py",
   "stubs": {}
  },
  "api/style/add_style": {
@@ -2094,13 +2076,13 @@
   "functions": 10,
   "source": "ifcopenshell/util/date.py",
   "stubs": {
-   "canonicalise_time": "No types rule at line 267: datetime.datetime",
-   "datetime2ifc": "No rules rule at line 152: uses module isodate",
-   "ifc2datetime": "No rules rule at line 58: uses module datetime",
-   "parse_duration": "No rules rule at line 226: uses module isodate",
-   "string_to_date": "No rules rule at line 191: uses module parser",
-   "string_to_duration": "No rules rule at line 217: uses module isodate",
-   "timedelta2duration": "No rules rule at line 40: uses module isodate"
+   "canonicalise_time": "No types rule at line 268: datetime.datetime",
+   "datetime2ifc": "No rules rule at line 153: uses module isodate",
+   "ifc2datetime": "No rules rule at line 59: uses module datetime",
+   "parse_duration": "No rules rule at line 227: uses module isodate",
+   "string_to_date": "No rules rule at line 192: uses module parser",
+   "string_to_duration": "No rules rule at line 218: uses module isodate",
+   "timedelta2duration": "No rules rule at line 41: uses module isodate"
   }
  },
  "util/doc": {
@@ -2156,11 +2138,9 @@
   "source": "ifcopenshell/util/mvd_info.py"
  },
  "util/placement": {
-  "functions": 7,
+  "functions": 6,
   "source": "ifcopenshell/util/placement.py",
-  "stubs": {
-   "get_grid_axis_coordinates": "No rules rule at line 219: uses module np"
-  }
+  "stubs": {}
  },
  "util/profiler": {
   "error": "not ported",
@@ -2181,9 +2161,11 @@
   }
  },
  "util/resource": {
-  "functions": 13,
+  "functions": 14,
   "source": "ifcopenshell/util/resource.py",
-  "stubs": {}
+  "stubs": {
+   "get_resource_required_work": "No rules rule at line 147: uses module datetime"
+  }
  },
  "util/schema": {
   "functions": 11,
@@ -2199,16 +2181,27 @@
   "source": "ifcopenshell/util/selector.py"
  },
  "util/sequence": {
-  "functions": 27,
+  "functions": 38,
   "source": "ifcopenshell/util/sequence.py",
   "stubs": {
-   "count_working_days": "No rules rule at line 100: uses module datetime",
-   "get_recent_working_day": "No rules rule at line 171: uses module datetime",
-   "get_soonest_working_day": "No rules rule at line 161: uses module datetime",
-   "get_start_or_finish_date": "No rules rule at line 125: uses module datetime",
-   "is_day_in_work_time": "No rules rule at line 206: uses module datetime",
-   "is_work_time_applicable_to_day": "No rules rule at line 231: uses module datetime",
-   "offset_date": "No rules rule at line 141: uses module datetime"
+   "count_working_days": "No rules rule at line 102: uses module datetime",
+   "get_lag_time": "No rules rule at line 525: uses module datetime",
+   "get_recent_working_day": "No rules rule at line 360: uses module datetime",
+   "get_soonest_working_day": "No rules rule at line 350: uses module datetime",
+   "get_start_or_finish_date": "No rules rule at line 119: uses module datetime",
+   "get_time_periods": "No rules rule at line 394: uses module datetime",
+   "get_work_day_duration": "No rules rule at line 468: uses module datetime",
+   "get_work_duration": "No rules rule at line 472: uses module datetime",
+   "get_work_finish": "No rules rule at line 256: uses module datetime",
+   "get_work_periods": "No rules rule at line 402: uses module datetime",
+   "get_work_start": "No rules rule at line 241: uses module datetime",
+   "get_work_time": "No rules rule at line 214: uses module datetime",
+   "is_day_in_work_time": "No rules rule at line 545: uses module datetime",
+   "is_work_time_applicable_to_day": "No rules rule at line 561: uses module datetime",
+   "offset_date": "No rules rule at line 138: uses module datetime",
+   "offset_lag": "No rules rule at line 273: uses module datetime",
+   "offset_work_time": "No rules rule at line 173: uses module datetime",
+   "snap_date": "No rules rule at line 304: uses module datetime"
   }
  },
  "util/shape": {
@@ -2290,14 +2283,13 @@
   }
  },
  "util/structural": {
-  "functions": 16,
+  "functions": 12,
   "source": "ifcopenshell/util/structural.py",
   "stubs": {
-   "_linked": "No rules rule at line 268: dict.fromkeys((c for c in candidates if c.is_a(ifc_class)))",
-   "get_global_axes": "No rules rule at line 210: uses module np",
-   "get_group_activities": "No rules rule at line 141: dict.fromkeys(candidates)",
-   "get_model_items": "No rules rule at line 61: dict.fromkeys((o for o in rel.RelatedObjects if o.is_a('IfcStructuralItem')))",
-   "get_model_load_cases": "No rules rule at line 92: dict.fromkeys((c for c in candidates if c.PredefinedType == 'LOAD_CASE'))"
+   "_linked": "No rules rule at line 203: dict.fromkeys((c for c in candidates if c.is_a(ifc_class)))",
+   "get_group_activities": "No rules rule at line 135: dict.fromkeys(candidates)",
+   "get_model_items": "No rules rule at line 55: dict.fromkeys((o for o in rel.RelatedObjects if o.is_a('IfcStructuralItem')))",
+   "get_model_load_cases": "No rules rule at line 86: dict.fromkeys((c for c in candidates if c.PredefinedType == 'LOAD_CASE'))"
   }
  },
  "util/system": {
@@ -2314,7 +2306,7 @@
   "functions": 34,
   "source": "ifcopenshell/util/unit.py",
   "stubs": {
-   "format_length": "No rules rule at line 976: uses module Fraction",
+   "format_length": "No rules rule at line 947: uses module Fraction",
    "is_attr_type": "isinstance of ifcopenshell_wrapper.aggregation_type needs explicit schema casts",
    "iter_element_and_attributes_per_type": "iterating a file gives entities of no proven type"
   }
