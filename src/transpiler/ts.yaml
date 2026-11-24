@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 unsupported: |
   {% if kind == "class" %}export class {{ name }} {
+    static [key: string]: any;
     [key: string]: any;
     constructor(..._args: any[]) {
       throw new Error({{ ("Unsupported Python in " ~ name ~ ": " ~ reason) | literal }});
@@ -12,16 +13,16 @@ unsupported: |
 header: |-
   // This file was generated with the assistance of an AI coding tool.
   // SPDX-License-Identifier: LGPL-3.0-or-later
-  // Transpiled from ifcopenshell/{{ this_module | replace(".", "/") }}.py by src/transpiler; see that file for copyright.
+  // Counterpart of ifcopenshell/{{ this_module | replace(".", "/") }}.py; see that file for copyright.
 
-  import * as ifcopenshell from "{{ "../" * (this_module.split(".") | length) }}index.js";{% if this_module in overridable %}
+  import * as ifcopenshell from "{{ "../" * (this_module.split(".") | length - 1) }}index.js";{% if this_module in overridable %}
 
   /** Replace these functions as Python code assigns to ifcopenshell.{{ this_module }}. */
   export const overrides: { [name: string]: ((...args: any[]) => any) | undefined } = {};{% endif %}
-# Generated modules live in src/python/{util,api} of the ifcopenshell package, next to the runtime
-# (src/python/_*.ts): util.x is util/x.ts, api.p.u is api/p/u.ts and api.p is api/p/index.ts.
+# Generated modules live in src/util and src/api of the ifcopenshell package; the runtime is in
+# src/helpers: util.x is util/x.ts, api.p.u is api/p/u.ts and api.p is api/p/index.ts.
 import: |-
-  {% set there = target.split(".") %}{% set path = there[1] ~ ".js" if there[1].startswith("_") else there | join("/") ~ ".js" if there[0] == "util" or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ "../" * (this_module.split(".") | length - 1) }}{{ path }}";
+  {% if target.startswith("!") %}import * as {{ alias }} from "./{{ target[1:] }}.js";{% else %}{% set there = target.split(".") %}{% set path = there | join("/") ~ ".js" if there[0] in ["util", "helpers", "geom"] or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ "../" * (this_module.split(".") | length - 1) }}{{ path }}";{% endif %}
 # Classes of ifcopenshell_wrapper, as exported by ifcopenshell.wrapper.
 wrapper_classes:
   attribute: IfcOpenshellAttribute
@@ -46,7 +47,7 @@ builtin_values:
   bool: Boolean
   bytes: '((v: any) => v)'
   dict: '((v: any = {}) => ({ ...v }))'
-  set: '((v: any = []) => new Set(v))'
+  set: '(set: rendered by the rule that emits builtin_values)'
 math_functions:
   sqrt: Math.sqrt
   sin: Math.sin
@@ -115,38 +116,54 @@ calls:
   str: String
   tuple: Array.from<any>
   list: Array.from<any>
-# Classes and functions ported by hand into a runtime module (src/python/_*.ts), as they use Python
-# libraries without rules (Lark grammars): the generated module imports and re-exports them.
+# Functions ported by hand into src/helpers, as they need TypedArrays in place of numpy: the generated
+# module imports and re-exports them. `source` is the hash of the Python function they were written
+# for (transpile.source_hash); when the Python changes, the function becomes a stub until the TS and
+# the hash are updated.
 hand_written:
-  util.cost.CostValueUnserialiser: util._cost
+  util.placement.a2p: {module: helpers.placement, source: f79f3a080af8}
+  util.placement.get_placement: {module: helpers.placement, source: d6eaf3e9e086}
+  util.placement._operator_placement: {module: helpers.placement, source: 641f28f6e22c}
+  util.placement.get_mappeditem_transformation: {module: helpers.placement, source: a8ce8b023187}
+  util.placement.rotation: {module: helpers.placement, source: 727f3b8e44cd}
+  util.date.parse_duration: {module: helpers.date, source: b2d73dca5b0c}
+  util.date.timedelta2duration: {module: helpers.date, source: 06610bf8f44c}
+  util.date.ifc2datetime: {module: helpers.date, source: f125d79ce53a}
+  util.date.datetime2ifc: {module: helpers.date, source: ff7475e7ea1a}
+  util.date.string_to_date: {module: helpers.date, source: 29a5f637a588}
+  util.date.string_to_duration: {module: helpers.date, source: 8fd81a7f425e}
+  util.date.canonicalise_time: {module: helpers.date, source: 4df9e42f361b}
 hand_written_import: |-
-  import { {{ name }} } from "{{ "../" * (this_module.split(".") | length - 1) }}{{ target.split(".")[1] }}.js";
-  export { {{ name }} };
+  import { {{ name | camel }} } from "{{ "../" * (this_module.split(".") | length - 1) }}{{ target | replace(".", "/") }}.js";
+  export { {{ name | camel }} };
+# Functions whose types the rules cannot prove, so they stay stubs, with the reason.
+unsupported_functions:
+  api.library.assign_reference.assign_reference: "products is annotated as one entity_instance but used as a list"
+  util.unit.iter_element_and_attributes_per_type: "iterating a file gives entities of no proven type"
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
+# Declare locals where they are first bound, when their uses allow it.
+inline_locals: true
+# Take the kind of an expression from mypy_types when it is proven there.
+proven_types: true
+# Initializers Python treats as dynamic, so their locals are `any` rather than inferred: dicts and schema reflection.
+dynamic_initializers: ['\(?\{', '.*\.declaration\(\)', '.*schemaByName\(', '.*declarationByName\(', '.*\.typeOfAttribute\(', '.*\.walk\(']
 # JS reserved words that are valid Python names get a trailing underscore.
 reserved: [new, class, function, var, default, delete, this, switch, case, const, let, enum, export, import, typeof, void, with, package, interface, private, protected, public, static, arguments, eval, instanceof, do, catch, extends, super, debugger, implements]
-# Python modules with a hand-written counterpart in src/ts/ifcopenshell-js/src/python: `import x as y` and
+# Python modules with a hand-written counterpart in src/ts/ifcopenshell-js/src/helpers: `import x as y` and
 # `from x import z` refer to `alias.member` of that module, with camelCase members.
 # math has no module; its names map through math_functions and math_constants.
 runtime_modules:
   math: {module: null}
-  datetime: {module: util._datetime, alias: datetime}
-  isodate: {module: util._isodate, alias: isodate}
-  dateutil: {module: util._dateutil, alias: dateutil}
-  numpy: {module: util._numpy, alias: np}
-  os: {module: util._os, alias: os}
-  re: {module: util._py, alias: py, prefix: re, plain_import: false}
-  itertools: {module: util._itertools, alias: itertools}
+  re: {module: helpers.lang, alias: lang, prefix: re, plain_import: false}
+# Functions of the ifcopenshell-js geom module, which rules call since `import ifcopenshell.geom` binds no local name.
+geom_functions:
+  ifcopenshell.geom.create_shape: createShape
 # Runtime modules whose objects overload Python operators; in modules importing them,
 # operators and subscripts on values of unknown type dispatch at runtime.
-overloading_modules: [datetime, isodate, dateutil, numpy]
+overloading_modules: []
 # Kind of values returned by runtime module functions; see `inference`.
-runtime_kinds:
-  numpy: ndarray
-  datetime: pyobject
-  isodate: pyobject
-  dateutil: pyobject
+runtime_kinds: {}
 # numpy functions that return Python scalars or booleans rather than arrays.
 numpy_scalars: [norm, dot, allclose, isclose, any, all, sum, min, max, mean, argmax, argmin, round, isnan, isinf, cos, sin, arctan, arcsin, arccos, radians, degrees, float64, float32, int64, int32]
 # Python arithmetic operators and their runtime functions for overloaded operands.
@@ -160,7 +177,7 @@ dunder_operators:
   Pow: pow
   MatMult: matmul
 # Imported modules that rules translate (others are dropped and their users stubbed).
-supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field]
+supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field, itertools, chain, lark, datetime, relativedelta]
 # Modules imported only for annotations.
 type_only_modules: [typing, typing_extensions, collections.abc, __future__, collections, functools]
 # Functions that introspect Python itself; generate.py runs them for each argument and
@@ -192,14 +209,21 @@ operators:
 types:
   - input: null
     output: any
+  # Dates: Temporal objects; a timedelta is a number of microseconds (src/helpers/dates.ts).
+  - input: $value
+    when: value | source in ["datetime.datetime", "datetime.date", "datetime.time", "datetime", "date", "time"] and value | source not in classes
+    output: '{{ "helpers.dates" | use("dates") }}.Temporal.Plain{{ {"datetime": "DateTime", "date": "Date", "time": "Time"}[(value | source).split(".")[-1]] }}'
+  - input: $value
+    when: value | source in ["datetime.timedelta", "timedelta"]
+    output: number
   - input:
       node: Subscript
       value: $array
     when: array | source in ["npt.NDArray", "NDArray"]
-    output: '{{ "util._numpy" | use("np") }}.NDArray'
+    output: any
   - input: $value
     when: value | source in ["npt.NDArray", "NDArray", "np.ndarray", "numpy.ndarray"]
-    output: '{{ "util._numpy" | use("np") }}.NDArray'
+    output: any
   - input: $value
     when: value | source in ["npt.ArrayLike", "npt.DTypeLike"] or (value | source).startswith("ifcopenshell.geom.") or (value | source).startswith("ifcopenshell.ifcopenshell_wrapper.")
     output: any
@@ -211,7 +235,7 @@ types:
     output: '{{ value | alias_value | type }}'
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module == "numpy"
-    output: '{% set name = (value | runtime_path).parts[-1] %}{{ ("util._numpy" | use("np")) ~ ".NDArray" if name in ["ndarray", "NDArray", "array"] else "boolean" if name == "bool_" else "number" }}'
+    output: '{% set name = (value | runtime_path).parts[-1] %}{{ ("helpers.numpy" | use("np")) ~ ".NDArray" if name in ["ndarray", "NDArray", "array"] else "boolean" if name == "bool_" else "number" }}'
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module in runtime_kinds
     output: '{% set path = value | runtime_path %}{{ runtime_modules[path.module].module | use(runtime_modules[path.module].alias) }}{% for part in path.parts %}.{{ part }}{% endfor %}'
@@ -338,18 +362,364 @@ types:
     when: kind in ['Any', 'Iterator', 'Generator', 'Callable']
     output: any
 rules:
-  # The matrix of a placement from the geometry kernel, composed by the runtime instead (_geom.ts).
+  # m[i, j] and m[:, j] index numpy arrays; they need the hand-written TypedArray code (see hand_written).
+  - input:
+      node: Subscript
+      slice:
+        node: Tuple
+    output: '{{ "numpy indexing (a tuple index)" | unsupported }}'
+  # Python indexes an entity by attribute position: entity[0] is its first attribute.
+  - input:
+      node: Subscript
+      value: $value
+      slice: $index
+    when: node.ctx.__class__.__name__ == "Load" and value | kind == "entity" and index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0
+    output: '({{ value | emit }}.get({{ index.value }}) as any)'
+  # lark.Lark(grammar, parser="lalr"): a Lark.js parser that generate.py makes from the same grammar.
+  - input:
+      node: Call
+      func: $callee
+      args:
+        - $grammar
+      keywords:
+        - node: keyword
+          arg: parser
+          value:
+            node: Constant
+            value: lalr
+    when: callee | source in ["lark.Lark", "Lark"] and grammar.__class__.__name__ == "Constant"
+    output: '{% if not lark_js %}{{ "lark-js is not installed" | unsupported }}{% endif %}{{ grammar | lark_parser }}.get_parser()'
+  # Other Lark parsers (Earley, or a grammar that is not a literal) have no Lark.js counterpart.
+  - input:
+      node: Call
+      func: $callee
+    when: callee | source in ["lark.Lark", "Lark"]
+    output: '{{ "Lark.js needs a literal grammar with the LALR parser" | unsupported }}'
+  # itertools.chain(*lists): the items of each list, in order.
+  - input:
+      node: Call
+      func: $callee
+      args:
+        - node: Starred
+          value: $lists
+      keywords: []
+    when: callee | source in ["itertools.chain", "chain"]
+    output: 'Array.from<any>({{ lists | iterable }}).flatMap((v: any) => [...v])'
+  # itertools.chain(a, b): one array with the items of a and then of b.
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: []
+    when: callee | source in ["itertools.chain", "chain"] and args | selectattr("__class__.__name__", "equalto", "Starred") | list | length == 0
+    output: '[{% for arg in args %}...{{ arg | iterable }}{% if not loop.last %}, {% endif %}{% endfor %}]'
+  # Schema declarations are not downcast: methods of one declaration class need an explicit cast.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: enumeration_items
+      args: []
+      keywords: []
+    when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_enumeration_type")
+    output: '{{ value | emit }}.asEnumerationType().enumerationItems()'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: select_list
+      args: []
+      keywords: []
+    when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_select_type")
+    output: '{{ value | emit }}.asSelectType().selectList()'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: type_of_element
+      args: []
+      keywords: []
+    when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_aggregation_type")
+    output: '{{ value | emit }}.asAggregationType().typeOfElement()'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: type_of_aggregation_string
+      args: []
+      keywords: []
+    when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_aggregation_type")
+    output: '{{ value | emit }}.asAggregationType().typeOfAggregationString()'
+  # Dates (see src/helpers/dates.ts): datetime, date and time are Temporal objects; a timedelta is a number
+  # of microseconds, so duration arithmetic stays plain number arithmetic.
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: $keywords
+    when: callee | source in ["datetime.timedelta", "timedelta"]
+    output: '{{ "helpers.dates" | use("dates") }}.timedelta({{ "{" }} {% for a in args %}{{ ["days", "seconds", "microseconds", "milliseconds", "minutes", "hours", "weeks"][loop.index0] }}: {{ a | emit }}, {% endfor %}{% for k in keywords %}{{ k.arg }}: {{ k.value | emit }}, {% endfor %}{{ "}" }})'
+  - input:
+      node: Call
+      func: $callee
+      args: []
+      keywords: []
+    when: callee | source in ["datetime.datetime.now", "datetime.now"]
+    output: '{{ "helpers.dates" | use("dates") }}.now()'
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: []
+    when: callee | source in ["datetime.datetime.combine", "datetime.combine"] and args | length >= 1
+    output: '{{ "helpers.dates" | use("dates") }}.combine({{ args[:2] | map("emit") | join(", ") }})'
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: []
+    when: callee | source in ["datetime.datetime.fromisoformat", "datetime.fromisoformat"]
+    output: '{{ "helpers.dates" | use("dates") }}.fromIsoDateTime({{ args[0] | emit }})'
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: []
+    when: callee | source in ["datetime.date.fromisoformat", "date.fromisoformat"]
+    output: '{{ "helpers.dates" | use("dates") }}.fromIsoDate({{ args[0] | emit }})'
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: []
+    when: callee | source in ["datetime.date", "datetime.time", "datetime.datetime"] or (callee | source in ["date", "time", "datetime"] and callee | source not in functions)
+    output: '{{ "helpers.dates" | use("dates") }}.{{ (callee | source).split(".")[-1] }}({{ args | map("emit") | join(", ") }})'
+  - input:
+      node: BinOp
+      left: $left
+      op: $op
+      right: $right
+    when: op.__class__.__name__ == "Sub" and left | kind in ['datetime', 'date'] and right | kind in ['datetime', 'date']
+    output: '{{ "helpers.dates" | use("dates") }}.between({{ left | emit }}, {{ right | emit }})'
+  - input:
+      node: BinOp
+      left: $left
+      op: $op
+      right: $right
+    when: op.__class__.__name__ in ["Add", "Sub"] and left | kind in ['datetime', 'date']
+    output: '{{ "helpers.dates" | use("dates") }}.{{ "add" if op.__class__.__name__ == "Add" else ("subtract" if right | kind == "number" else "minus") }}({{ left | emit }}, {{ right | emit }})'
+  - input:
+      node: BinOp
+      left: $left
+      op:
+        node: Add
+      right: $right
+    when: right | kind in ['datetime', 'date']
+    output: '{{ "helpers.dates" | use("dates") }}.add({{ right | emit }}, {{ left | emit }})'
+  - input:
+      node: AugAssign
+      target: $target
+      op: $op
+      value: $value
+    when: op.__class__.__name__ in ["Add", "Sub"] and target | kind in ['datetime', 'date']
+    output: '{{ target | emit }} = {{ "helpers.dates" | use("dates") }}.{{ "add" if op.__class__.__name__ == "Add" else "subtract" }}({{ target | emit }}, {{ value | emit }});'
+  - input:
+      node: Compare
+      left: $left
+      ops:
+        - $op
+      comparators:
+        - $right
+    when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE", "Eq", "NotEq"] and (left | kind in ['datetime', 'date'] or right | kind in ['datetime', 'date'])
+    output: '({{ "helpers.dates" | use("dates") }}.compare({{ left | emit }}, {{ right | emit }}) {{ {"Lt": "<", "LtE": "<=", "Gt": ">", "GtE": ">=", "Eq": "===", "NotEq": "!=="}[op.__class__.__name__] }} 0)'
   - input:
       node: Attribute
+      value: $value
+      attr: $name
+    when: name in ["days", "seconds", "microseconds"] and value | kind not in ["entity", "file", "datetime", "date", "time", "dict", "array", "string"]
+    output: '{{ "helpers.dates" | use("dates") }}.{{ name }}({{ value | emit }})'
+  - input:
+      node: Attribute
+      attr: tzinfo
+    output: 'null'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
+      args: []
+      keywords: []
+    when: method in ["date", "time", "weekday"] and value | kind in ["datetime", "date"]
+    output: '{% if method == "date" %}{{ value | emit }}.toPlainDate(){% elif method == "time" %}{{ value | emit }}.toPlainTime(){% else %}{{ "helpers.dates" | use("dates") }}.weekday({{ value | emit }}){% endif %}'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: replace
+      args: []
+      keywords: $keywords
+    when: value | kind in ["datetime", "date", "time"] or value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr in ["astimezone", "now", "combine"]
+    output: '{{ value | emit }}.with({{ "{" }} {% for k in keywords if k.arg != "tzinfo" %}{% if k.arg == "microsecond" %}millisecond: Math.floor({{ k.value | emit }} / 1000), microsecond: {{ k.value | emit }} % 1000, nanosecond: 0, {% else %}{{ k.arg }}: {{ k.value | emit }}, {% endif %}{% endfor %}{{ "}" }})'
+  # date += relativedelta(years=..., months=...): calendar years and months, clamped to the month end.
+  - input:
+      node: AugAssign
+      target: $target
+      op:
+        node: Add
       value:
         node: Call
-        func: $map_shape
-        args:
-          - $settings
-          - $placement
-      attr: components
-    when: map_shape | source == "ifcopenshell.geom.map_shape" and settings | source == "ifcopenshell.geom.settings"
-    output: '{{ "util._geom" | use("geom") }}.placementComponents({{ placement | emit }})'
+        func: $callee
+        args: []
+        keywords: $keywords
+    when: callee | source in ["relativedelta", "dateutil.relativedelta.relativedelta"]
+    output: '{{ target | emit }} = {{ target | emit }}.add({{ "{" }} {% for k in keywords %}{{ k.arg }}: {{ k.value | emit }}, {% endfor %}{{ "}" }});'
+  # sum(values, start)
+  - input:
+      node: Call
+      func:
+        node: Name
+        id: sum
+      args:
+        - $values
+        - $start
+      keywords: []
+    output: 'Array.from<any>({{ values | iterable }}).reduce((a: any, b: any) => a + b, {{ start | emit }})'
+  # file.header.file_name.time_stamp and similar: the native STEP header API.
+  - input:
+      node: Assign
+      targets:
+        - node: Attribute
+          attr: $field
+          value:
+            node: Attribute
+            attr: $group
+            value:
+              node: Attribute
+              attr: header
+              value: $file
+      value: $value
+    when: group in ["file_name", "file_description"]
+    output: '{{ file | emit }}.header()!.{{ group | camel }}().set{{ field | camel }}({{ value | emit }});'
+  - input:
+      node: Attribute
+      attr: $field
+      value:
+        node: Attribute
+        attr: $group
+        value:
+          node: Attribute
+          attr: header
+          value: $file
+    when: group in ["file_name", "file_description"]
+    output: '{{ file | emit }}.header()!.{{ group | camel }}().{{ field | camel }}()'
+  # timedelta.total_seconds(); datetime.astimezone() (the local time zone).
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: total_seconds
+      args: []
+      keywords: []
+    output: '({{ value | emit }} / 1e6)'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: astimezone
+      args: []
+      keywords: []
+    when: value | kind == "datetime"
+    output: '{{ "helpers.dates" | use("dates") }}.astimezone({{ value | emit }})'
+  # str.strip, lstrip and rstrip with characters to remove (JS trim takes none).
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
+      args:
+        - $chars
+      keywords: []
+    when: method in ["strip", "lstrip", "rstrip"]
+    output: '{{ "helpers.lang" | use("lang") }}.strip({{ value | emit }}, {{ chars | emit }}, {{ {"strip": "both", "lstrip": "start", "rstrip": "end"}[method] | literal }})'
+  # Methods of entity declarations on a declaration that is not cast yet: cast it explicitly.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
+      args: $args
+      keywords: []
+    when: method in ["all_attributes", "all_inverse_attributes", "attribute_count", "attribute_index", "attribute_by_index", "derived", "is_abstract"] and value | kind != "entity" and not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_entity")
+    output: '{{ value | emit }}.asEntity().{{ method | camel }}({{ args | map("emit") | join(", ") }})'
+  # declared_type() is a method of named, simple and type declarations: cast explicitly.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: declared_type
+      args: []
+      keywords: []
+    output: '{{ "helpers.lang" | use("lang") }}.declaredType({{ value | emit }})'
+  # entity[0] = value: the attribute at that position.
+  - input:
+      node: Assign
+      targets:
+        - node: Subscript
+          value: $entity
+          slice: $index
+      value: $value
+    when: entity | kind == "entity" and index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0
+    output: '{{ entity | emit }}.set({{ index.value }}, {{ value | emit }});'
+  # Entity equality: two handles of one entity are equal (same identity() in the same file).
+  - input:
+      node: Compare
+      left: $left
+      ops:
+        - $op
+      comparators:
+        - $right
+    when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "entity" or right | kind == "entity") and not (left.__class__.__name__ == "Constant" or right.__class__.__name__ == "Constant")
+    output: '{{ "!" if op.__class__.__name__ == "NotEq" }}{{ "helpers.lang" | use("lang") }}.same({{ left | emit }}, {{ right | emit }})'
+  # Ordering of values of unknown type (dates from ifc2datetime, for example).
+  - input:
+      node: Compare
+      left: $left
+      ops:
+        - $op
+      comparators:
+        - $right
+    when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind == "unknown" or right | kind == "unknown") and left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant"
+    output: '{{ "helpers.lang" | use("lang") }}.{{ {"Lt": "lt", "LtE": "le", "Gt": "gt", "GtE": "ge"}[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
+  # Matrix multiplication needs numpy arrays, which the generated code does not have.
+  - input:
+      node: BinOp
+      op:
+        node: MatMult
+    output: '{{ "the @ operator needs numpy" | unsupported }}'
+  - input:
+      node: AugAssign
+      op:
+        node: MatMult
+    output: '{{ "the @ operator needs numpy" | unsupported }}'
+  # A misspelled file.createIfc... call in the Python source fails there too: keep it a stub.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        attr: $name
+    when: name.startswith("creatIfc")
+    output: '{{ ("misspelled create method " ~ name ~ " in the Python source") | unsupported }}'
   # str.count, list.count and tuple.count, through the runtime as JS has none of them.
   - input:
       node: Call
@@ -361,15 +731,15 @@ rules:
         - $item
       keywords: []
     when: value | runtime_path is none and value | resolve is none
-    output: '{{ "util._py" | use("py") }}.count({{ value | emit }}, {{ item | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.count({{ value | emit }}, {{ item | emit }})'
   - input: $value
     context: condition
     when: value | kind == "array"
-    output: '({{ value | emit }}?.length ?? 0) > 0'
+    output: '{{ value | emit }}{{ "?" if value | nullable }}.length > 0'
   - input: $value
     context: condition
     when: value | kind == "dict"
-    output: Object.keys({{ value | emit }} ?? {}).length > 0
+    output: '{% set object = value | emit %}Object.keys({{ object if object.endswith("?? {})") else object ~ " ?? {}" }}).length > 0'
   - input:
       node: BoolOp
       op: $op
@@ -378,7 +748,7 @@ rules:
     output: ({% for value in values %}{{ value | condition }}{% if not loop.last %} {{ "||" if op.__class__.__name__ == "Or" else "&&" }} {% endif %}{% endfor %})
   - input: $value
     context: condition
-    when: value.__class__.__name__ in ["Compare", "UnaryOp", "Constant"] or value | kind in ["boolean", "number", "string", "entity", "file", "set-nonempty"]
+    when: value.__class__.__name__ in ["Compare", "UnaryOp", "Constant"] or value | kind in ["boolean", "number", "string", "entity", "file", "scalar", "set-nonempty"]
     output: '{{ value | emit }}'
   - input: $value
     context: condition
@@ -386,11 +756,20 @@ rules:
     output: '({{ value | emit }}?.size ?? 0) > 0'
   - input: $value
     context: condition
-    output: '{{ "util._py" | use("py") }}.truthy({{ value | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.truthy({{ value | emit }})'
   - input: $value
     context: iterable
     when: value | kind == "dict"
     output: Object.keys({{ value | emit }})
+  # An entity iterates over its attribute values, a file over its entities.
+  - input: $value
+    context: iterable
+    when: value | kind == "entity"
+    output: '{{ value | emit }}.entries().map(([, v]) => v)'
+  - input: $value
+    context: iterable
+    when: value | kind == "file"
+    output: '{{ value | emit }}.ids.map((id) => {{ value | emit }}.byId(id))'
   - input: $value
     context: iterable
     when: value | kind == "map"
@@ -461,14 +840,68 @@ rules:
       keywords: []
     when: method in ["all_attributes", "all_inverse_attributes", "attribute_count", "attribute_index", "attribute_by_index", "derived", "is_abstract", "supertype", "subtypes"]
     output: '{{ value | emit }}.declaration().asEntity().{{ method | camel }}({{ args | map("emit") | join(", ") }})'
-  # Runtime modules (see runtime_modules): calls pass keyword arguments as a trailing options object.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: is_entity
+      args: []
+      keywords: []
+    output: '({{ value | emit }}.declaration().asEntity() !== null)'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: isoformat
+      args: []
+      keywords: []
+    output: '{{ "helpers.dates" | use("dates") }}.isoformat({{ value | emit }})'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        attr: walk
+    output: '{{ "entity_instance.walk has no TS counterpart" | unsupported }}'
+  # File.toDelete (util.element collects entities to remove in one batch).
+  - input:
+      node: Attribute
+      value: $value
+      attr: to_delete
+    output: '{{ value | emit }}.toDelete'
+  - input:
+      node: Attribute
+      attr: version
+    when: node | source == "ifcopenshell.version"
+    output: '{{ ifcopenshell_version | literal }}'
+  - input:
+      node: Attribute
+      attr: $name
+    when: (name == name.upper() and name | length > 1) and ((node | source).startswith("ifcopenshell.ifcopenshell_wrapper.") or (node | source).startswith("ifcopenshell_wrapper."))
+    output: '{{ ("native constant ifcopenshell_wrapper." ~ name ~ " is not exposed") | unsupported }}'
+  # ifcopenshell.geom: the geom module of ifcopenshell-js.
+  - input:
+      node: Call
+      func: $callee
+      args: []
+      keywords: []
+    when: callee | source == "ifcopenshell.geom.settings"
+    output: 'new {{ "geom.index" | use("geom") }}.Settings()'
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: []
+    when: callee | source in geom_functions
+    output: '{{ "geom.index" | use("geom") }}.{{ geom_functions[callee | source] }}({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func: $callee
       args: $args
       keywords: $keywords
     when: callee | runtime_path is not none
-    output: '{{ callee | emit }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "util._py" | use("py") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ callee | emit }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "helpers.lang" | use("lang") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input: $value
     when: value.__class__.__name__ in ["Name", "Attribute"] and value | runtime_path is not none
     output: '{% set path = value | runtime_path %}{% if path.module == "math" %}{{ math_functions[path.parts[0]] if path.parts[0] in math_functions else math_constants[path.parts[0]] }}{% else %}{% set spec = runtime_modules[path.module] %}{{ spec.module | use(spec.alias) }}{% if spec.prefix is defined %}.{{ spec.prefix }}{% endif %}{% for part in path.parts %}.{{ part | camel }}{% endfor %}{% endif %}'
@@ -482,7 +915,7 @@ rules:
       args: $args
       keywords: $keywords
     when: value | kind in ["ndarray", "pyobject"] and not method.startswith("__")
-    output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "util._py" | use("py") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "helpers.lang" | use("lang") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   # Subscripts of arrays, and of values of unknown type where operators are overloaded: Python
   # indexing (negative indices, slices, tuples of indices) through the runtime.
   - input:
@@ -493,7 +926,7 @@ rules:
           slice: $index
       value: $value
     when: container | kind == "ndarray" or overloading and container | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and container | kind not in ["dict", "map"]
-    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" or i.__class__.__name__ == "Name" and i.id in list_names or i.__class__.__name__ in ["Name", "Attribute"] and i | resolve in list_constants %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ value | emit }});'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" or i.__class__.__name__ == "Name" and i.id in list_names or i.__class__.__name__ in ["Name", "Attribute"] and i | resolve in list_constants %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ value | emit }});'
   - input:
       node: AugAssign
       target:
@@ -503,14 +936,14 @@ rules:
       op: $op
       value: $value
     when: op.__class__.__name__ in dunder_operators and (container | kind == "ndarray" or overloading and container | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string))
-    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" or i.__class__.__name__ == "Name" and i.id in list_names or i.__class__.__name__ in ["Name", "Attribute"] and i | resolve in list_constants %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ py }}.i{{ dunder_operators[op.__class__.__name__] }}({{ py }}.getitem({{ container | emit }}, {{ key(index) }}), {{ value | emit }}));'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" or i.__class__.__name__ == "Name" and i.id in list_names or i.__class__.__name__ in ["Name", "Attribute"] and i | resolve in list_constants %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.setitem({{ container | emit }}, {{ key(index) }}, {{ py }}.i{{ dunder_operators[op.__class__.__name__] }}({{ py }}.getitem({{ container | emit }}, {{ key(index) }}), {{ value | emit }}));'
   - input:
       node: AugAssign
       target: $target
       op: $op
       value: $value
     when: op.__class__.__name__ in dunder_operators and (target | kind in ["ndarray", "pyobject"] or value | kind in ["ndarray", "pyobject"] or op.__class__.__name__ == "MatMult" or overloading and target | kind in ["unknown", "number"] and value | kind not in ["string", "array"] and not (target | kind == "number" and value | kind == "number"))
-    output: '{{ target | emit }} = {{ "util._py" | use("py") }}.i{{ dunder_operators[op.__class__.__name__] }}({{ target | emit }}, {{ value | emit }});'
+    output: '{{ target | emit }} = {{ "helpers.lang" | use("lang") }}.i{{ dunder_operators[op.__class__.__name__] }}({{ target | emit }}, {{ value | emit }});'
   - input:
       node: Assign
       targets:
@@ -535,7 +968,7 @@ rules:
       returns: $returns
     when: (arguments.vararg is none or not arguments.defaults and not arguments.kwonlyargs) and arguments.kwarg is none and not arguments.posonlyargs and node.decorator_list | map("source") | reject("in", ignored_decorators) | list | length == 0
     output: |
-      {% set required = arguments.args[:arguments.args | length - arguments.defaults | length] %}{% set optional = arguments.args[required | length:] %}{% set keyword_only = arguments.kwonlyargs %}{% if top_level %}export {% endif %}function {{ name | camel if top_level else name }}({% for arg in required %}{{ arg | emit }}{% if not loop.last or optional or keyword_only or arguments.vararg %}, {% endif %}{% endfor %}{% if arguments.vararg %}...{{ arguments.vararg.arg | ident }}: any[]{% endif %}{% if optional or keyword_only %}options: { {% for arg in optional + keyword_only %}{{ arg.arg | camel }}?: {{ arg | emit("parameter_types") }}; {% endfor %}} = {}{% endif %}): {{ 'any[]' if node | is_generator else 'void' if returns is not none and returns.value is defined and returns.value is none else 'any' if not top_level and returns is not none and returns | emit("annotation_kinds") == "unknown" else returns | type }} {
+      {% set required = arguments.args[:arguments.args | length - arguments.defaults | length] %}{% set optional = arguments.args[required | length:] %}{% set keyword_only = arguments.kwonlyargs %}{% if top_level %}export {% endif %}function {{ name | camel if top_level else name | ident }}({% for arg in required %}{{ arg | emit }}{% if not loop.last or optional or keyword_only or arguments.vararg %}, {% endif %}{% endfor %}{% if arguments.vararg %}...{{ arguments.vararg.arg | ident }}: any[]{% endif %}{% if optional or keyword_only %}options: { {% for arg in optional + keyword_only %}{{ arg.arg | camel }}?: {{ arg | emit("parameter_types") }}; {% endfor %}} = {}{% endif %}): {{ 'any[]' if node | is_generator else 'void' if returns is not none and returns.value is defined and returns.value is none else 'any' if not top_level and returns is not none and returns | emit("annotation_kinds") == "unknown" else returns | type }} {
       {% if optional or keyword_only %}  let { {% for arg in optional %}{{ arg.arg | camel }}: {{ arg.arg | ident }} = {{ arguments.defaults[loop.index0] | emit }}, {% endfor %}{% for arg in keyword_only %}{{ arg.arg | camel }}: {{ arg.arg | ident }}{% if arguments.kw_defaults[loop.index0] is not none %} = {{ arguments.kw_defaults[loop.index0] | emit }}{% endif %}, {% endfor %}} = options;
       {% endif %}{% if top_level and this_module in overridable %}  if (overrides.{{ name | camel }} && overrides.{{ name | camel }} !== {{ name | camel }}) return overrides.{{ name | camel }}({{ (required | map(attribute="arg") | list + (["options"] if optional or keyword_only else [])) | join(", ") }});
       {% endif %}{% if locals %}  let {{ locals | map("ident") | join(': any, ') }}: any;
@@ -594,7 +1027,7 @@ rules:
         - $target
       value: $empty
     when: target | kind == "map" and (empty.__class__.__name__ == "Dict" and not empty.keys or empty.__class__.__name__ == "Call" and empty.func.id is defined and empty.func.id == "dict" and not empty.args)
-    output: '{% set declare = top_level and target.__class__.__name__ == "Name" %}{% if declare %}export const {% endif %}{{ target | emit }}{% if declare %}: any{% endif %} = new {{ "util._py" | use("py") }}.PyDict();'
+    output: '{% set declare = top_level and target.__class__.__name__ == "Name" %}{% if declare %}export const {% endif %}{{ target | emit }}{% if declare %}: any{% endif %} = new {{ "helpers.lang" | use("lang") }}.Dict<any, any>();'
   - input:
       node: Assign
       targets:
@@ -646,7 +1079,7 @@ rules:
           - node: Constant
             value: $fields
         keywords: []
-    output: '{% if top_level %}export const {% endif %}{{ target | emit }} = (...values: any[]): any => {{ "util._py" | use("py") }}.namedtuple({{ target.id | literal }}, {{ fields.replace(",", " ").split() | list | literal }}, values);{% if top_level %} export type {{ target | emit }} = any;{% endif %}'
+    output: '{% if top_level %}export const {% endif %}{{ target | emit }} = (...values: any[]): any => {{ "helpers.lang" | use("lang") }}.namedtuple({{ target.id | literal }}, {{ fields.replace(",", " ").split() | list | literal }}, values);{% if top_level %} export type {{ target | emit }} = any;{% endif %}'
   # Assigning to a function of an overridable module (get_user = my_get_user) sets its override.
   - input:
       node: Assign
@@ -670,7 +1103,7 @@ rules:
         node: Dict
         keys: []
     when: annotation | emit("annotation_kinds") == "map"
-    output: '{% if top_level %}export const {% endif %}{{ target | emit }}{% if top_level %}: any{% endif %} = new {{ "util._py" | use("py") }}.PyDict();'
+    output: '{% if top_level %}export const {% endif %}{{ target | emit }}{% if top_level %}: any{% endif %} = new {{ "helpers.lang" | use("lang") }}.Dict<any, any>();'
   - input:
       node: AnnAssign
       target: $target
@@ -701,7 +1134,7 @@ rules:
       op: $op
       value: $value
     when: op.__class__.__name__ in ["BitOr", "Sub", "BitAnd"] and (target | kind == "set" or value | kind == "set")
-    output: '{% if op.__class__.__name__ == "BitOr" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.add(v));{% elif op.__class__.__name__ == "Sub" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.delete(v));{% else %}((keep: Set<any>) => [...{{ target | emit }}].forEach((v: any) => keep.has(v) || {{ target | emit }}.delete(v)))(new Set({{ value | iterable }}));{% endif %}'
+    output: '{% if op.__class__.__name__ == "BitOr" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.add(v));{% elif op.__class__.__name__ == "Sub" %}Array.from<any>({{ value | iterable }}).forEach((v: any) => {{ target | emit }}.delete(v));{% else %}((keep: Set<any>) => [...{{ target | emit }}].forEach((v: any) => keep.has(v) || {{ target | emit }}.delete(v)))({{ "helpers.lang" | use("lang") }}.identitySet({{ value | iterable }}));{% endif %}'
   - input:
       node: AugAssign
       target: $target
@@ -717,7 +1150,7 @@ rules:
         node: Add
       value: $value
     when: target | kind not in ["number", "string"] and value | kind not in ["number", "string"] and value.__class__.__name__ not in ["Constant", "JoinedStr"]
-    output: '{{ target | emit }} = {{ "util._py" | use("py") }}.iadd({{ target | emit }}, {{ value | emit }});'
+    output: '{{ target | emit }} = {{ "helpers.lang" | use("lang") }}.iadd({{ target | emit }}, {{ value | emit }});'
   - input:
       node: AugAssign
       target: $target
@@ -729,7 +1162,7 @@ rules:
       name: $name
       body: $body
     when: node.bases | map("source") | select("in", ["NamedTuple", "typing.NamedTuple"]) | list
-    output: '{% set fields = body | selectattr("target", "defined") | map(attribute="target") | map(attribute="id") | list %}export const {{ name }} = (...values: any[]): any => {{ "util._py" | use("py") }}.namedtuple({{ name | literal }}, {{ fields | literal }}, values); export type {{ name }} = any;'
+    output: '{% set fields = body | selectattr("target", "defined") | map(attribute="target") | map(attribute="id") | list %}export const {{ name }} = (...values: any[]): any => {{ "helpers.lang" | use("lang") }}.namedtuple({{ name | literal }}, {{ fields | literal }}, values); export type {{ name }} = any;'
   - input:
       node: ClassDef
       name: $name
@@ -886,7 +1319,7 @@ rules:
       body: $body
     output: |-
       {
-        const {{ name | ident }} = {{ "util._py" | use("py") }}.open({{ args | map("emit") | join(", ") }});
+        const {{ name | ident }} = {{ "helpers.lang" | use("lang") }}.open({{ args | map("emit") | join(", ") }});
       {{ body | emit | indent(2, true) }}
       }
   - input:
@@ -918,7 +1351,7 @@ rules:
       args:
         - $file
       keywords: []
-    output: 'JSON.parse({% if file.__class__.__name__ == "Call" and file.func.id is defined and file.func.id == "open" %}{{ "util._py" | use("py") }}.open({{ file.args | map("emit") | join(", ") }}){% else %}{{ file | emit }}{% endif %}.read())'
+    output: 'JSON.parse({% if file.__class__.__name__ == "Call" and file.func.id is defined and file.func.id == "open" %}{{ "helpers.lang" | use("lang") }}.open({{ file.args | map("emit") | join(", ") }}){% else %}{{ file | emit }}{% endif %}.read())'
   - input:
       node: Global
     output: ''
@@ -1013,7 +1446,7 @@ rules:
       elt: $clause
       generators: $generators
     when: node.__class__.__name__ in ["ListComp", "GeneratorExp", "SetComp"] and generators | length > 1 and generators | selectattr("is_async") | list | length == 0
-    output: '{% set kind = node.__class__.__name__ %}{% macro chain(items) %}{% set g = items[0] %}Array.from<any>({{ g.iter | iterable }}){% for filter in g.ifs %}.filter(({{ g.target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if items | length > 1 %}.flatMap(({{ g.target | emit }}: any) => {{ chain(items[1:]) }}){% else %}.map(({{ g.target | emit }}: any) => ({{ clause | emit }})){% endif %}{% endmacro %}{% if kind == "SetComp" %}new Set({{ chain(generators) }}){% else %}{{ chain(generators) }}{% endif %}'
+    output: '{% set kind = node.__class__.__name__ %}{% macro chain(items) %}{% set g = items[0] %}Array.from<any>({{ g.iter | iterable }}){% for filter in g.ifs %}.filter(({{ g.target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if items | length > 1 %}.flatMap(({{ g.target | emit }}: any) => {{ chain(items[1:]) }}){% else %}.map(({{ g.target | emit }}: any) => ({{ clause | emit }})){% endif %}{% endmacro %}{% if kind == "SetComp" %}{{ "helpers.lang" | use("lang") }}.identitySet({{ chain(generators) }}){% else %}{{ chain(generators) }}{% endif %}'
   - input:
       node: ListComp
       elt: $clause
@@ -1045,7 +1478,7 @@ rules:
           ifs: $filters
           is_async: 0
     when: node | kind == "map"
-    output: 'new {{ "util._py" | use("py") }}.PyDict(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}.map(({{ target | emit }}: any) => [{{ key | emit }}, {{ value | emit }}]))'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Dict(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}.map(({{ target | emit }}: any) => [{{ key | emit }}, {{ value | emit }}]))'
   - input:
       node: DictComp
       key: $key
@@ -1128,7 +1561,7 @@ rules:
       args:
         - $values
       keywords: $keywords
-    output: '{{ "util._py" | use("py") }}.sorted({{ values | iterable }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.sorted({{ values | iterable }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1137,7 +1570,7 @@ rules:
         attr: sort
       args: []
       keywords: $keywords
-    output: '{{ "util._py" | use("py") }}.sort({{ values | emit }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.sort({{ values | emit }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1145,7 +1578,7 @@ rules:
         id: round
       args: $args
       keywords: []
-    output: '{{ "util._py" | use("py") }}.round({{ args | map("emit") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.round({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1154,7 +1587,7 @@ rules:
       args:
         - $values
       keywords: []
-    output: 'Array.from<any>({{ values | iterable }}).every((v: any) => {{ "util._py" | use("py") }}.truthy(v))'
+    output: 'Array.from<any>({{ values | iterable }}).every((v: any) => {{ "helpers.lang" | use("lang") }}.truthy(v))'
   - input:
       node: Call
       func:
@@ -1175,7 +1608,7 @@ rules:
         - $value
       keywords: []
     when: method in ["dumps", "loads"]
-    output: '{% if method == "dumps" %}{{ "util._py" | use("py") }}.jsonDumps({{ value | emit }}){% else %}JSON.parse({{ value | emit }}){% endif %}'
+    output: '{% if method == "dumps" %}{{ "helpers.lang" | use("lang") }}.jsonDumps({{ value | emit }}){% else %}JSON.parse({{ value | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1186,7 +1619,7 @@ rules:
         - $separator
       keywords: []
     when: method in ["partition", "rpartition"]
-    output: '{{ "util._py" | use("py") }}.{{ method }}({{ value | emit }}, {{ separator | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.{{ method }}({{ value | emit }}, {{ separator | emit }})'
   # by_type(cls, include_subtypes=...): the bindings have a separate method without subtypes.
   - input:
       node: Call
@@ -1235,7 +1668,7 @@ rules:
         id: frozenset
       args: $args
       keywords: []
-    output: 'new Set{{ "<any>" if not args }}({{ args | map("iterable") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet({{ args | map("iterable") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1251,7 +1684,7 @@ rules:
         id: zip
       args: $args
     when: '"zip" not in shadowed and args | selectattr("__class__.__name__", "equalto", "Starred") | list | length == 0'
-    output: '{{ "util._py" | use("py") }}.zip({{ args | map("iterable") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.zip({{ args | map("iterable") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1260,7 +1693,7 @@ rules:
       args: $args
       keywords: []
     when: '"slice" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.slice({{ args | map("emit") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.slice({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1272,7 +1705,7 @@ rules:
         - $step
       keywords: []
     when: '"range" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.range({{ start | emit }}, {{ stop | emit }}, {{ step | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.range({{ start | emit }}, {{ stop | emit }}, {{ step | emit }})'
   - input:
       node: Call
       func:
@@ -1291,7 +1724,7 @@ rules:
       args: []
       keywords: []
     when: method in ["isdigit", "isalpha", "isalnum", "isspace", "isupper", "islower", "isnumeric", "isdecimal"]
-    output: '{{ "util._py" | use("py") }}.str.{{ method }}({{ value | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.str.{{ method }}({{ value | emit }})'
   - input:
       node: Call
       func:
@@ -1313,7 +1746,7 @@ rules:
       args: $args
       keywords: $keywords
     when: text is string and not (text.count("{}") == args | length and "{" not in text.replace("{}", "") and not keywords)
-    output: '{{ "util._py" | use("py") }}.format({{ text | literal }}{% for arg in args %}, {{ arg | emit }}{% endfor %}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg | literal }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.format({{ text | literal }}{% for arg in args %}, {{ arg | emit }}{% endfor %}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg | literal }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1359,7 +1792,7 @@ rules:
           arg: $kind
           value: $value
     when: kind in ["default", "default_factory"]
-    output: '{% if kind == "default" %}{{ value | emit }}{% elif value.id is defined and value.id in ["list", "dict", "set"] %}{{ {"list": "[]", "dict": "{}", "set": "new Set()"}[value.id] }}{% else %}{{ value | emit }}(){% endif %}'
+    output: '{% if kind == "default" %}{{ value | emit }}{% elif value.id is defined and value.id in ["list", "dict", "set"] %}{{ {"list": "[]", "dict": "{}", "set": ("helpers.lang" | use("lang")) ~ ".identitySet()"}[value.id] }}{% else %}{{ value | emit }}(){% endif %}'
   - input:
       node: Call
       func: $callee
@@ -1378,7 +1811,7 @@ rules:
       args:
         - $value
       keywords: []
-    output: '{{ "util._py" | use("py") }}.asdict({{ value | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.asdict({{ value | emit }})'
   - input:
       node: Call
       func:
@@ -1416,7 +1849,7 @@ rules:
       args:
         - $values
         - $consumed
-    output: '{{ "util._py" | use("py") }}.kwargs({{ values | emit }}{% if consumed.elts %}, {{ consumed.elts | map(attribute="value") | list | literal }}{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.kwargs({{ values | emit }}{% if consumed.elts %}, {{ consumed.elts | map(attribute="value") | list | literal }}{% endif %})'
   - input:
       node: Call
       func:
@@ -1425,7 +1858,7 @@ rules:
       args:
         - $names
         - $values
-    output: '{{ "util._py" | use("py") }}.positionalOptions({{ names.elts | map(attribute="value") | map("camel") | list | literal }}, {{ values | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.positionalOptions({{ names.elts | map(attribute="value") | map("camel") | list | literal }}, {{ values | emit }})'
   - input:
       node: Call
       func:
@@ -1435,7 +1868,7 @@ rules:
         - $values
       keywords: []
     when: '"dict" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.dict({{ values | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.dict({{ values | emit }})'
   - input:
       node: Call
       func:
@@ -1467,7 +1900,7 @@ rules:
         - $b
       keywords: []
     when: '"divmod" not in shadowed'
-    output: '[{{ "util._py" | use("py") }}.floordiv({{ a | emit }}, {{ b | emit }}), {{ "util._py" | use("py") }}.mod({{ a | emit }}, {{ b | emit }})]'
+    output: '[{{ "helpers.lang" | use("lang") }}.floordiv({{ a | emit }}, {{ b | emit }}), {{ "helpers.lang" | use("lang") }}.mod({{ a | emit }}, {{ b | emit }})]'
   - input:
       node: Call
       func:
@@ -1488,7 +1921,7 @@ rules:
         - $values
       keywords: []
     when: '"iter" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.iter({{ values | iterable }})'
+    output: '{{ "helpers.lang" | use("lang") }}.iter({{ values | iterable }})'
   - input:
       node: Call
       func:
@@ -1498,7 +1931,7 @@ rules:
         - $values
       keywords: []
     when: '"next" not in shadowed'
-    output: '{{ "util._py" | use("py") }}.next({{ values | iterable }})'
+    output: '{{ "helpers.lang" | use("lang") }}.next({{ values | iterable }})'
   - input:
       node: Call
       func:
@@ -1553,7 +1986,7 @@ rules:
       args:
         - $factory
       keywords: []
-    output: 'new {{ "util._py" | use("py") }}.PyDict(null, () => {{ {"list": "[]", "dict": "({})", "set": "new Set()", "int": "0", "float": "0", "str": "\"\""}.get(factory.id, (factory | emit) ~ "()") if factory.id is defined else (factory | emit) ~ "()" }})'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Dict(null, () => {{ {"list": "[]", "dict": "({})", "set": ("helpers.lang" | use("lang")) ~ ".identitySet()", "int": "0", "float": "0", "str": "\"\""}.get(factory.id, (factory | emit) ~ "()") if factory.id is defined else (factory | emit) ~ "()" }})'
   - input:
       node: Call
       func:
@@ -1564,7 +1997,7 @@ rules:
         attr: $method
       args: $args
       keywords: $keywords
-    output: '{{ "util._py" | use("py") }}.re.{{ method }}({{ args | map("emit") | join(", ") }}{% for keyword in keywords %}, {{ keyword.value | emit }}{% endfor %})'
+    output: '{{ "helpers.lang" | use("lang") }}.re.{{ method }}({{ args | map("emit") | join(", ") }}{% for keyword in keywords %}, {{ keyword.value | emit }}{% endfor %})'
   - input:
       node: Call
       func:
@@ -1575,7 +2008,7 @@ rules:
         attr: Path
       args: $args
       keywords: []
-    output: 'new {{ "util._py" | use("py") }}.Path({{ args | map("emit") | join(", ") }})'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Path({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1638,7 +2071,7 @@ rules:
     # JS has one number type, so a float such as 85.0 arrives as 85. A float check guarding code that reads the
     # checked value (marked reads_checked) accepts any number; one that only picks between int and float
     # behaviour, such as IfcReal or IfcInteger, keeps testing for a non-integer.
-    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined or (value.attr is defined and value.attr == "wrappedValue") %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function" && !({{ value | emit }} instanceof ifcopenshell.EntityInstance)){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name in ["datetime", "date"] %}{{ value | emit }} instanceof Date{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ value | emit }} instanceof ifcopenshell.wrapper.{{ wrapper_classes[name] }}{% else %}{{ undefined_isinstance_type }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
+    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined or (value.attr is defined and value.attr == "wrappedValue") %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function" && !({{ value | emit }} instanceof ifcopenshell.EntityInstance)){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name == "datetime" %}{{ value | emit }} instanceof {{ "helpers.dates" | use("dates") }}.Temporal.PlainDateTime{% elif name == "date" %}({{ value | emit }} instanceof {{ "helpers.dates" | use("dates") }}.Temporal.PlainDate || {{ value | emit }} instanceof {{ "helpers.dates" | use("dates") }}.Temporal.PlainDateTime){% elif name == "time" %}{{ value | emit }} instanceof {{ "helpers.dates" | use("dates") }}.Temporal.PlainTime{% elif name == "timedelta" %}typeof {{ value | emit }} === "number"{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ ("isinstance of ifcopenshell_wrapper." ~ name ~ " needs explicit schema casts") | unsupported }}{% else %}{{ undefined_isinstance_type }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
   - input:
       node: Call
       func:
@@ -1647,7 +2080,7 @@ rules:
       args:
         - $value
       keywords: []
-    output: '{% set k = value | kind %}{% if k in ["array", "string"] %}{{ value | emit }}.length{% elif k in ["set", "map"] %}{{ value | emit }}.size{% elif k == "dict" %}Object.keys({{ value | emit }}).length{% else %}{{ "util._py" | use("py") }}.len({{ value | emit }}){% endif %}'
+    output: '{% set k = value | kind %}{% if k in ["array", "string"] %}{{ value | emit }}.length{% elif k in ["set", "map"] %}{{ value | emit }}.size{% elif k == "dict" %}Object.keys({{ value | emit }}).length{% else %}{{ "helpers.lang" | use("lang") }}.len({{ value | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1655,7 +2088,7 @@ rules:
         id: set
       args: $args
       keywords: []
-    output: 'new Set({{ args | map("emit") | join(", ") }})'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet({{ args | map("emit") | join(", ") }})'
   - input:
       node: Call
       func:
@@ -1692,7 +2125,7 @@ rules:
         - $values
       keywords: $keywords
     when: name in ["min", "max"] and name not in shadowed
-    output: '{{ "util._py" | use("py") }}.{{ name }}({{ values | iterable }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.{{ name }}({{ values | iterable }}{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1701,7 +2134,7 @@ rules:
       args: $values
       keywords: $keywords
     when: name in ["min", "max"] and values | length > 1 and name not in shadowed
-    output: '{{ "util._py" | use("py") }}.{{ name }}([{{ values | map("emit") | join(", ") }}]{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.{{ name }}([{{ values | map("emit") | join(", ") }}]{% if keywords %}, { {% for keyword in keywords %}{{ keyword.arg }}: {{ keyword.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func:
@@ -1740,7 +2173,7 @@ rules:
       args: $args
       keywords: []
     when: value | kind == "map" and method in ["get", "setdefault", "pop", "items", "keys", "values", "update", "copy", "clear"]
-    output: '{% set py = "util._py" | use("py") %}{% macro default(arg) %}{% if arg.__class__.__name__ == "Dict" and not arg.keys and symbols.get((node | path) ~ "") == "map" %}new {{ py }}.PyDict(){% else %}{{ arg | emit }}{% endif %}{% endmacro %}{% if method == "get" %}{{ py }}.dictGet({{ value | emit }}{% for arg in args %}, {{ default(arg) }}{% endfor %}){% elif method == "setdefault" %}{{ py }}.dictSetdefault({{ value | emit }}, {{ args[0] | emit }}, {{ default(args[1]) }}){% elif method == "pop" %}{{ py }}.dictPop({{ value | emit }}, {{ args | map("emit") | join(", ") }}){% elif method == "items" %}[...{{ value | emit }}.entries()]{% elif method == "keys" %}[...{{ value | emit }}.keys()]{% elif method == "values" %}[...{{ value | emit }}.values()]{% elif method == "update" %}{% if args[0] | kind == "map" %}{{ args[0] | emit }}.forEach((v: any, k: any) => {{ value | emit }}.set(k, v)){% else %}{{ "Object.entries(" if args[0] | kind == "dict" else "Array.from<any>(" }}{{ args[0] | emit }}).forEach(([k, v]: any) => {{ value | emit }}.set(k, v)){% endif %}{% elif method == "copy" %}new {{ py }}.PyDict({{ value | emit }}){% else %}{{ value | emit }}.clear(){% endif %}'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% macro default(arg) %}{% if arg.__class__.__name__ == "Dict" and not arg.keys and symbols.get((node | path) ~ "") == "map" %}new {{ py }}.Dict(){% else %}{{ arg | emit }}{% endif %}{% endmacro %}{% if method == "get" %}{{ py }}.dictGet({{ value | emit }}{% for arg in args %}, {{ default(arg) }}{% endfor %}){% elif method == "setdefault" %}{{ py }}.dictSetdefault({{ value | emit }}, {{ args[0] | emit }}, {{ default(args[1]) }}){% elif method == "pop" %}{{ py }}.dictPop({{ value | emit }}, {{ args | map("emit") | join(", ") }}){% elif method == "items" %}[...{{ value | emit }}.entries()]{% elif method == "keys" %}[...{{ value | emit }}.keys()]{% elif method == "values" %}[...{{ value | emit }}.values()]{% elif method == "update" %}{% if args[0] | kind == "map" %}{{ args[0] | emit }}.forEach((v: any, k: any) => {{ value | emit }}.set(k, v)){% else %}{{ "Object.entries<any>(" if args[0] | kind == "dict" else "Array.from<any>(" }}{{ args[0] | emit }}).forEach(([k, v]: any) => {{ value | emit }}.set(k, v)){% endif %}{% elif method == "copy" %}new {{ py }}.Dict({{ value | emit }}){% else %}{{ value | emit }}.clear(){% endif %}'
   - input:
       node: Call
       func:
@@ -1759,7 +2192,7 @@ rules:
         attr: copy
       args: []
       keywords: []
-    output: '{% set k = value | kind %}{% if k == "set" %}new Set({{ value | emit }}){% elif k == "dict" %}({ ...{{ value | emit }} }){% elif k == "array" %}[...{{ value | emit }}]{% else %}{{ "util._py" | use("py") }}.copy({{ value | emit }}){% endif %}'
+    output: '{% set k = value | kind %}{% if k == "set" %}{{ "helpers.lang" | use("lang") }}.identitySet({{ value | emit }}){% elif k == "dict" %}({ ...{{ value | emit }} }){% elif k == "array" %}[...{{ value | emit }}]{% else %}{{ "helpers.lang" | use("lang") }}.copy({{ value | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1820,7 +2253,7 @@ rules:
       args: $args
       keywords: $keywords
     when: method in methods and keywords and node.func | resolve is none
-    output: '{{ value | emit }}.{{ methods[method] }}({{ args | map("emit") | join(", ") }}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "util._py" | use("py") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} })'
+    output: '{{ value | emit }}.{{ methods[method] }}({{ args | map("emit") | join(", ") }}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "helpers.lang" | use("lang") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} })'
   - input:
       node: Lambda
       args: $arguments
@@ -1833,7 +2266,7 @@ rules:
   - input:
       node: Set
       elts: $elements
-    output: 'new Set([{{ elements | map("emit") | join(", ") }}])'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet([{{ elements | map("emit") | join(", ") }}])'
   - input:
       node: SetComp
       elt: $clause
@@ -1843,7 +2276,7 @@ rules:
           iter: $iterable
           ifs: $filters
           is_async: 0
-    output: 'new Set(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if clause | emit != target | emit %}.map(({{ target | emit }}: any) => ({{ clause | emit }})){% endif %})'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet(Array.from<any>({{ iterable | iterable }}){% for filter in filters %}.filter(({{ target | emit }}: any) => {{ filter | condition }}){% endfor %}{% if clause | emit != target | emit %}.map(({{ target | emit }}: any) => ({{ clause | emit }})){% endif %})'
   - input:
       node: Call
       func:
@@ -1873,7 +2306,7 @@ rules:
         attr: pop
       args: $args
       keywords: []
-    output: '{% if value | kind == "dict" %}((v: any) => (delete {{ value | emit }}[{{ args[0] | emit }}], v))({{ value | emit }}[{{ args[0] | emit }}]{% if args | length > 1 %} ?? {{ args[1] | emit }}{% endif %}){% elif not args and value | kind == "array" %}{{ value | emit }}.pop(){% elif not args %}{{ "util._py" | use("py") }}.pop({{ value | emit }}){% elif args[0].value is defined and args[0].value == 0 %}{{ value | emit }}.shift(){% else %}{{ value | emit }}.splice({{ args[0] | emit }}, 1)[0]{% endif %}'
+    output: '{% if value | kind == "dict" %}((v: any) => (delete {{ value | emit }}[{{ args[0] | emit }}], v))({{ value | emit }}[{{ args[0] | emit }}]{% if args | length > 1 %} ?? {{ args[1] | emit }}{% endif %}){% elif not args and value | kind == "array" %}{{ value | emit }}.pop(){% elif not args %}{{ "helpers.lang" | use("lang") }}.pop({{ value | emit }}){% elif args[0].value is defined and args[0].value == 0 %}{{ value | emit }}.shift(){% else %}{{ value | emit }}.splice({{ args[0] | emit }}, 1)[0]{% endif %}'
   - input:
       node: Call
       func:
@@ -1883,7 +2316,7 @@ rules:
       args:
         - $item
       keywords: []
-    output: '{% set k = value | kind %}{% if k == "file" %}{{ value | emit }}.remove({{ item | emit }}){% elif k == "set" %}{{ value | emit }}.delete({{ item | emit }}){% else %}{{ "util._py" | use("py") }}.remove({{ value | emit }}, {{ item | emit }}){% endif %}'
+    output: '{% set k = value | kind %}{% if k == "file" %}{{ value | emit }}.remove({{ item | emit }}){% elif k == "set" %}{{ value | emit }}.delete({{ item | emit }}){% elif k == "array" and item | kind in ["number", "string", "boolean"] %}if ({{ value | emit }}.includes({{ item | emit }})) {{ value | emit }}.splice({{ value | emit }}.indexOf({{ item | emit }}), 1){% else %}{{ "helpers.lang" | use("lang") }}.remove({{ value | emit }}, {{ item | emit }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1894,7 +2327,7 @@ rules:
         - $items
       keywords: []
     when: method in ["difference_update", "intersection_update"]
-    output: '{% if method == "difference_update" %}Array.from<any>({{ items | iterable }}).forEach((v: any) => {{ value | emit }}.delete(v)){% else %}((keep: Set<any>) => [...{{ value | emit }}].forEach((v: any) => keep.has(v) || {{ value | emit }}.delete(v)))(new Set({{ items | iterable }})){% endif %}'
+    output: '{% if method == "difference_update" %}Array.from<any>({{ items | iterable }}).forEach((v: any) => {{ value | emit }}.delete(v)){% else %}((keep: Set<any>) => [...{{ value | emit }}].forEach((v: any) => keep.has(v) || {{ value | emit }}.delete(v)))({{ "helpers.lang" | use("lang") }}.identitySet({{ items | iterable }})){% endif %}'
   - input:
       node: Call
       func:
@@ -1998,7 +2431,7 @@ rules:
       args: []
       keywords: []
     when: method in ['keys', 'items']
-    output: Object.{{ "keys" if method == "keys" else "entries" }}({{ value | emit }})
+    output: Object.{{ "keys" if method == "keys" else "entries<any>" }}({{ value | emit }})
   - input:
       node: Call
       func:
@@ -2037,7 +2470,7 @@ rules:
       args: $args
       keywords: $keywords
     when: method not in python_methods and method not in methods and not method.startswith("_") and node.func | resolve is none and node.func | signature is none and value | resolve is none and (value.id is not defined or value.id not in ["ifcopenshell", "self"]) and (value.__class__.__name__ == "Call" or value | source | truncate(13, True, "", 0) != "ifcopenshell.")
-    output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "util._py" | use("py") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
+    output: '{{ value | emit }}.{{ method | camel }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}...{{ "helpers.lang" | use("lang") }}.kwargs({{ keyword.value | emit }}){% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input:
       node: Call
       func: $callee
@@ -2056,7 +2489,7 @@ rules:
           value: $value
           attr: wrappedValue
       keywords: []
-    output: '{{ "util._py" | use("py") }}.strWrapped({{ value | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.strWrapped({{ value | emit }})'
   - input:
       node: Call
       func:
@@ -2115,7 +2548,7 @@ rules:
       value: $value
       slice: $index
     when: value | kind == "ndarray" or overloading and value | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and value | kind not in ["dict", "map"]
-    output: '{% set py = "util._py" | use("py") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" or i.__class__.__name__ == "Name" and i.id in list_names or i.__class__.__name__ in ["Name", "Attribute"] and i | resolve in list_constants %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.getitem({{ value | emit }}, {{ key(index) }})'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% macro key(i) %}{% if i.__class__.__name__ == "Slice" %}{{ py }}.slice({{ i.lower | emit if i.lower is not none else "null" }}, {{ i.upper | emit if i.upper is not none else "null" }}, {{ i.step | emit if i.step is not none else "null" }}){% elif i.__class__.__name__ == "Tuple" %}[{% for e in i.elts %}{{ key(e) }}{% if not loop.last %}, {% endif %}{% endfor %}]{% elif i.__class__.__name__ == "List" or i.__class__.__name__ == "Name" and i.id in list_names or i.__class__.__name__ in ["Name", "Attribute"] and i | resolve in list_constants %}new {{ py }}.IndexList({{ i | emit }}){% else %}{{ i | emit }}{% endif %}{% endmacro %}{{ py }}.getitem({{ value | emit }}, {{ key(index) }})'
   - input:
       node: Subscript
       value: $value
@@ -2158,7 +2591,7 @@ rules:
           node: Constant
           value: $index
     when: index is integer and value | kind not in ["dict", "map"]
-    output: '{% if node.ctx.__class__.__name__ == "Load" %}{{ "util._py" | use("py") }}.getitem({{ value | emit }}, -{{ index }}){% else %}{{ value | emit }}[{{ value | emit }}.length - {{ index }}]{% endif %}'
+    output: '{% if node.ctx.__class__.__name__ == "Load" %}{{ "helpers.lang" | use("lang") }}.getitem({{ value | emit }}, -{{ index }}){% else %}{{ value | emit }}[{{ value | emit }}.length - {{ index }}]{% endif %}'
   - input:
       node: Subscript
       value: $value
@@ -2186,13 +2619,13 @@ rules:
       node: BoolOp
       op: $op
       values: $values
-    when: values | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file"]) | list | length == 0 or values[-1].__class__.__name__ == "Constant" and values[:-1] | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file"]) | list | length == 0
+    when: values | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file", "scalar"]) | list | length == 0 or values[-1].__class__.__name__ == "Constant" and values[:-1] | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file", "scalar"]) | list | length == 0
     output: ({% for value in values %}{{ value | emit }}{% if not loop.last %} {{ "||" if op.__class__.__name__ == "Or" else "&&" }} {% endif %}{% endfor %})
   - input:
       node: BoolOp
       op: $op
       values: $values
-    output: '{% set py = "util._py" | use("py") %}{% set negate = "!" if op.__class__.__name__ == "And" else "" %}{% macro chain(items) %}{% if items | length == 1 %}{{ items[0] | emit }}{% else %}((__t: any) => {{ negate }}{{ py }}.truthy(__t) ? __t : {{ chain(items[1:]) }})({{ items[0] | emit }}){% endif %}{% endmacro %}{{ chain(values) }}'
+    output: '{% set py = "helpers.lang" | use("lang") %}{% set negate = "!" if op.__class__.__name__ == "And" else "" %}{% macro chain(items) %}{% if items | length == 1 %}{{ items[0] | emit }}{% else %}((__t: any) => {{ negate }}{{ py }}.truthy(__t) ? __t : {{ chain(items[1:]) }})({{ items[0] | emit }}){% endif %}{% endmacro %}{{ chain(values) }}'
   - input:
       node: UnaryOp
       op:
@@ -2205,7 +2638,7 @@ rules:
         node: USub
       operand: $value
     when: value | kind in ["ndarray", "pyobject"] or overloading and value | kind == "unknown"
-    output: '{{ "util._py" | use("py") }}.neg({{ value | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.neg({{ value | emit }})'
   - input:
       node: UnaryOp
       op:
@@ -2219,14 +2652,14 @@ rules:
       op: $op
       right: $right
     when: op.__class__.__name__ in dunder_operators and (left | kind in ["ndarray", "pyobject"] or right | kind in ["ndarray", "pyobject"] or op.__class__.__name__ == "MatMult" or overloading and left | kind in ["unknown", "number"] and right | kind in ["unknown", "number"] and not (left | kind == "number" and right | kind == "number") or op.__class__.__name__ == "Mult" and (left.__class__.__name__ in ["List", "Tuple"] or right.__class__.__name__ in ["List", "Tuple"] or left | kind in ["string", "array"] or right | kind in ["string", "array"]))
-    output: '{{ "util._py" | use("py") }}.{{ dunder_operators[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.{{ dunder_operators[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
   - input:
       node: BinOp
       left: $left
       op: $op
       right: $right
     when: op.__class__.__name__ in ["BitOr", "Sub", "BitAnd"] and (left | kind == "set" or right | kind == "set")
-    output: 'new Set({{ left | emit }}).{{ {"BitOr": "union", "Sub": "difference", "BitAnd": "intersection"}[op.__class__.__name__] }}(new Set({{ right | iterable }}))'
+    output: '{{ "helpers.lang" | use("lang") }}.identitySet({{ left | emit }}).{{ {"BitOr": "union", "Sub": "difference", "BitAnd": "intersection"}[op.__class__.__name__] }}({{ "helpers.lang" | use("lang") }}.identitySet({{ right | iterable }}))'
   - input:
       node: BinOp
       left: $left
@@ -2243,7 +2676,7 @@ rules:
         node: Add
       right: $right
     when: left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant" and (left.__class__.__name__ not in ["JoinedStr", "BinOp"] or left | kind in ["array", "ndarray"]) and right.__class__.__name__ != "JoinedStr"
-    output: '{{ "util._py" | use("py") }}.add({{ left | emit }}, {{ right | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.add({{ left | emit }}, {{ right | emit }})'
   - input:
       node: BinOp
       left: $left
@@ -2264,7 +2697,7 @@ rules:
       comparators:
         - $right
     when: op.__class__.__name__ in ["In", "NotIn"] and right | kind in ["array", "string"]
-    output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{{ right | emit }}.includes({{ left | emit }})'
+    output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{% if right | kind == "array" and left | kind not in ["number", "string", "boolean"] %}{{ "helpers.lang" | use("lang") }}.contains({{ right | emit }}, {{ left | emit }}){% else %}{{ right | emit }}.includes({{ left | emit }}){% endif %}'
   - input: *id001
     when: op.__class__.__name__ in ["In", "NotIn"] and right | kind == "dict"
     output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}Object.hasOwn({{ right | emit }}, {{ left | emit }})'
@@ -2273,7 +2706,7 @@ rules:
     output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{{ right | emit }}.has({{ left | emit }})'
   - input: *id001
     when: op.__class__.__name__ in ["In", "NotIn"]
-    output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{{ "util._py" | use("py") }}.contains({{ right | emit }}, {{ left | emit }})'
+    output: '{{ "!" if op.__class__.__name__ == "NotIn" else "" }}{{ "helpers.lang" | use("lang") }}.contains({{ right | emit }}, {{ left | emit }})'
   - input: *id001
     when: op.__class__.__name__ in ["Is", "Eq"] and left.__class__.__name__ == "Call" and left.func.id is defined and left.func.id == "type" and left.args | length == 1 and right | source in ["ifcopenshell.file", "ifcopenshell.entity_instance"]
     output: '({{ left.args[0] | emit }} instanceof ifcopenshell.{{ "File" if right.attr == "file" else "EntityInstance" }})'
@@ -2282,10 +2715,10 @@ rules:
     output: ({{ left | emit }} {{ "==" if op.__class__.__name__ in ["Is", "Eq"] else "!=" }} null)
   - input: *id001
     when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind == "ndarray" or right | kind == "ndarray")
-    output: '{{ "util._py" | use("py") }}.{{ {"Lt": "lt", "LtE": "le", "Gt": "gt", "GtE": "ge"}[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
+    output: '{{ "helpers.lang" | use("lang") }}.{{ {"Lt": "lt", "LtE": "le", "Gt": "gt", "GtE": "ge"}[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
   - input: *id001
     when: op.__class__.__name__ in ["Eq", "NotEq"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant" and (left | kind in ["ndarray", "pyobject"] or right | kind in ["ndarray", "pyobject"] or overloading and left | kind == "unknown" and right | kind == "unknown")
-    output: '{{ "!" if op.__class__.__name__ == "NotEq" else "" }}{{ "util._py" | use("py") }}.eq({{ left | emit }}, {{ right | emit }})'
+    output: '{{ "!" if op.__class__.__name__ == "NotEq" else "" }}{{ "helpers.lang" | use("lang") }}.eq({{ left | emit }}, {{ right | emit }})'
   - input: *id001
     when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "array" or right | kind == "array")
     output: '{% if op.__class__.__name__ == "NotEq" %}!{% endif %}({{ left | emit }}.length === {{ right | emit }}.length && {{ left | emit }}.every((value: any, index: number) => value === {{ right | emit }}[index]))'
@@ -2310,7 +2743,7 @@ rules:
       keys: $keys
       values: $values
     when: node | kind == "map"
-    output: 'new {{ "util._py" | use("py") }}.PyDict([{% for key in keys %}[{{ key | emit }}, {{ values[loop.index0] | emit }}]{% if not loop.last %}, {% endif %}{% endfor %}])'
+    output: 'new {{ "helpers.lang" | use("lang") }}.Dict([{% for key in keys %}[{{ key | emit }}, {{ values[loop.index0] | emit }}]{% if not loop.last %}, {% endif %}{% endfor %}])'
   - input:
       node: Dict
       keys: $keys
@@ -2350,7 +2783,7 @@ rules:
       ctx:
         node: Load
     when: name in builtin_values and name not in shadowed and name not in module_globals
-    output: '{{ builtin_values[name] }}'
+    output: '{% if name == "set" %}((v: any = []) => {{ "helpers.lang" | use("lang") }}.identitySet(v)){% else %}{{ builtin_values[name] }}{% endif %}'
   - input:
       node: Name
       id: __file__
@@ -2362,7 +2795,7 @@ rules:
         id: re
       attr: $flag
     when: flag in ["I", "IGNORECASE", "M", "MULTILINE", "S", "DOTALL"]
-    output: '{{ "util._py" | use("py") }}.re.{{ flag }}'
+    output: '{{ "helpers.lang" | use("lang") }}.re.{{ flag }}'
   # In overridable modules, a function read as a value is its override, if one is set.
   - input:
       node: Name
@@ -2396,12 +2829,12 @@ annotation_kinds:
     output: '{{ value | alias_value | emit("annotation_kinds") }}'
   - input: $value
     when: value is not none and value | source in ["npt.NDArray", "NDArray", "np.ndarray", "numpy.ndarray"]
-    output: ndarray
+    output: unknown
   - input:
       node: Subscript
       value: $array
     when: array | source in ["npt.NDArray", "NDArray"]
-    output: ndarray
+    output: unknown
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module in runtime_kinds
     output: '{% set path = value | runtime_path %}{{ "ndarray" if path.module == "numpy" and path.parts[-1] in ["ndarray", "NDArray", "array"] else "number" if path.module == "numpy" else runtime_kinds[path.module] }}'

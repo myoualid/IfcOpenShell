@@ -6,10 +6,14 @@ import argparse
 import ast
 import collections
 import copy
+import hashlib
+import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
+import mypy_types
 import yaml
 from jinja2 import Environment, StrictUndefined, pass_context
 
@@ -88,8 +92,11 @@ def list_constants(package=PACKAGE):
         names |= {
             f"{module}.{n.targets[0].id}"
             for n in tree.body
-            if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)
-            and isinstance(n.value, ast.List) and assigned[n.targets[0].id] == 1
+            if isinstance(n, ast.Assign)
+            and len(n.targets) == 1
+            and isinstance(n.targets[0], ast.Name)
+            and isinstance(n.value, ast.List)
+            and assigned[n.targets[0].id] == 1
         }
     return names
 
@@ -100,21 +107,43 @@ TYPE_NAMES = {"Union", "Optional", "tuple", "list", "dict", "set", "Literal", "C
 def is_type(node):
     """Whether a module-level value is a type expression (an implicit type alias)."""
     if isinstance(node, ast.Subscript):
-        return isinstance(node.value, ast.Name) and node.value.id in TYPE_NAMES or ast.unparse(node.value) in ("npt.NDArray", "NDArray")
+        return (
+            isinstance(node.value, ast.Name)
+            and node.value.id in TYPE_NAMES
+            or ast.unparse(node.value) in ("npt.NDArray", "NDArray")
+        )
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return all(is_type(n) or is_type_name(n) or isinstance(n, ast.Constant) and n.value is None for n in (node.left, node.right))
+        return all(
+            is_type(n) or is_type_name(n) or isinstance(n, ast.Constant) and n.value is None
+            for n in (node.left, node.right)
+        )
     return False
 
 
 def is_type_name(node):
     """A bare type used in a union: builtins and ifcopenshell classes."""
     if isinstance(node, ast.Name):
-        return node.id in {"float", "int", "str", "bool", "bytes", "object", "dict", "list", "set", "tuple", "entity_instance"}
+        return node.id in {
+            "float",
+            "int",
+            "str",
+            "bool",
+            "bytes",
+            "object",
+            "dict",
+            "list",
+            "set",
+            "tuple",
+            "entity_instance",
+        }
     return isinstance(node, ast.Attribute) and node.attr in {"entity_instance", "file"}
 
 
 def is_dataclass(node):
-    return any(ast.unparse(d.func if isinstance(d, ast.Call) else d) in ("dataclass", "dataclasses.dataclass") for d in node.decorator_list)
+    return any(
+        ast.unparse(d.func if isinstance(d, ast.Call) else d) in ("dataclass", "dataclasses.dataclass")
+        for d in node.decorator_list
+    )
 
 
 def static_classmethods(tree):
@@ -124,7 +153,10 @@ def static_classmethods(tree):
             if any(ast.unparse(d) == "classmethod" for d in method.decorator_list) and method.args.args:
                 first = method.args.args[0].arg
                 method.args.args = method.args.args[1:]
-                method.decorator_list = [ast.Name("staticmethod", ast.Load()) if ast.unparse(d) == "classmethod" else d for d in method.decorator_list]
+                method.decorator_list = [
+                    ast.Name("staticmethod", ast.Load()) if ast.unparse(d) == "classmethod" else d
+                    for d in method.decorator_list
+                ]
                 for node in ast.walk(method):
                     if isinstance(node, ast.Name) and node.id == first:
                         node.id = cls.name
@@ -136,7 +168,8 @@ def untyped_overloads(tree):
         overloaded = {
             n.name
             for n in body
-            if isinstance(n, ast.FunctionDef) and any(ast.unparse(d) in ("overload", "typing.overload") for d in n.decorator_list)
+            if isinstance(n, ast.FunctionDef)
+            and any(ast.unparse(d) in ("overload", "typing.overload") for d in n.decorator_list)
         }
         for n in body:
             if isinstance(n, ast.FunctionDef) and n.name in overloaded:
@@ -168,7 +201,9 @@ def flatten_type_checking(body):
         statement
         for node in body
         for statement in (
-            node.body if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING" else [node]
+            node.body
+            if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING"
+            else [node]
         )
     ]
 
@@ -179,7 +214,11 @@ def value_path(node):
         return node.id
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self":
         return f"self.{node.attr}"
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("get", "setdefault", "pop"):
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in ("get", "setdefault", "pop")
+    ):
         inner = value_path(node.func.value)
         return f"{inner}[]" if inner else None
     if isinstance(node, ast.Subscript):
@@ -197,9 +236,78 @@ def camel(name):
     return name[: len(name) - len(stripped)] + head + "".join(part[:1].upper() + part[1:] for part in rest)
 
 
+COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+
+def declaration_sites(function):
+    """Where each local of a function can be declared, rather than at the top of the function.
+
+    Maps a name to "const" or "let" for an assignment, to ("for", keyword) for a loop target and to
+    None for a name only comprehensions use. A name qualifies when that binding is its first use and
+    every other use follows it in the same block, or is inside the loop.
+    """
+    uses, stores = collections.defaultdict(set), collections.Counter()
+    for name in ast.walk(function):
+        if isinstance(name, ast.Name):
+            uses[name.id].add(id(name))
+            stores[name.id] += isinstance(name.ctx, ast.Store)
+    sites = {}
+
+    def names_in(nodes, name):
+        return {id(n) for node in nodes for n in ast.walk(node) if isinstance(n, ast.Name) and n.id == name}
+
+    def visit(block):
+        for index, statement in enumerate(block):
+            if isinstance(statement, (ast.FunctionDef, ast.ClassDef)):
+                continue
+            if (
+                isinstance(statement, ast.Assign)
+                and len(statement.targets) == 1
+                and isinstance(statement.targets[0], ast.Name)
+            ):
+                target = statement.targets[0]
+                if target.id not in sites and uses[target.id] <= names_in(block[index + 1 :], target.id) | {id(target)}:
+                    sites[target.id] = "const" if stores[target.id] == 1 else "let"
+            elif isinstance(statement, ast.For) and not statement.orelse:
+                targets = statement.target.elts if isinstance(statement.target, ast.Tuple) else [statement.target]
+                if all(isinstance(t, ast.Name) and uses[t.id] <= names_in([statement], t.id) for t in targets):
+                    keyword = "let" if any(stores[t.id] > 1 for t in targets) else "const"
+                    sites.update({t.id: ("for", keyword) for t in targets})
+            for field in ("body", "orelse", "finalbody"):
+                visit(getattr(statement, field, []))
+            for handler in getattr(statement, "handlers", []):
+                visit(handler.body)
+
+    visit(function.body)
+    inside = {id(n) for node in ast.walk(function) if isinstance(node, COMPREHENSIONS) for n in ast.walk(node)}
+    for node in ast.walk(function):
+        if isinstance(node, COMPREHENSIONS):
+            for generator in node.generators:
+                for target in ast.walk(generator.target):
+                    if isinstance(target, ast.Name) and uses[target.id] <= inside:
+                        sites.setdefault(target.id, None)
+    return sites
+
+
+def source_hash(node):
+    """A short hash of a function's Python source, to tell when its hand-written TS is out of date."""
+    return hashlib.sha256(ast.unparse(node).encode("utf-8")).hexdigest()[:12]
+
+
+def unsupported(reason):
+    """Make the function that a rule renders a stub, with this reason."""
+    raise ValueError(reason)
+
+
 class Transpiler:
-    def __init__(self, rules, index=None, precomputed=None):
+    def __init__(self, rules, index=None, precomputed=None, types=None):
+        self.types = types or {}
         self.rules = yaml.safe_load(Path(rules).read_text(encoding="utf-8"))
+        # The version of this checkout, for ifcopenshell.version.
+        self.rules["ifcopenshell_version"] = (PACKAGE.parents[2] / "VERSION").read_text(encoding="utf-8").strip()
+        # LALR grammars become Lark.js parsers, which generate.py makes with lark-js.
+        self.rules["lark_js"] = importlib.util.find_spec("larkjs") is not None
+        self.grammars = {}
         self.index = index or {}
         self.precomputed = precomputed or {}
         self.module = None
@@ -233,10 +341,13 @@ class Transpiler:
             emit=self.emit,
             emit_in=lambda n, context: self.emit(n, context=context),
             type=lambda n: self.emit(n, "types"),
-            kind=lambda n: self.emit(n, "inference"),
+            kind=self.kind,
+            nullable=self.nullable,
             condition=lambda n: self.emit(n, context="condition"),
             iterable=lambda n: self.emit(n, context="iterable"),
             literal=json.dumps,
+            unsupported=unsupported,
+            lark_parser=self.lark_parser,
             is_generator=self.is_generator,
             source=lambda n: ast.unparse(n.func if isinstance(n, ast.Call) else n),
             path=value_path,
@@ -244,7 +355,7 @@ class Transpiler:
             module_alias=lambda name: self.import_aliases.get(name),
             camel=camel,
             is_type=is_type,
-            ident=lambda name: f"{name}_" if name in self.rules.get("reserved", ()) else name,
+            ident=self.ident,
             resolve=self.resolve,
             defining_module=self.defining_module,
             signature=self.signature,
@@ -316,7 +427,10 @@ class Transpiler:
             self.type_aliases[module] = {
                 n.targets[0].id: n.value
                 for n in flatten_type_checking(tree.body)
-                if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) and is_type(n.value)
+                if isinstance(n, ast.Assign)
+                and len(n.targets) == 1
+                and isinstance(n.targets[0], ast.Name)
+                and is_type(n.value)
             }
         return self.type_aliases[module].get(name)
 
@@ -359,14 +473,23 @@ class Transpiler:
     def method(self, class_name, name):
         """A method of a module class (or ClassDef), with its self parameter removed."""
         cls = class_name if isinstance(class_name, ast.ClassDef) else self.classes[class_name]
-        if name == "__init__" and is_dataclass(cls) and not any(isinstance(i, ast.FunctionDef) and i.name == name for i in cls.body):
+        if (
+            name == "__init__"
+            and is_dataclass(cls)
+            and not any(isinstance(i, ast.FunctionDef) and i.name == name for i in cls.body)
+        ):
             # The generated constructor: fields without defaults are required, in order.
             fields = [i for i in cls.body if isinstance(i, ast.AnnAssign) and isinstance(i.target, ast.Name)]
             required = [f for f in fields if f.value is None]
             optional = [f for f in fields if f.value is not None]
             arguments = ast.arguments(
-                posonlyargs=[], args=[ast.arg(f.target.id, f.annotation) for f in required + optional], vararg=None,
-                kwonlyargs=[], kw_defaults=[], kwarg=None, defaults=[f.value for f in optional],
+                posonlyargs=[],
+                args=[ast.arg(f.target.id, f.annotation) for f in required + optional],
+                vararg=None,
+                kwonlyargs=[],
+                kw_defaults=[],
+                kwarg=None,
+                defaults=[f.value for f in optional],
             )
             return ast.FunctionDef(name="__init__", args=arguments, body=[], decorator_list=[], returns=None)
         for item in cls.body:
@@ -406,7 +529,13 @@ class Transpiler:
         qualified = self.resolve(node)
         found = self.index.get(qualified) if qualified else None
         if isinstance(found, ast.ClassDef):
-            return self.method(found, "__init__") or ast.FunctionDef(name="__init__", args=ast.arguments([], [], None, [], [], None, []), body=[], decorator_list=[], returns=None)
+            return self.method(found, "__init__") or ast.FunctionDef(
+                name="__init__",
+                args=ast.arguments([], [], None, [], [], None, []),
+                body=[],
+                decorator_list=[],
+                returns=None,
+            )
         return found
 
     def is_static(self, node):
@@ -415,7 +544,9 @@ class Transpiler:
             return False
         cls = self.classes.get(self.current_class)
         return cls is not None and any(
-            isinstance(i, ast.FunctionDef) and i.name == node.attr and any(ast.unparse(d) == "staticmethod" for d in i.decorator_list)
+            isinstance(i, ast.FunctionDef)
+            and i.name == node.attr
+            and any(ast.unparse(d) == "staticmethod" for d in i.decorator_list)
             for i in cls.body
         )
 
@@ -435,32 +566,65 @@ class Transpiler:
         positional, options = [], []
         if function.args.vararg and not function.args.defaults and not function.args.kwonlyargs and not call.keywords:
             # def f(a, *args): every argument is positional; starred ones are spread.
-            if len(call.args) < len(parameters) or any(isinstance(a, ast.Starred) for a in call.args[: len(parameters)]):
+            if len(call.args) < len(parameters) or any(
+                isinstance(a, ast.Starred) for a in call.args[: len(parameters)]
+            ):
                 return {"positional": [], "options": [], "error": "variadic call"}
             return {"positional": list(call.args), "options": [], "error": None}
         starred = [a for a in call.args if isinstance(a, ast.Starred)]
-        if starred == call.args[-1:] and not function.args.vararg and not call.keywords and len(call.args) > len(required):
+        if (
+            starred == call.args[-1:]
+            and not function.args.vararg
+            and not call.keywords
+            and len(call.args) > len(required)
+        ):
             # f(a, *rest): rest fills the optional parameters after a, as an options object built at runtime.
             head = call.args[:-1]
             names = [ast.Constant(p.arg) for p in parameters[len(head) :]]
-            spread = ast.Call(ast.Name("__positional_options__", ast.Load()), [ast.List(names, ast.Load()), starred[0].value], [])
+            spread = ast.Call(
+                ast.Name("__positional_options__", ast.Load()), [ast.List(names, ast.Load()), starred[0].value], []
+            )
             result = self.bind(ast.Call(call.func, head, []), function)
             if result["error"] is None:
                 result["options"].append((None, spread))
             return result
-        if starred and starred == call.args[-1:] and len(parameters) == len(required) and not function.args.vararg and not function.args.kwonlyargs and not call.keywords:
+        if (
+            starred
+            and starred == call.args[-1:]
+            and len(parameters) == len(required)
+            and not function.args.vararg
+            and not function.args.kwonlyargs
+            and not call.keywords
+        ):
             # f(*xy) for def f(x, y): the starred value fills the remaining parameters, as a tuple of that length.
             head = call.args[:-1]
             count = ast.Constant(len(required) - len(head))
-            return {"positional": head + [ast.Starred(ast.Call(ast.Name("__fixed_tuple__", ast.Load()), [starred[0].value, count], []), ast.Load())], "options": [], "error": None}
-        if starred and starred == call.args[-1:] and call.keywords and not function.args.vararg and len(call.args) - 1 < len(required):
+            return {
+                "positional": head
+                + [
+                    ast.Starred(
+                        ast.Call(ast.Name("__fixed_tuple__", ast.Load()), [starred[0].value, count], []), ast.Load()
+                    )
+                ],
+                "options": [],
+                "error": None,
+            }
+        if (
+            starred
+            and starred == call.args[-1:]
+            and call.keywords
+            and not function.args.vararg
+            and len(call.args) - 1 < len(required)
+        ):
             # f(*xy, k=v) for def f(x, y, k=0): the starred value fills the remaining required parameters.
             head = call.args[:-1]
             missing = [ast.Name(f"__starred{i}__", ast.Load()) for i in range(len(required) - len(head))]
             result = self.bind(ast.Call(call.func, head + missing, call.keywords), function)
             if result["error"] is None:
                 count = ast.Constant(len(missing))
-                fixed = ast.Starred(ast.Call(ast.Name("__fixed_tuple__", ast.Load()), [starred[0].value, count], []), ast.Load())
+                fixed = ast.Starred(
+                    ast.Call(ast.Name("__fixed_tuple__", ast.Load()), [starred[0].value, count], []), ast.Load()
+                )
                 result["positional"] = result["positional"][: len(head)] + [fixed]
             return result
         if function.args.vararg or starred:
@@ -471,7 +635,9 @@ class Transpiler:
         # f(**d, k=v): d's keys are Python names; at runtime they become the camelCase option keys.
         splats = [k.value for k in call.keywords if k.arg is None]
         for keyword in call.keywords:
-            if keyword.arg == "should_run_listeners" and "should_run_listeners" not in [a.arg for a in parameters + function.args.kwonlyargs]:
+            if keyword.arg == "should_run_listeners" and "should_run_listeners" not in [
+                a.arg for a in parameters + function.args.kwonlyargs
+            ]:
                 continue  # Accepted by ifcopenshell.api's wrapper, not by the usecase; there are no listeners in TS.
             if keyword.arg is not None:
                 given[keyword.arg] = keyword.value
@@ -519,7 +685,9 @@ class Transpiler:
         names = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                names |= {(a.asname or a.name).split(".")[0] for a in node.names if not a.name.startswith("ifcopenshell")}
+                names |= {
+                    (a.asname or a.name).split(".")[0] for a in node.names if not a.name.startswith("ifcopenshell")
+                }
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and not node.module.startswith("ifcopenshell"):
                 supported = set(self.rules.get("type_only_modules", ())) | set(self.rules.get("supported_modules", ()))
                 if node.module not in supported:
@@ -533,7 +701,10 @@ class Transpiler:
         type_positions = {
             id(n)
             for call in ast.walk(node)
-            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "isinstance" and len(call.args) == 2
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id == "isinstance"
+            and len(call.args) == 2
             for n in ast.walk(call.args[1])
         }
         # Annotations become TS types, so modules used only there are not needed at runtime.
@@ -557,6 +728,12 @@ class Transpiler:
             and isinstance(annotation.slice, ast.Tuple)
         ):
             self.annotate(f"{name}[]", annotation.slice.elts[1])
+
+    def lark_parser(self, grammar):
+        """Name the Lark.js parser of this grammar, which generate.py writes next to the module."""
+        name = f"{self.module.split('.')[-1]}_grammar{len(self.grammars)}"
+        self.grammars[name] = grammar.value
+        return self.use(f"!{name}", camel(name))
 
     def use(self, qualified_module, alias=None):
         """Record an import of another module and return its local alias."""
@@ -591,7 +768,9 @@ class Transpiler:
                     arguments = node.args
                     parameters = {
                         a.arg
-                        for a in arguments.posonlyargs + arguments.args + arguments.kwonlyargs
+                        for a in arguments.posonlyargs
+                        + arguments.args
+                        + arguments.kwonlyargs
                         + [a for a in (arguments.vararg, arguments.kwarg) if a]
                     }
                     captures["locals"] = sorted(bindings - parameters - set(self.declared))
@@ -599,9 +778,10 @@ class Transpiler:
                     self.shadowed = previous | bindings | parameters | nested
                     # Functions defined inside this one, for binding calls to them.
                     outer_nested = self.nested
-                    self.nested = {**{k: v for k, v in outer_nested.items() if k not in bindings | parameters}, **{
-                        n.name: n for n in ast.walk(node) if isinstance(n, ast.FunctionDef) and n is not node
-                    }}
+                    self.nested = {
+                        **{k: v for k, v in outer_nested.items() if k not in bindings | parameters},
+                        **{n.name: n for n in ast.walk(node) if isinstance(n, ast.FunctionDef) and n is not node},
+                    }
                 outer_class = self.current_class
                 outer_generator = self.generator
                 loop = isinstance(node, (ast.For, ast.While))
@@ -617,7 +797,10 @@ class Transpiler:
                     self.generator = isinstance(node, ast.FunctionDef) and self.is_generator(node)
                 self.depth += 1
                 try:
-                    return self.render(rule["output"], captures)
+                    output = self.render(rule["output"], captures)
+                    if isinstance(node, ast.FunctionDef) and self.rules.get("inline_locals"):
+                        output = self.inline_locals(output, node, captures["locals"])
+                    return output
                 finally:
                     self.depth -= 1
                     self.current_class = outer_class
@@ -632,6 +815,62 @@ class Transpiler:
         code = ast.unparse(node) if isinstance(node, ast.AST) else repr(node)
         raise ValueError(f"No {mode} rule at line {getattr(node, 'lineno', '?')}: {code[:180]}")
 
+    def proven(self, node):
+        """[kind, nullable] of an expression, from mypy_types; None if it is not proven."""
+        if not self.rules.get("proven_types") or getattr(node, "lineno", None) is None:
+            return None
+        position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}"
+        return self.types.get(self.module, {}).get(position)
+
+    def kind(self, node):
+        proven = self.proven(node)
+        return proven[0] if proven else self.emit(node, "inference")
+
+    def nullable(self, node):
+        proven = self.proven(node)
+        return not proven or proven[1]
+
+    def ident(self, name):
+        # points_ avoids clashing with points, so it keeps its underscore.
+        stripped = name.rstrip("_")
+        name = camel(stripped) + name[len(stripped) :] if stripped else name
+        return f"{name}_" if name in self.rules.get("reserved", ()) else name
+
+    def inline_locals(self, code, function, names):
+        """Move declarations from the top of a rendered function to where locals are first bound.
+
+        A local whose binding did not render as a plain assignment or loop stays declared at the top.
+        """
+        declared = re.search(r"^ *let \w+: any(?:, \w+: any)*;\r?\n", code, re.M)
+        if not declared:
+            return code
+        sites = declaration_sites(function)
+        start, end = declared.span()
+        head, body = code[:start], code[end:]
+        remaining = []
+        for name in names:
+            local = re.escape(self.ident(name))
+            site = sites.get(name, "top")
+            if site is None:
+                continue
+            if site in ("const", "let"):
+                dynamic = "|".join(self.rules.get("dynamic_initializers", ()))
+                assignment = re.search(rf"^( *){local} = (?=({dynamic})?)", body, re.M)
+                found = assignment is not None
+                if found:
+                    annotation = ": any" if assignment[2] is not None else ""
+                    declaration = f"{assignment[1]}{site} {self.ident(name)}{annotation} = "
+                    body = body[: assignment.start()] + declaration + body[assignment.end() :]
+            elif site != "top":
+                pattern = rf"^( *)for \(((?:const |let )?)({local}|\[[\w, ]*\b{local}\b[\w, ]*\]) of "
+                body, found = re.subn(pattern, rf"\g<1>for ({site[1]} \g<3> of ", body, count=1, flags=re.M)
+            else:
+                found = 0
+            if not found:
+                remaining.append(self.ident(name))
+        declaration = "  let " + ", ".join(f"{name}: any" for name in remaining) + ";\n" if remaining else ""
+        return head + declaration + body
+
     def discover_imports(self, module):
         """Local names bound by imports of other ifcopenshell modules."""
         self.import_aliases = {}
@@ -641,7 +880,11 @@ class Transpiler:
             # Python modules with a hand-written TypeScript counterpart: local name -> (module, member).
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name in runtime and (alias.asname or "." not in alias.name) and runtime[alias.name].get("plain_import", True):
+                    if (
+                        alias.name in runtime
+                        and (alias.asname or "." not in alias.name)
+                        and runtime[alias.name].get("plain_import", True)
+                    ):
                         self.runtime_names[alias.asname or alias.name] = (alias.name, None)
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module in runtime:
                 for alias in node.names:
@@ -657,6 +900,7 @@ class Transpiler:
 
     def translate(self, source, module=None):
         self.module = module
+        self.grammars = {}
         tree = ast.parse(source)
         static_classmethods(tree)
         untyped_overloads(tree)
@@ -666,22 +910,29 @@ class Transpiler:
         named_tuples = {
             n.name
             for n in tree.body
-            if isinstance(n, ast.ClassDef) and any(ast.unparse(b) in ("NamedTuple", "typing.NamedTuple") for b in n.bases)
+            if isinstance(n, ast.ClassDef)
+            and any(ast.unparse(b) in ("NamedTuple", "typing.NamedTuple") for b in n.bases)
         }
         typed_dicts = {
             n.name
             for n in tree.body
             if isinstance(n, ast.ClassDef) and any(ast.unparse(b).endswith("TypedDict") for b in n.bases)
         }
-        self.classes = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef) and n.name not in named_tuples | typed_dicts}
-        self.typed_dicts = typed_dicts
-        self.globals = set(self.functions) | named_tuples | {
-            t.id
-            for n in tree.body
-            if isinstance(n, (ast.Assign, ast.AnnAssign))
-            for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
-            if isinstance(t, ast.Name)
+        self.classes = {
+            n.name: n for n in tree.body if isinstance(n, ast.ClassDef) and n.name not in named_tuples | typed_dicts
         }
+        self.typed_dicts = typed_dicts
+        self.globals = (
+            set(self.functions)
+            | named_tuples
+            | {
+                t.id
+                for n in tree.body
+                if isinstance(n, (ast.Assign, ast.AnnAssign))
+                for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
+                if isinstance(t, ast.Name)
+            }
+        )
         self.discover_imports(tree)
         self.aliases = {
             n.targets[0].id: [e.value for e in n.value.slice.elts]
@@ -722,10 +973,18 @@ class Transpiler:
             # Names only ever bound to list literals: as a numpy index they select several items (np_XZ = [0, 2]).
             bound = collections.defaultdict(set)
             for n in ast.walk(node):
-                for target in n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(n, (ast.AnnAssign, ast.AugAssign, ast.For)) else []:
+                for target in (
+                    n.targets
+                    if isinstance(n, ast.Assign)
+                    else [n.target]
+                    if isinstance(n, (ast.AnnAssign, ast.AugAssign, ast.For))
+                    else []
+                ):
                     for name in ast.walk(target):
                         if isinstance(name, ast.Name):
-                            bound[name.id].add(isinstance(n, ast.Assign) and target is name and isinstance(n.value, ast.List))
+                            bound[name.id].add(
+                                isinstance(n, ast.Assign) and target is name and isinstance(n.value, ast.List)
+                            )
             self.list_names = {name for name, kinds in bound.items() if kinds == {True}}
             self.declared = []
             self.shadowed = set()
@@ -734,13 +993,28 @@ class Transpiler:
                 # Annotated attributes, at class level or as self.x: T in methods.
                 for n in ast.walk(node):
                     if isinstance(n, ast.AnnAssign) and (
-                        n in node.body and isinstance(n.target, ast.Name)
-                        or isinstance(n.target, ast.Attribute) and isinstance(n.target.value, ast.Name) and n.target.value.id == "self"
+                        n in node.body
+                        and isinstance(n.target, ast.Name)
+                        or isinstance(n.target, ast.Attribute)
+                        and isinstance(n.target.value, ast.Name)
+                        and n.target.value.id == "self"
                     ):
-                        self.annotate(f"self.{n.target.id if isinstance(n.target, ast.Name) else n.target.attr}", n.annotation)
+                        self.annotate(
+                            f"self.{n.target.id if isinstance(n.target, ast.Name) else n.target.attr}", n.annotation
+                        )
             for n in ast.walk(node):
                 if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
                     self.annotate(n.target.id, n.annotation, values_only=True)
+            # A parameter defaulting to True or False is a flag, whatever its annotation says.
+            for function in functions:
+                arguments = function.args
+                positional = arguments.args[len(arguments.args) - len(arguments.defaults) :]
+                for argument, default in [
+                    *zip(positional, arguments.defaults),
+                    *zip(arguments.kwonlyargs, arguments.kw_defaults),
+                ]:
+                    if isinstance(default, ast.Constant) and isinstance(default.value, bool):
+                        self.symbols[argument.arg] = "boolean"
             for function in functions:
                 self.symbols.update(
                     {
@@ -750,9 +1024,17 @@ class Transpiler:
                 )
             # Resolve local data shapes without embedding target-language decisions here.
             bindings = [n for n in ast.walk(node) if isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr))]
+            # A parameter annotated as a union of kinds (an entity or a list) keeps no single kind when
+            # the function rebinds it, as in `x = [x]`: the rebinding does not say what callers pass.
+            union_parameters = {
+                a.arg
+                for function in functions
+                for a in function.args.args + function.args.kwonlyargs
+                if a.annotation is not None and self.emit(a.annotation, "annotation_kinds") == "unknown"
+            }
             for _ in range(len(bindings) + 1):
                 previous = self.symbols.copy()
-                seen = {}
+                seen = {name: {"unknown"} for name in union_parameters}
                 for binding in bindings:
                     value = binding.value
                     if value is None:
@@ -770,7 +1052,11 @@ class Transpiler:
                                 seen.setdefault(target.id, set()).add("unknown")
                     for target in targets:
                         # An empty {} does not make a non-string-keyed dict a string-keyed one.
-                        if isinstance(target, ast.Name) and kind != "unknown" and not (kind == "dict" and self.symbols.get(target.id) == "map"):
+                        if (
+                            isinstance(target, ast.Name)
+                            and kind != "unknown"
+                            and not (kind == "dict" and self.symbols.get(target.id) == "map")
+                        ):
                             self.symbols[target.id] = kind
                             seen.setdefault(target.id, set()).add(kind)
                 # A name bound to values of different kinds (a dict here, a list there) has no single kind.
@@ -799,12 +1085,19 @@ class Transpiler:
                         and isinstance(call.func.value, ast.Name)
                         and self.symbols.get(call.func.value.id) == "dict"
                         and call.args
-                        and (isinstance(call.args[0], ast.Tuple) or self.emit(call.args[0], "inference") in ("entity", "number"))
+                        and (
+                            isinstance(call.args[0], ast.Tuple)
+                            or self.emit(call.args[0], "inference") in ("entity", "number")
+                        )
                     ):
                         self.symbols[call.func.value.id] = "map"
                 # Loop variables over an annotated dict's values: for k, v in d.items() and for v in d.values().
                 for loop in ast.walk(node):
-                    if isinstance(loop, ast.For) and isinstance(loop.iter, ast.Call) and isinstance(loop.iter.func, ast.Attribute):
+                    if (
+                        isinstance(loop, ast.For)
+                        and isinstance(loop.iter, ast.Call)
+                        and isinstance(loop.iter.func, ast.Attribute)
+                    ):
                         method, target = loop.iter.func.attr, loop.target
                         if method == "items" and isinstance(target, ast.Tuple) and len(target.elts) == 2:
                             target = target.elts[1]
@@ -813,7 +1106,7 @@ class Transpiler:
                         prefix = f"{value_path(loop.iter.func.value)}[]"
                         if isinstance(target, ast.Name) and prefix in self.symbols:
                             for key in [k for k in self.symbols if k == prefix or k.startswith(prefix + "[]")]:
-                                self.symbols[target.id + key[len(prefix):]] = self.symbols[key]
+                                self.symbols[target.id + key[len(prefix) :]] = self.symbols[key]
                 if previous == self.symbols:
                     break
             # A parameter rebound to another kind of value (products = set(products)) is typed any, as is
@@ -824,27 +1117,51 @@ class Transpiler:
                 checked = {
                     n.args[0].id
                     for n in ast.walk(function)
-                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in ("isinstance", "hasattr")
-                    and n.args and isinstance(n.args[0], ast.Name)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Name)
+                    and n.func.id in ("isinstance", "hasattr")
+                    and n.args
+                    and isinstance(n.args[0], ast.Name)
                 }
                 narrowed = rebound | checked
                 for a in function.args.args + function.args.kwonlyargs:
                     annotated = self.emit(a.annotation, "annotation_kinds") if a.annotation else None
                     # Checked with isinstance, then rebound (x = [x]): the value is not of its annotated type.
-                    if a.annotation and (self.symbols.get(a.arg) != annotated or a.arg in narrowed and annotated == "unknown" or a.arg in rebound & checked):
+                    if a.annotation and (
+                        self.symbols.get(a.arg) != annotated
+                        or a.arg in narrowed
+                        and annotated == "unknown"
+                        or a.arg in rebound & checked
+                    ):
                         a.widened = True
                     if a.annotation and a.arg in rebound & checked and self.symbols.get(a.arg) == annotated:
                         self.symbols[a.arg] = "unknown"  # Its truthiness, length and items are checked at runtime.
             qualified = f"{module}.{getattr(node, 'name', '')}"
             try:
-                if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and qualified in self.rules.get("hand_written", {}):
-                    target = self.rules["hand_written"][qualified]
-                    output.append(self.render(self.rules["hand_written_import"], {"name": node.name, "target": target}).rstrip())
+                if qualified in self.rules.get("unsupported_functions", {}):
+                    raise ValueError(self.rules["unsupported_functions"][qualified])
+                if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and qualified in self.rules.get(
+                    "hand_written", {}
+                ):
+                    if any(ast.unparse(d) in ("overload", "typing.overload") for d in node.decorator_list):
+                        continue  # The hand-written function has the signatures of all overloads.
+                    entry = self.rules["hand_written"][qualified]
+                    target = entry if isinstance(entry, str) else entry["module"]
+                    if isinstance(entry, dict) and (actual := source_hash(node)) != entry["source"]:
+                        raise ValueError(
+                            f"the hand-written TS in {target} is for another version of this function"
+                            f" (source hash {actual}, expected {entry['source']})"
+                        )
+                    output.append(
+                        self.render(self.rules["hand_written_import"], {"name": node.name, "target": target}).rstrip()
+                    )
                     continue
                 if isinstance(node, ast.FunctionDef) and qualified in self.precomputed:
                     parameter = node.args.args[0].arg
                     data = self.precomputed[qualified]
-                    result = self.render(self.rules["precomputed_function"], {"name": node.name, "parameter": parameter, "data": data})
+                    result = self.render(
+                        self.rules["precomputed_function"], {"name": node.name, "parameter": parameter, "data": data}
+                    )
                     output.append(result.rstrip())
                     continue
                 locates_module = isinstance(node, ast.Assign) and "__file__" in ast.unparse(node.value)
@@ -879,7 +1196,7 @@ if __name__ == "__main__":
     parser.add_argument("--rules", type=Path, default=Path(__file__).with_name("ts.yaml"))
     parser.add_argument("-o", "--output", type=Path)
     args = parser.parse_args()
-    compiler = Transpiler(args.rules, build_index())
+    compiler = Transpiler(args.rules, build_index(), types=mypy_types.load())
     source = args.source.resolve()
     name = module_name(source) if source.is_relative_to(PACKAGE) else None
     result = compiler.translate(source.read_text(encoding="utf-8"), name)

@@ -4,16 +4,10 @@
 // Python semantics for generated code, used only where a value's type is not known when
 // transpiling. Hand-written, unlike the transpiled util/ and api/ next to it.
 
-import { readResource } from "../file.js";
+import { Temporal, add as addDuration, compare as compareDates } from './dates.js';
 
 function isDict(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
-}
-
-/** A Python special method (`__len__`, `__add__`, ...) of a runtime object, such as an array or a date. */
-function dunder(value: unknown, name: string): ((...args: unknown[]) => unknown) | undefined {
-  const method = value !== null && typeof value === 'object' ? (value as Record<string, unknown>)[name] : undefined;
-  return typeof method === 'function' ? (method as (...args: unknown[]) => unknown).bind(value) : undefined;
 }
 
 /** Python truthiness: empty strings, lists, sets and dicts are false. */
@@ -21,8 +15,6 @@ export function truthy(value: unknown): boolean {
   if (Array.isArray(value) || typeof value === 'string') return value.length > 0;
   if (value instanceof Set || value instanceof Map) return value.size > 0;
   if (isDict(value)) return Object.keys(value).length > 0;
-  const bool = dunder(value, '__bool__') ?? dunder(value, '__len__');
-  if (bool) return Boolean(bool());
   return Boolean(value);
 }
 
@@ -31,8 +23,6 @@ export function len(value: unknown): number {
   if (Array.isArray(value) || typeof value === 'string') return value.length;
   if (value instanceof Set || value instanceof Map) return value.size;
   if (isDict(value)) return Object.keys(value).length;
-  const length = dunder(value, '__len__');
-  if (length) return length() as number;
   // An entity's length is its number of forward attributes.
   if (value !== null && typeof (value as { attributes?: unknown }).attributes === 'function') {
     return (value as { attributes(): unknown[] }).attributes().length;
@@ -43,18 +33,16 @@ export function len(value: unknown): number {
 /** Python `item in container`. */
 export function contains(container: unknown, item: unknown): boolean {
   if (typeof container === 'string') return container.includes(item as string);
-  if (Array.isArray(container)) return container.includes(item);
+  if (Array.isArray(container)) return container.some(member => same(member, item));
   if (container instanceof Set || container instanceof Map) return container.has(item);
   if (isDict(container)) return Object.hasOwn(container, item as string);
-  const contains = dunder(container, '__contains__');
-  if (contains) return Boolean(contains(item));
   throw new TypeError(`argument of type ${typeof container} is not iterable`);
 }
 
 /** Python `container.remove(item)` for lists, sets and files. */
 export function remove(container: unknown, item: unknown): void {
   if (Array.isArray(container)) {
-    const index = container.indexOf(item);
+    const index = container.findIndex(member => same(member, item));
     if (index < 0) throw new Error('list.remove(x): x not in list');
     container.splice(index, 1);
   } else if (container instanceof Set) {
@@ -67,7 +55,7 @@ export function remove(container: unknown, item: unknown): void {
 }
 
 /** Python `container.pop()` without arguments: the last list item, or any set member. */
-export function pop(container: unknown): unknown {
+export function pop(container: unknown): any {
   if (Array.isArray(container)) {
     if (!container.length) throw new Error('pop from empty list');
     return container.pop();
@@ -124,8 +112,9 @@ function extreme<T>(values: Iterable<T>, options: { key?: ((value: T) => unknown
   throw new Error(`ValueError: ${name}() iterable argument is empty`);
 }
 
-/** Python ordering, including objects such as dates that order by valueOf(). */
+/** Python ordering, including dates (Temporal objects) and objects that order by valueOf(). */
 function order(a: unknown, b: unknown): number {
+  if (isDate(a) && isDate(b)) return compareDates(a, b);
   if (typeof a === 'object' && a !== null && !Array.isArray(a)) return (a as unknown as number) < (b as unknown as number) ? -1 : (a as unknown as number) > (b as unknown as number) ? 1 : 0;
   return compare(a, b);
 }
@@ -160,18 +149,12 @@ export function partition(text: string, separator: string): [string, string, str
   return index < 0 ? [text, '', ''] : [text.slice(0, index), separator, text.slice(index + separator.length)];
 }
 
-/** Python `str.rpartition(separator)`. */
-export function rpartition(text: string, separator: string): [string, string, string] {
-  const index = text.lastIndexOf(separator);
-  return index < 0 ? ['', '', text] : [text.slice(0, index), separator, text.slice(index + separator.length)];
-}
-
-/** Python `dict(values)` from pairs or a mapping: a plain object for string keys, else a PyDict. */
+/** Python `dict(values)` from pairs or a mapping: a plain object for string keys, else a Dict. */
 export function dict(values: unknown): any {
-  if (values instanceof Map) return new PyDict(values);
+  if (values instanceof Map) return new Dict(values);
   if (isDict(values)) return { ...values };
   const pairs = Array.from(values as Iterable<[unknown, unknown]>, pair => Array.from(pair) as [unknown, unknown]);
-  return pairs.every(([key]) => typeof key === 'string') ? Object.fromEntries(pairs) : new PyDict(pairs);
+  return pairs.every(([key]) => typeof key === 'string') ? Object.fromEntries(pairs) : new Dict(pairs);
 }
 
 /** Options object for `f(a, *values)`: values fill the optional parameters `names` in order. */
@@ -456,19 +439,19 @@ export class Path {
 }
 
 /** Python `zip(...)`: tuples up to the shortest input. */
-export function zip(...iterables: Iterable<unknown>[]): unknown[][] {
+export function zip(...iterables: Iterable<any>[]): any[][] {
   const arrays = iterables.map(values => Array.from(values));
   const length = arrays.length ? Math.min(...arrays.map(values => values.length)) : 0;
   return Array.from({ length }, (_, i) => arrays.map(values => values[i]));
 }
 
 /** Python `iter(values)`. */
-export function iter<T>(values: Iterable<T>): Iterator<T> {
+export function iter<T>(values: Iterable<T>): any {
   return values[Symbol.iterator]();
 }
 
 /** Python `next(iterator)` on an iterator, or the first item of an iterable; StopIteration when exhausted. */
-export function next<T>(values: Iterator<T> | Iterable<T>, ...otherwise: [T?]): T {
+export function next<T>(values: Iterator<T> | Iterable<T>, ...otherwise: [T?]): any {
   const iterator = typeof (values as Iterator<T>).next === 'function' ? values as Iterator<T> : iter(values as Iterable<T>);
   const result = iterator.next();
   if (!result.done) return result.value;
@@ -490,41 +473,19 @@ export function asdict(value: unknown): Record<string, unknown> {
 /** Python `x.copy()` of a list, dict, set or object with a `copy` method. */
 export function copy<T>(value: T): T {
   if (Array.isArray(value)) return [...value] as T;
-  if (value instanceof PyDict) return new PyDict(value) as T;
+  if (value instanceof Dict) return new Dict(value) as T;
   if (value instanceof Map) return new Map(value) as T;
   if (value instanceof Set) return new Set(value) as T;
   if (isDict(value)) return { ...value };
-  const method = dunder(value, 'copy');
-  if (method) return method() as T;
   throw new TypeError(`cannot copy ${typeof value}`);
 }
 
-/**
- * Python binary operators. Numbers and strings use JS operators; lists follow Python list
- * semantics; other objects (arrays, dates) implement `__add__`/`__radd__` and so on.
- */
+/** Python binary operators on numbers, booleans and strings; other operands raise TypeError. */
 function binary(name: string, a: any, b: any, numbers: (a: any, b: any) => any): any {
   if (typeof a === 'number' && typeof b === 'number') return numbers(a, b);
-  const forward = dunder(a, `__${name}__`);
-  if (forward) {
-    const result = forward(b);
-    if (result !== NotImplemented) return result;
-  }
-  const reflected = dunder(b, `__r${name}__`);
-  if (reflected) {
-    const result = reflected(a);
-    if (result !== NotImplemented) return result;
-  }
   if (typeof a === 'boolean' || typeof b === 'boolean' || typeof a === 'string' && typeof b === 'string') return numbers(a, b);
-  // A list with a numpy scalar (which JS numbers stand for), as in `[1, 2] / np.linalg.norm(v)`.
-  if (hooks.asarray && name !== 'add' && name !== 'mul' && (Array.isArray(a) || Array.isArray(b))) {
-    return binary(name, Array.isArray(a) ? hooks.asarray(a) : a, Array.isArray(b) ? hooks.asarray(b) : b, numbers);
-  }
   throw new TypeError(`unsupported operand type(s) for ${name}: '${typeName(a)}' and '${typeName(b)}'`);
 }
-
-/** Returned by special methods that do not support an operand, as Python's NotImplemented. */
-export const NotImplemented: unique symbol = Symbol('NotImplemented');
 
 function typeName(value: unknown): string {
   if (value === null || value === undefined) return 'NoneType';
@@ -532,13 +493,20 @@ function typeName(value: unknown): string {
   return typeof value === 'object' ? (value as object).constructor.name : typeof value;
 }
 
-/** Python `a + b`: lists and tuples concatenate. */
+function isDate(value: unknown): value is Temporal.PlainDate | Temporal.PlainDateTime {
+  return value instanceof Temporal.PlainDate || value instanceof Temporal.PlainDateTime;
+}
+
+/** Python `a + b`: lists and tuples concatenate; a date or datetime moves by a duration (see dates.ts). */
 export function add(a: any, b: any): any {
   if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];
+  if (isDate(a) && typeof b === 'number') return addDuration(a, b);
+  if (isDate(b) && typeof a === 'number') return addDuration(b, a);
   return binary('add', a, b, (x, y) => x + y);
 }
 
 export function sub(a: any, b: any): any {
+  if (isDate(a) && typeof b === 'number') return addDuration(a, -b);
   return binary('sub', a, b, (x, y) => x - y);
 }
 
@@ -557,96 +525,34 @@ export function truediv(a: any, b: any): any {
   });
 }
 
-/** Python `a // b`: rounds towards negative infinity. */
-export function floordiv(a: any, b: any): any {
-  return binary('floordiv', a, b, (x, y) => {
-    if (y === 0) throw new Error('ZeroDivisionError: integer division or modulo by zero');
-    return Math.floor(x / y);
-  });
-}
-
-/** Python `a % b`: the result has the sign of the divisor. */
-export function mod(a: any, b: any): any {
-  return binary('mod', a, b, (x, y) => {
-    if (y === 0) throw new Error('ZeroDivisionError: integer division or modulo by zero');
-    return ((x % y) + y) % y;
-  });
-}
-
-export function pow(a: any, b: any): any {
-  return binary('pow', a, b, (x, y) => x ** y);
-}
-
-export function matmul(a: any, b: any): any {
-  return binary('matmul', a, b, () => {
-    throw new TypeError("unsupported operand type(s) for @: 'float' and 'float'");
-  });
-}
-
-/** In-place operators: `__iadd__` and so on when the object has them, else the binary operator. */
-function inplace(name: string, a: any, b: any, operator: (a: any, b: any) => any): any {
-  const method = dunder(a, `__i${name}__`);
-  if (method) {
-    const result = method(b);
-    if (result !== NotImplemented) return result;
-  }
-  return operator(a, b);
-}
-
 /** Python `a += b`: lists are extended in place. */
 export function iadd(a: any, b: any): any {
   if (Array.isArray(a)) {
     a.push(...b);
     return a;
   }
-  return inplace('add', a, b, add);
+  return add(a, b);
 }
 
-export const isub = (a: any, b: any): any => inplace('sub', a, b, sub);
-export const imul = (a: any, b: any): any => inplace('mul', a, b, mul);
-export const itruediv = (a: any, b: any): any => inplace('truediv', a, b, truediv);
-export const ifloordiv = (a: any, b: any): any => inplace('floordiv', a, b, floordiv);
-export const imod = (a: any, b: any): any => inplace('mod', a, b, mod);
-export const ipow = (a: any, b: any): any => inplace('pow', a, b, pow);
-export const imatmul = (a: any, b: any): any => inplace('matmul', a, b, matmul);
+export const imul = mul;
 
-/** Python `-a`. */
-export function neg(a: any): any {
-  if (typeof a === 'number') return -a;
-  const method = dunder(a, '__neg__');
-  if (method) return method();
-  throw new TypeError(`bad operand type for unary -: '${typeName(a)}'`);
+/** Python `a // b`: rounds towards negative infinity. */
+export function floordiv(a: number, b: number): number {
+  if (b === 0) throw new Error('ZeroDivisionError: integer division or modulo by zero');
+  return Math.floor(a / b);
 }
 
-/** Python `a == b`: `__eq__` when defined, lists and tuples by value, otherwise identity. */
+/** Python `a % b`: the result has the sign of b. */
+export function mod(a: number, b: number): number {
+  if (b === 0) throw new Error('ZeroDivisionError: integer division or modulo by zero');
+  return a - Math.floor(a / b) * b;
+}
+export const isub = sub;
+/** Python `a == b`: lists and tuples by value, otherwise identity. */
 export function eq(a: any, b: any): boolean {
-  const method = dunder(a, '__eq__') ?? dunder(b, '__eq__');
-  // Arrays compare element-wise, as numpy does; other objects give a boolean.
-  if (method) return (dunder(a, '__eq__') ? method(b) : method(a)) as boolean;
   if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((value, i) => eq(value, b[i]));
   return a === b || (a === null && b === undefined) || (a === undefined && b === null);
 }
-
-/** Python `a < b` and friends: `__lt__` etc. when an operand defines it (numpy arrays compare element-wise). */
-function ordering(name: string, reflected: string, op: (a: any, b: any) => boolean) {
-  return (a: any, b: any): any => {
-    const method = dunder(a, name);
-    if (method) {
-      const result = method(b);
-      if (result !== NotImplemented) return result;
-    }
-    const other = dunder(b, reflected);
-    if (other) {
-      const result = other(a);
-      if (result !== NotImplemented) return result;
-    }
-    return op(a, b);
-  };
-}
-export const lt = ordering('__lt__', '__gt__', (a, b) => a < b);
-export const le = ordering('__le__', '__ge__', (a, b) => a <= b);
-export const gt = ordering('__gt__', '__lt__', (a, b) => a > b);
-export const ge = ordering('__ge__', '__le__', (a, b) => a >= b);
 
 /** Python `slice(start, stop, step)`. */
 export class Slice {
@@ -691,24 +597,18 @@ export class IndexList {
   constructor(readonly items: unknown[]) {}
 }
 
-/** Set by the numpy runtime: Python code receiving nested lists where it expects arrays indexes them as arrays. */
-export const hooks: { asarray: ((value: unknown) => unknown) | null } = { asarray: null };
-
 /** Python `container[key]`, with negative indices, slices and `__getitem__`. */
 export function getitem(container: any, key: any): any {
-  const method = dunder(container, '__getitem__');
-  if (method) return method(key);
   if (Array.isArray(container) || typeof container === 'string') {
     if (key instanceof Slice) {
       const items = key.range(container.length).map(i => container[i]);
       return typeof container === 'string' ? items.join('') : items;
     }
-    if (Array.isArray(key) && Array.isArray(container) && hooks.asarray) return getitem(hooks.asarray(container), key);
     return container[sequenceIndex(container.length, key)];
   }
   if (container instanceof Map) {
     if (!container.has(key)) throw new Error(`KeyError: ${String(key)}`);
-    return container instanceof PyDict ? container.lookup(key) : container.get(key);
+    return container instanceof Dict ? container.lookup(key) : container.get(key);
   }
   if (isDict(container) && !Object.hasOwn(container, key)) throw new Error(`KeyError: ${String(key)}`);
   return container[key];
@@ -716,10 +616,7 @@ export function getitem(container: any, key: any): any {
 
 /** Python `container[key] = value`, with negative indices, slice assignment and `__setitem__`. */
 export function setitem(container: any, key: any, value: any): void {
-  const method = dunder(container, '__setitem__');
-  if (method) {
-    method(key, value);
-  } else if (Array.isArray(container)) {
+  if (Array.isArray(container)) {
     if (key instanceof Slice) {
       const items = Array.from(value as Iterable<unknown>);
       if ((key.step ?? 1) === 1) {
@@ -730,8 +627,6 @@ export function setitem(container: any, key: any, value: any): void {
         if (indices.length !== items.length) throw new Error('ValueError: extended slice assignment size mismatch');
         indices.forEach((index, i) => (container[index] = items[i]));
       }
-    } else if (Array.isArray(key) && hooks.asarray) {
-      throw new TypeError('list indices must be integers or slices, not tuple');
     } else {
       container[sequenceIndex(container.length, key)] = value;
     }
@@ -742,25 +637,103 @@ export function setitem(container: any, key: any, value: any): void {
   }
 }
 
-/** Python `json.load(open(path))` and other reads of data files next to a module. */
-export function readText(path: unknown): string {
-  return new TextDecoder().decode(readResource(String(path)));
+/** Identity of a key, as Python hashing sees it: tuples by value, entities by identity. */
+function isEntity(value: unknown): value is { identity(): number; filePointer(): number } {
+  return value !== null && typeof value === 'object'
+    && typeof (value as { identity?: unknown }).identity === 'function'
+    && typeof (value as { filePointer?: unknown }).filePointer === 'function';
 }
 
-/** Identity of a key, as Python hashing sees it: tuples by value, entities by identity. */
+/**
+ * The key of a set member or dict key: an entity by its identity(), so that two handles of one
+ * entity are equal, as in Python; a list by its items; other values as they are.
+ */
 function keyOf(key: unknown): unknown {
+  if (isEntity(key)) return `@${key.filePointer()}:${key.identity()}`;
   if (Array.isArray(key)) return JSON.stringify(key.map(item => {
     const k = keyOf(item);
-    return typeof k === 'object' && k !== null ? `@${(k as { id?(): number }).id?.() ?? ''}:${String((k as { filePointer?(): number }).filePointer?.() ?? '')}` : k;
+    return typeof k === 'object' && k !== null ? String(k) : k;
   }));
   return key;
+}
+
+function items<T>(values: Iterable<T> | ReadonlySetLike<T>): Iterable<T> {
+  return Symbol.iterator in Object(values) ? values as Iterable<T> : { [Symbol.iterator]: () => (values as ReadonlySetLike<T>).keys() };
+}
+
+/** Python set: members compare by value, and entities by identity(), as Python entity equality does. */
+export class IdentitySet<T = any> extends Set<T> {
+  private readonly members = new Map<unknown, T>();
+
+  constructor(values?: Iterable<T> | null) {
+    super();
+    for (const value of values ?? []) this.add(value);
+  }
+
+  override add(value: T): this {
+    const key = keyOf(value);
+    if (!this.members.has(key)) {
+      this.members.set(key, value);
+      super.add(value);
+    }
+    return this;
+  }
+
+  override has(value: T): boolean {
+    return this.members.has(keyOf(value));
+  }
+
+  override delete(value: T): boolean {
+    const key = keyOf(value);
+    if (!this.members.has(key)) return false;
+    const member = this.members.get(key) as T;
+    this.members.delete(key);
+    return super.delete(member);
+  }
+
+  override clear(): void {
+    this.members.clear();
+    super.clear();
+  }
+
+  override union<U>(other: Iterable<U> | ReadonlySetLike<U>): IdentitySet<T | U> {
+    return new IdentitySet<T | U>([...this, ...items(other)]);
+  }
+
+  override intersection<U>(other: Iterable<U> | ReadonlySetLike<U>): IdentitySet<T & U> {
+    const others = new IdentitySet<unknown>(items(other));
+    return new IdentitySet([...this].filter(value => others.has(value))) as IdentitySet<T & U>;
+  }
+
+  override difference<U>(other: Iterable<U> | ReadonlySetLike<U>): IdentitySet<T> {
+    const others = new IdentitySet<unknown>(items(other));
+    return new IdentitySet([...this].filter(value => !others.has(value)));
+  }
+
+  override symmetricDifference<U>(other: Iterable<U> | ReadonlySetLike<U>): IdentitySet<T | U> {
+    const others = new IdentitySet<T | U>(items(other));
+    return new IdentitySet<T | U>([...[...this].filter(v => !others.has(v)), ...[...others].filter(v => !this.has(v as T))]);
+  }
+
+  override isSubsetOf(other: Iterable<unknown> | ReadonlySetLike<unknown>): boolean {
+    const others = new IdentitySet<unknown>(items(other));
+    return [...this].every(value => others.has(value));
+  }
+
+  override isSupersetOf(other: Iterable<unknown> | ReadonlySetLike<unknown>): boolean {
+    return [...items(other)].every(value => this.has(value as T));
+  }
+
+  override isDisjointFrom(other: Iterable<unknown> | ReadonlySetLike<unknown>): boolean {
+    return [...items(other)].every(value => !this.has(value as T));
+  }
 }
 
 /**
  * Python `dict` (or `defaultdict`) with keys other than strings: tuples compare by value,
  * entities by identity, and numbers stay numbers.
  */
-export class PyDict<K = any, V = any> extends Map<K, V> {
+export class Dict<K = any, V = any> extends Map<K, V> {
   private readonly keys_ = new Map<unknown, K>();
 
   constructor(entries?: Iterable<readonly [K, V]> | null, private readonly factory?: () => V) {
@@ -824,31 +797,66 @@ export class PyDict<K = any, V = any> extends Map<K, V> {
   }
 }
 
-/** Python `d.get(key, default)` on a Map or PyDict, without creating defaultdict entries. */
-export function dictGet<K, V>(dict: Map<K, V>, key: K, otherwise: V | null = null): V | null {
-  return dict instanceof PyDict ? dict.lookup(key, otherwise) : dict.has(key) ? dict.get(key)! : otherwise;
+/** Python `d.get(key, default)` on a Map or Dict, without creating defaultdict entries. */
+export function dictGet(dict: Map<any, any>, key: unknown, otherwise: any = null): any {
+  return dict instanceof Dict ? dict.lookup(key, otherwise) : dict.has(key) ? dict.get(key)! : otherwise;
 }
 
-/** Python `d.setdefault(key, value)` on a Map or PyDict. */
+/** Python `d.setdefault(key, value)` on a Map or Dict. */
 export function dictSetdefault<K, V>(dict: Map<K, V>, key: K, value: V): V {
   if (!dict.has(key)) dict.set(key, value);
   return dictGet(dict, key) as V;
 }
 
-/** Python `d.pop(key[, default])` on a Map or PyDict. */
-export function dictPop<K, V>(dict: Map<K, V>, key: K, ...otherwise: [V?]): V {
-  if (!dict.has(key)) {
-    if (otherwise.length) return otherwise[0] as V;
-    throw new Error('KeyError');
-  }
-  const value = dictGet(dict, key) as V;
-  dict.delete(key);
-  return value;
+/** A Python set (see {@link IdentitySet}), typed as a plain Set. */
+export function identitySet<T = any>(values?: Iterable<T> | null): Set<T> {
+  return new IdentitySet<T>(values);
 }
 
-/** Python `open(path)` for reading a data file next to a module; see `readResource` in ifcopenshell. */
-export function open(path: unknown, mode = 'r'): { read(): string; close(): void } {
-  if (!mode.startsWith('r')) throw new Error(`open(): only reading is supported, not mode ${mode}`);
-  const text = readText(path);
-  return { read: () => text, close: () => {} };
+/** Python `text.strip(chars)`, `lstrip(chars)` and `rstrip(chars)` with characters to remove. */
+export function strip(text: string, chars: string | null = null, side: 'both' | 'start' | 'end' = 'both'): string {
+  if (chars === null) return side === 'start' ? text.trimStart() : side === 'end' ? text.trimEnd() : text.trim();
+  const set = new Set(chars);
+  let start = 0;
+  let end = text.length;
+  if (side !== 'end') while (start < end && set.has(text[start]!)) start++;
+  if (side !== 'start') while (end > start && set.has(text[end - 1]!)) end--;
+  return text.slice(start, end);
+}
+
+/** Python `a < b`, `<=`, `>`, `>=` for values of unknown type: numbers, strings, lists and dates. */
+export function lt(a: unknown, b: unknown): boolean {
+  return order(a, b) < 0;
+}
+
+export function le(a: unknown, b: unknown): boolean {
+  return order(a, b) <= 0;
+}
+
+export function gt(a: unknown, b: unknown): boolean {
+  return order(a, b) > 0;
+}
+
+export function ge(a: unknown, b: unknown): boolean {
+  return order(a, b) >= 0;
+}
+
+interface DeclaredTypeCasts {
+  asNamedType?(): { declaredType(): unknown } | null;
+  asSimpleType?(): { declaredType(): unknown } | null;
+  asTypeDeclaration?(): { declaredType(): unknown } | null;
+}
+
+/** declared_type() of a named, simple or type declaration, with the explicit cast that it needs. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a schema declaration, used as Python does
+export function declaredType(declaration: DeclaredTypeCasts): any {
+  const cast = declaration.asNamedType?.() ?? declaration.asSimpleType?.() ?? declaration.asTypeDeclaration?.();
+  if (!cast) throw new TypeError('declared_type() needs a named, simple or type declaration');
+  return cast.declaredType();
+}
+
+/** Python `a == b` for entities: two handles of one entity are equal. Other values compare with ===. */
+export function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  return isEntity(a) && isEntity(b) && a.identity() === b.identity() && a.filePointer() === b.filePointer();
 }

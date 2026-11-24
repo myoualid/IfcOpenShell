@@ -1,12 +1,13 @@
 // This file was generated with the assistance of an AI coding tool.
 
-// Data files the transpiled ifcopenshell.util opens next to itself (Pset templates, JSON tables).
+// Data files the transpiled ifcopenshell.util opens next to itself (Pset templates, JSON tables), and the
+// Lark.js parsers that generate.py writes as .js with .d.ts declarations.
 import { cpSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const source = join(root, 'src', 'python', 'util');
+const source = join(root, 'src', 'util');
 if (existsSync(source)) {
-  cpSync(source, join(root, 'dist', 'python', 'util'), { recursive: true, filter: path => !path.endsWith('.ts') });
+  cpSync(source, join(root, 'dist', 'util'), { recursive: true, filter: path => !path.endsWith('.ts') || path.endsWith('.d.ts') });
 }

@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """Transpile ifcopenshell.util and ifcopenshell.api into the ifcopenshell npm package.
 
-Writes src/python/util and src/python/api of src/ts/ifcopenshell-js, which are build output
+Writes src/util and src/api of src/ts/ifcopenshell-js, which are build output
 and not committed, from this checkout's Python source, the rules and precomputed.json.
-src/python/transpile.json lists each module's untranslated functions; `--report` also writes
+transpile.json lists each module's untranslated functions; `--report` also writes
 TRACKING.md (not committed), with the results of the last `npm run test:report`. Needs only
 PyYAML and Jinja2 (requirements.txt). `--precompute` refreshes precomputed.json, which needs
 an installed ifcopenshell close to this checkout.
@@ -16,15 +16,19 @@ import collections
 import json
 import re
 import shutil
+import subprocess
+import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import mypy_types
 import yaml
-
 from transpile import PACKAGE, Transpiler, build_index, camel, module_name
 
 HERE = Path(__file__).parent
-OUTPUT = HERE.parent / "ts" / "ifcopenshell-js" / "src" / "python"
+OUTPUT = HERE.parent / "ts" / "ifcopenshell-js" / "src"
+MANIFEST = HERE / "transpile.json"
 PRECOMPUTED = HERE / "precomputed.json"
 RESULTS = HERE / "parity" / "results.json"
 TRACKING = HERE / "TRACKING.md"
@@ -42,12 +46,42 @@ def sources():
             yield path, Path("api") / path.parent.name / f"{path.stem}.ts"
 
 
+def polish(code):
+    """Spellings a rule cannot choose: object shorthand, and filter for a copy with one item removed."""
+    code = re.sub(r"\b(\w+): \1\b(?= *[,}=])", r"\1", code)
+    removed = r"^( *)((?:const |let )?)(\w+)((?:: any)?) = (.+);\n *if \(\3\.includes\((.+)\)\) \3\.splice\(\3\.indexOf\(\6\), 1\);;?$"
+    return re.sub(removed, r"\1\2\3\4 = \5.filter((item: any) => item !== \6);", code, flags=re.M)
+
+
+def write_parsers(grammars, folder, source_path):
+    """Write a Lark.js parser and its type declarations for each LALR grammar of a module."""
+    for name, grammar in grammars.items():
+        with tempfile.TemporaryDirectory() as temporary:
+            grammar_file = Path(temporary) / f"{name}.lark"
+            grammar_file.write_text(grammar, encoding="utf-8")
+            # Python's Lark gives a None for each missing [optional] item; so does this parser.
+            output = Path(temporary) / f"{name}.cjs"
+            command = [sys.executable, "-m", "larkjs", str(grammar_file), "-o", str(output)]
+            subprocess.run(command + ["--maybe_placeholders"], check=True)
+            # lark-js writes CommonJS; an ES module works in browsers, Node and bundlers alike.
+            code = output.read_text(encoding="utf-8")
+            if code.count("module.exports = {") != 1:
+                raise ValueError(f"Unexpected lark-js output for {name}")
+            (folder / f"{name}.js").write_text(code.replace("module.exports = {", "export {"), encoding="utf-8")
+        (folder / f"{name}.d.ts").write_text(
+            f"// Lark.js parser of a grammar in ifcopenshell/{source_path.relative_to(PACKAGE).as_posix()}; written by generate.py.\n"
+            "export function get_parser(options?: object): { parse(text: string): any };\n",
+            encoding="utf-8",
+        )
+
+
 def stub_module(source, reason):
     """Every top-level function throws, so other modules still import and type-check against it."""
     names = list(dict.fromkeys(n.name for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)))
     message = json.dumps(f"Not transpiled: {reason}")
     return HEADER + "".join(
-        f"\nexport function {camel(name)}(..._args: any[]): any {{\n  throw new Error({message});\n}}\n" for name in names
+        f"\nexport function {camel(name)}(..._args: any[]): any {{\n  throw new Error({message});\n}}\n"
+        for name in names
     )
 
 
@@ -55,12 +89,17 @@ def precompute(rules):
     """Run the functions listed under `precomputed` in the rules, from this checkout's source."""
     import importlib.util
 
-    import ifcopenshell  # The installed build provides the wrapper the source needs.
+    import ifcopenshell
+
+    # The installed build provides the wrapper that the source needs.
+    assert ifcopenshell.ifcopenshell_wrapper
 
     results = {}
     for qualified, arguments in rules.get("precomputed", {}).items():
         module_path, name = qualified.rsplit(".", 1)
-        spec = importlib.util.spec_from_file_location(f"_precompute.{module_path}", PACKAGE.joinpath(*module_path.split(".")).with_suffix(".py"))
+        spec = importlib.util.spec_from_file_location(
+            f"_precompute.{module_path}", PACKAGE.joinpath(*module_path.split(".")).with_suffix(".py")
+        )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         results[qualified] = {argument: getattr(module, name)(argument) for argument in arguments}
@@ -74,7 +113,9 @@ def parity_results():
     )
     if not RESULTS.exists():
         return modules
-    for test in (t for f in json.loads(RESULTS.read_text(encoding="utf-8"))["testResults"] for t in f["assertionResults"]):
+    for test in (
+        t for f in json.loads(RESULTS.read_text(encoding="utf-8"))["testResults"] for t in f["assertionResults"]
+    ):
         if test["ancestorTitles"][:1] != ["parity with Python"] or len(test["ancestorTitles"]) < 2:
             continue
         module = modules[test["ancestorTitles"][1].replace(".", "/")]
@@ -151,7 +192,9 @@ def tracking(manifest):
     ]
     for group in todo:
         lines += ["", f"### {group['name']}", ""]
-        lines += [f"Translated {group['translated']}; {group['passed']} calls passed, {group['failures']} failed, {sum(group['skipped'].values())} skipped."]
+        lines += [
+            f"Translated {group['translated']}; {group['passed']} calls passed, {group['failures']} failed, {sum(group['skipped'].values())} skipped."
+        ]
         if group["failed"]:
             lines += ["", "Failing:", ""]
         for message, functions in sorted(group["failed"].items(), key=lambda m: -sum(m[1].values())):
@@ -182,13 +225,14 @@ def main():
     rules = yaml.safe_load(args.rules.read_text(encoding="utf-8"))
     if args.precompute:
         PRECOMPUTED.write_text(json.dumps(precompute(rules), sort_keys=True) + "\n", encoding="utf-8")
-        print(f"Wrote {PRECOMPUTED}")
+        mypy_types.ATTRIBUTES.write_text(json.dumps(mypy_types.schema_attributes(), indent=0) + "\n", encoding="utf-8")
+        print(f"Wrote {PRECOMPUTED} and {mypy_types.ATTRIBUTES}")
         return
     precomputed = json.loads(PRECOMPUTED.read_text(encoding="utf-8"))
     missing = set(rules.get("precomputed", {})) - set(precomputed)
     if missing:
         raise SystemExit(f"{PRECOMPUTED.name} lacks {', '.join(sorted(missing))}; run generate.py --precompute")
-    compiler = Transpiler(args.rules, build_index(), precomputed)
+    compiler = Transpiler(args.rules, build_index(), precomputed, mypy_types.load())
     manifest = {}
     modules = set()  # API modules that are not a usecase (no function of their name), as settings.
     for scope in ("util", "api"):
@@ -198,7 +242,9 @@ def main():
         output = OUTPUT / relative
         output.parent.mkdir(parents=True, exist_ok=True)
         source = source_path.read_text(encoding="utf-8")
-        if name.startswith("api.") and source_path.stem not in {n.name for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)}:
+        if name.startswith("api.") and source_path.stem not in {
+            n.name for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)
+        }:
             modules.add(relative.with_suffix("").as_posix())
         entry = {
             "source": f"ifcopenshell/{source_path.relative_to(PACKAGE).as_posix()}",
@@ -214,7 +260,8 @@ def main():
             except Exception as error:  # Module-level constructs stop the whole file.
                 entry["error"] = str(error).splitlines()[0]
                 code = stub_module(source, entry["error"])
-        output.write_text(code, encoding="utf-8")
+        output.write_text(polish(code), encoding="utf-8")
+        write_parsers(compiler.grammars, output.parent, source_path)
         manifest[relative.with_suffix("").as_posix()] = entry
 
     # Data files that generated code opens next to itself, as the Python modules do.
@@ -226,7 +273,9 @@ def main():
 
     # Each API package re-exports its usecases and other modules, as ifcopenshell.api.<package> does.
     for package in sorted({k.split("/")[1] for k in manifest if k.startswith("api/")}):
-        usecases = sorted(k.split("/")[2] for k in manifest if k.startswith(f"api/{package}/") and not k.split("/")[2].startswith("_"))
+        usecases = sorted(
+            k.split("/")[2] for k in manifest if k.startswith(f"api/{package}/") and not k.split("/")[2].startswith("_")
+        )
         lines = [f'export {{ {camel(u)} }} from "./{u}.js";' for u in usecases if f"api/{package}/{u}" not in modules]
         lines += [f'export * as {u} from "./{u}.js";' for u in usecases if f"api/{package}/{u}" in modules]
         (OUTPUT / "api" / package / "index.ts").write_text(HEADER + "\n" + "\n".join(lines) + "\n", encoding="utf-8")
@@ -235,22 +284,26 @@ def main():
     packages = sorted({k.split("/")[1] for k in manifest if k.startswith("api/")})
     lines = [f'export * as {p} from "./{p}/index.js";' for p in packages]
     (OUTPUT / "api" / "index.ts").write_text(HEADER + "\n" + "\n".join(lines) + "\n", encoding="utf-8")
-    # ifcopenshell/util: every ported module as a namespace, and the hand-written helpers of src/util.
+    # ifcopenshell/util: every ported module as a namespace, and the hand-written helpers of src/helpers.
     modules = sorted(
         k.split("/")[1]
         for k in manifest
-        if k.startswith("util/") and manifest[k].get("error") != "not ported" and "export " in (OUTPUT / f"{k}.ts").read_text(encoding="utf-8")
+        if k.startswith("util/")
+        and manifest[k].get("error") != "not ported"
+        and "export " in (OUTPUT / f"{k}.ts").read_text(encoding="utf-8")
     )
-    lines = ['export * from "../../util/index.js";'] + [f'export * as {m} from "./{m}.js";' for m in modules]
+    lines = ['export * from "../helpers/index.js";'] + [f'export * as {m} from "./{m}.js";' for m in modules]
     (OUTPUT / "util" / "index.ts").write_text(HEADER + "\n" + "\n".join(lines) + "\n", encoding="utf-8")
 
-    (OUTPUT / "transpile.json").write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    MANIFEST.write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     for scope in ("util", "api"):
         entries = [e for k, e in manifest.items() if k.startswith(f"{scope}/")]
         functions = sum(e["functions"] for e in entries)
         stubs = sum(e["functions"] if "error" in e else len(e.get("stubs", {})) for e in entries)
         failed = sum("error" in e for e in entries)
-        print(f"ifcopenshell.{scope}: {len(entries) - failed}/{len(entries)} files, {functions - stubs}/{functions} functions translated")
+        print(
+            f"ifcopenshell.{scope}: {len(entries) - failed}/{len(entries)} files, {functions - stubs}/{functions} functions translated"
+        )
     if args.report:
         tracking(manifest)
 
