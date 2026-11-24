@@ -27,7 +27,7 @@ header: |-
 # Generated modules live in src/util and src/api of the ifcopenshell package; the runtime is in
 # src/helpers: util.x is util/x.ts, api.p.u is api/p/u.ts and api.p is api/p/index.ts.
 import: |-
-  {% set there = target.split(".") %}{% set path = there | join("/") ~ ".js" if there[0] in ["util", "helpers", "geom"] or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ root }}{{ path }}";
+  {% if target.startswith("!") %}import * as {{ alias }} from "./{{ target[1:] }}.cjs";{% else %}{% set there = target.split(".") %}{% set path = there | join("/") ~ ".js" if there[0] in ["util", "helpers", "geom"] or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ root }}{{ path }}";{% endif %}
 # Classes of ifcopenshell_wrapper, as exported by ifcopenshell.wrapper.
 wrapper_classes:
   attribute: IfcOpenshellAttribute
@@ -198,7 +198,7 @@ dunder_operators:
   Pow: pow
   MatMult: matmul
 # Imported modules that rules translate (others are dropped and their users stubbed).
-supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field, itertools, chain, logging]
+supported_modules: [math, json, time, functools, typing, collections, namedtuple, defaultdict, re, pathlib, assert_never, typing_extensions, dataclasses, dataclass, field, itertools, chain, logging, lark]
 # Modules imported only for annotations.
 type_only_modules: [typing, typing_extensions, collections.abc, __future__, collections, functools]
 # Functions that introspect Python itself; generate.py runs them for each argument and
@@ -715,6 +715,26 @@ rules:
       slice: $index
     when: node.ctx.__class__.__name__ == "Load" and value | kind == "entity" and index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0
     output: '({{ value | emit }}.get({{ index.value }}) as any)'
+  # lark.Lark(grammar, parser="lalr"): a Lark.js parser that generate.py makes from the same grammar.
+  - input:
+      node: Call
+      func: $callee
+      args:
+        - $grammar
+      keywords:
+        - node: keyword
+          arg: parser
+          value:
+            node: Constant
+            value: lalr
+    when: callee | source in ["lark.Lark", "Lark"] and grammar.__class__.__name__ == "Constant"
+    output: '{% if not lark_js %}{{ "lark-js is not installed" | unsupported }}{% endif %}{{ grammar | lark_parser }}.get_parser()'
+  # Other Lark parsers (Earley, or a grammar that is not a literal) have no Lark.js counterpart.
+  - input:
+      node: Call
+      func: $callee
+    when: callee | source in ["lark.Lark", "Lark"]
+    output: '{{ "Lark.js needs a literal grammar with the LALR parser" | unsupported }}'
   # itertools.chain(*lists): the items of each list, in order.
   - input:
       node: Call

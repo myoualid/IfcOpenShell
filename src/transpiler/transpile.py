@@ -6,6 +6,7 @@ import argparse
 import ast
 import collections
 import copy
+import importlib.util
 import json
 import re
 import sys
@@ -472,6 +473,9 @@ class Transpiler:
         self.rules["attribute_kinds"] = attribute_kinds()
         # The version of this checkout, for ifcopenshell.version.
         self.rules["ifcopenshell_version"] = (PACKAGE.parents[2] / "VERSION").read_text(encoding="utf-8").strip()
+        # LALR grammars become Lark.js parsers, which generate.py makes with lark-js.
+        self.rules["lark_js"] = importlib.util.find_spec("larkjs") is not None
+        self.grammars = {}
         self.index = index or {}
         self.precomputed = precomputed or {}
         self.module = None
@@ -528,6 +532,7 @@ class Transpiler:
             iterable=lambda n: self.emit(n, context="iterable"),
             literal=json.dumps,
             unsupported=unsupported,
+            lark_parser=self.lark_parser,
             is_generator=self.is_generator,
             source=lambda n: ast.unparse(n.func if isinstance(n, ast.Call) else n),
             path=value_path,
@@ -1013,6 +1018,12 @@ class Transpiler:
         ):
             self.annotate(f"{name}[]", annotation.slice.elts[1])
 
+    def lark_parser(self, grammar):
+        """Name the Lark.js parser of this grammar, which generate.py writes next to the module."""
+        name = f"{self.module.split('.')[-1]}_grammar{len(self.grammars)}"
+        self.grammars[name] = grammar.value
+        return self.use(f"!{name}", camel(name))
+
     def use(self, qualified_module, alias=None):
         """Record an import of another module and return its local alias."""
         alias = alias or qualified_module.replace(".", "_")
@@ -1317,6 +1328,7 @@ class Transpiler:
         self.module = module
         self.root = root if root is not None else "../" * (len(module.split(".")) - 1) if module else ""
         self.source_path = source_path or f"ifcopenshell/{(module or '').replace('.', '/')}.py"
+        self.grammars = {}
         tree = ast.parse(source)
         static_classmethods(tree)
         untyped_overloads(tree)

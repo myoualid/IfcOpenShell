@@ -17,6 +17,9 @@ import collections
 import json
 import re
 import shutil
+import subprocess
+import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -63,6 +66,22 @@ def polish(code):
     code = re.sub(r"\b(\w+): \1\b(?= *[,}=])", r"\1", code)
     removed = r"^( *)((?:const |let )?)(\w+)((?:: any)?) = (.+);\n *if \(\3\.includes\((.+)\)\) \3\.splice\(\3\.indexOf\(\6\), 1\);;?$"
     return re.sub(removed, r"\1\2\3\4 = \5.filter((item: any) => item !== \6);", code, flags=re.M)
+
+
+def write_parsers(grammars, folder, source_path):
+    """Write a Lark.js parser and its type declarations for each LALR grammar of a module."""
+    for name, grammar in grammars.items():
+        with tempfile.TemporaryDirectory() as temporary:
+            grammar_file = Path(temporary) / f"{name}.lark"
+            grammar_file.write_text(grammar, encoding="utf-8")
+            # Python's Lark gives a None for each missing [optional] item; so does this parser.
+            command = [sys.executable, "-m", "larkjs", str(grammar_file), "-o", str(folder / f"{name}.cjs")]
+            subprocess.run(command + ["--maybe_placeholders"], check=True)
+        (folder / f"{name}.d.cts").write_text(
+            f"// Lark.js parser of a grammar in ifcopenshell/{source_path.relative_to(PACKAGE).as_posix()}; written by generate.py.\n"
+            "export function get_parser(options?: object): { parse(text: string): any };\n",
+            encoding="utf-8",
+        )
 
 
 def stub_module(source, reason):
@@ -254,6 +273,7 @@ def main():
                 entry["error"] = str(error).splitlines()[0]
                 code = stub_module(source, entry["error"])
         output.write_text(polish(code), encoding="utf-8")
+        write_parsers(compiler.grammars, output.parent, source_path)
         manifest[relative.with_suffix("").as_posix()] = entry
 
     # Data files that generated code opens next to itself, as the Python modules do.

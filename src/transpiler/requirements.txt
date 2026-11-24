@@ -5,3 +5,7 @@ Jinja2==3.1.5
 --no-binary mypy
 mypy==2.4.1
 numpy
+# Lark.js parsers for the LALR grammars (generate.py). lark-js 0.1.4 cannot read the options that newer
+# lark versions write (1.1.9 and 1.3.1 fail; 1.1.2 works), so this environment pins lark.
+lark-js==0.1.4
+lark==1.1.2
