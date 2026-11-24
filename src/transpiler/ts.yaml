@@ -213,6 +213,10 @@ types:
   - input: $value
     when: value | source in ["npt.NDArray", "NDArray", "np.ndarray", "numpy.ndarray", "np.array"]
     output: any
+  # Lark trees and tokens (Lark.js has the same attributes).
+  - input: $value
+    when: value | source in ["lark.Tree", "lark.Token"]
+    output: any
   - input: $value
     when: value | source in ["npt.ArrayLike", "npt.DTypeLike"] or (value | source).startswith("ifcopenshell.geom.") or (value | source).startswith("ifcopenshell.ifcopenshell_wrapper.")
     output: any
@@ -353,6 +357,19 @@ types:
 # Functions that return numpy arrays and are not written by hand: code that calls them is numpy code.
 numpy_functions: [util.shape_builder.V]
 rules:
+  # A method of a module-level value of this module (a parser object, for example).
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value:
+          node: Name
+          id: $name
+        attr: $method
+      args: $args
+      keywords: []
+    when: name in module_globals and name not in functions and name not in classes and name not in shadowed and not method.startswith("_")
+    output: '{{ name | ident }}.{{ method | camel }}({{ args | map("emit") | join(", ") }})'
   # text * n: String.prototype.repeat.
   - input:
       node: BinOp
