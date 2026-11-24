@@ -201,7 +201,7 @@ def main():
     rules = yaml.safe_load(args.rules.read_text(encoding="utf-8"))
     if args.precompute:
         PRECOMPUTED.write_text(json.dumps(precompute(rules), sort_keys=True) + "\n", encoding="utf-8")
-        mypy_types.ATTRIBUTES.write_text(json.dumps(mypy_types.schema_attributes(), indent=0) + "\n", encoding="utf-8")
+        mypy_types.ATTRIBUTES.write_text(mypy_types.dump_attributes(mypy_types.schema_attributes()), encoding="utf-8")
         print(f"Wrote {PRECOMPUTED} and {mypy_types.ATTRIBUTES}")
         return
     precomputed = json.loads(PRECOMPUTED.read_text(encoding="utf-8"))

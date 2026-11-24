@@ -71,6 +71,15 @@ def schema_attributes():
     return {name: attributes[name] for name in sorted(attributes)}
 
 
+def dump_attributes(attributes):
+    """attributes.json text: one attribute per line, so that a schema change gives a small diff."""
+    lines = [
+        f"{json.dumps(name)}: {json.dumps(entry, separators=(', ', ': '))}"
+        for name, entry in sorted(attributes.items())
+    ]
+    return "{\n" + ",\n".join(lines) + "\n}\n"
+
+
 def sources():
     package = PYTHON / "ifcopenshell"
     paths = sorted(package.glob("util/*.py")) + sorted(package.glob("api/*/*.py"))
