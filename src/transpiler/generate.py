@@ -89,7 +89,10 @@ def precompute(rules):
     """Run the functions listed under `precomputed` in the rules, from this checkout's source."""
     import importlib.util
 
-    import ifcopenshell  # The installed build provides the wrapper the source needs.
+    import ifcopenshell
+
+    # The installed build provides the wrapper that the source needs.
+    assert ifcopenshell.ifcopenshell_wrapper
 
     results = {}
     for qualified, arguments in rules.get("precomputed", {}).items():
