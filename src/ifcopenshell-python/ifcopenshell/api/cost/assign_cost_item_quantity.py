@@ -16,9 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
-import ast
-import operator
-from typing import Any
+import lark
 
 import ifcopenshell.api.control
 import ifcopenshell.api.cost
@@ -143,10 +141,8 @@ class Usecase:
                 relating_control=cost_item,
             )
             if formula:
-                tree = ast.parse(formula, mode="eval")
-                collector = VariableExtractor()
-                collector.visit(tree)
-                variables = collector.variables
+                tree = formula_grammar.parse(formula)
+                variables = get_formula_variables(tree)
 
                 values: dict[str, float | None] = {}
                 for variable in variables:
@@ -165,8 +161,7 @@ class Usecase:
                             f"has value 0. Verify if this is correct."
                         )
 
-                evaluator = FormulaEvaluator(values)
-                result = evaluator.visit(tree.body)
+                result = evaluate_formula(tree, values)
 
                 new_quantity = None
                 for quantity in self.quantities:
@@ -244,57 +239,69 @@ class Usecase:
                 quantity[3] = count
 
 
-OPERATORS = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.Pow: operator.pow,
-    ast.USub: operator.neg,
-}
+# Arithmetic of numbers and of (dotted) property names, as in "Qto_WallBaseQuantities.NetVolume * 2".
+formula_grammar = lark.Lark(
+    """start: sum
+    ?sum: product
+        | sum "+" product -> add
+        | sum "-" product -> sub
+    ?product: power
+        | product "*" power -> mul
+        | product "/" power -> truediv
+    ?power: atom
+        | atom "**" power -> pow
+    ?atom: NUMBER -> number
+        | variable
+        | "(" sum ")"
+    variable: CNAME ("." CNAME)*
+
+    // Embed common.lark for packaging
+    DIGIT: "0".."9"
+    INT: DIGIT+
+    SIGNED_INT: ["+"|"-"] INT
+    DECIMAL: INT "." INT? | "." INT
+    _EXP: ("e"|"E") SIGNED_INT
+    FLOAT: INT _EXP | DECIMAL _EXP?
+    NUMBER: FLOAT | INT
+    LCASE_LETTER: "a".."z"
+    UCASE_LETTER: "A".."Z"
+    LETTER: UCASE_LETTER | LCASE_LETTER
+    CNAME: ("_"|LETTER) ("_"|LETTER|DIGIT)*
+    WS: /[ \\t\\f\\r\\n]/+
+
+    %ignore WS
+    """,
+    parser="lalr",
+)
 
 
-def build_full_name(node: ast.expr) -> str:
-    # used for variables with dots
-    parts = []
-    while isinstance(node, ast.Attribute):
-        parts.append(node.attr)
-        node = node.value
-
-    if isinstance(node, ast.Name):
-        parts.append(node.id)
-
-    return ".".join(reversed(parts))
+def get_formula_variables(node: lark.Tree) -> set[str]:
+    """The names of the variables of a parsed formula, as "Pset.Property" for dotted names."""
+    if node.data == "variable":
+        return {".".join(token.value for token in node.children)}
+    variables: set[str] = set()
+    if node.data != "number":
+        for child in node.children:
+            variables |= get_formula_variables(child)
+    return variables
 
 
-class VariableExtractor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.variables: set[str] = set()
-
-    def visit_Name(self, node: ast.Name) -> None:
-        self.variables.add(node.id)
-
-    def visit_Attribute(self, node: ast.Attribute) -> None:
-        self.variables.add(build_full_name(node))
-
-
-class FormulaEvaluator(ast.NodeVisitor):
-    def __init__(self, values: dict[str, float | None]):
-        self.values = values
-
-    def visit_BinOp(self, node: ast.BinOp) -> float:
-        left = self.visit(node.left)
-        right = self.visit(node.right)
-        return OPERATORS[type(node.op)](left, right)  # ty: ignore[too-many-positional-arguments]
-
-    def visit_Name(self, node: ast.Name) -> float | None:
-        return self.values[node.id]
-
-    def visit_Attribute(self, node: ast.Attribute) -> float | None:
-        return self.values[build_full_name(node)]
-
-    def visit_Constant(self, node: ast.Constant) -> Any:
-        return node.value
-
-    def generic_visit(self, node: ast.AST) -> Any:
-        raise ValueError(f"Operation not permitted: {type(node).__name__}")
+def evaluate_formula(node: lark.Tree, values: dict[str, float | None]) -> float | None:
+    """The value of a parsed formula, with the values of its variables."""
+    if node.data == "start":
+        return evaluate_formula(node.children[0], values)
+    if node.data == "number":
+        return float(node.children[0].value)
+    if node.data == "variable":
+        return values[".".join(token.value for token in node.children)]
+    left = evaluate_formula(node.children[0], values)
+    right = evaluate_formula(node.children[1], values)
+    if node.data == "add":
+        return left + right
+    if node.data == "sub":
+        return left - right
+    if node.data == "mul":
+        return left * right
+    if node.data == "truediv":
+        return left / right
+    return left**right
