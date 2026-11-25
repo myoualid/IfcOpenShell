@@ -2,11 +2,33 @@
 import { ifcopenshell } from '../init.js';
 import type { Settings } from './settings.js';
 import type { EntityInstance } from '../entity_instance.js';
-import type { IfcOpenshellGeomFunctionItemEvaluator, IfcOpenshellGeomTaxonomyItem } from '@ifcopenshell/wasm/api';
+import type {
+  IfcOpenshellGeomElement,
+  IfcOpenshellGeomFunctionItemEvaluator,
+  IfcOpenshellGeomTaxonomyItem,
+  IfcOpenshellGeomTriangulation,
+} from '@ifcopenshell/wasm/api';
 
-/** Create one shape. Load the schema mapping and geometry kernel beforehand. */
-export function createShape(settings: Settings, instance: EntityInstance, representation?: EntityInstance, geometryLibrary = 'opencascade') {
-  return ifcopenshell.geom.createShape(settings, instance, representation ?? null, geometryLibrary);
+/**
+ * Create one shape, as ifcopenshell.geom.create_shape: for a product, an element (its geometry with
+ * its placement); for a representation item, a representation or a profile, only its geometry. In
+ * this build the geometry of an instance that is not a product needs triangulated output (the
+ * default iterator-output setting). Load the schema mapping and geometry kernel beforehand.
+ */
+export function createShape(
+  settings: Settings,
+  instance: EntityInstance,
+  representation?: EntityInstance,
+  geometryLibrary = 'opencascade',
+): IfcOpenshellGeomElement | IfcOpenshellGeomTriangulation | null {
+  const element = ifcopenshell.geom.createShape(settings, instance, representation ?? null, geometryLibrary);
+  if (!element || instance.isA('IfcProduct')) return element;
+  const triangulation = element.asTriangulationElement();
+  if (!triangulation) {
+    element.destroy();
+    throw new TypeError('The geometry of an instance that is not a product needs triangulated output in this build');
+  }
+  return triangulation.geometry();
 }
 
 /** The taxonomy item of an instance, such as the function item of an alignment curve or curve segment. */
