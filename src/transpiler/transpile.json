@@ -1298,8 +1298,7 @@
   "source": "ifcopenshell/api/project/append_asset.py",
   "stubs": {
    "Usecase.add_element": "truthiness of a value of unknown type: subelement_queue",
-   "Usecase.file_add": "== between values of unknown type: getattr(e, attr_name) == subelement_id",
-   "Usecase.get_existing_element": "== between values of unknown type: getattr(candidate, name_attr) == material_set_name",
+   "Usecase.file_add": "No rules rule at line 790: type(tuple_)",
    "Usecase.has_whitelisted_inverses": "truthiness of a value of unknown type: value",
    "append_asset": "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
   }
@@ -1507,16 +1506,12 @@
  "api/sequence/add_work_plan": {
   "functions": 1,
   "source": "ifcopenshell/api/sequence/add_work_plan.py",
-  "stubs": {
-   "add_work_plan": "truthiness of a value of unknown type: start_time"
-  }
+  "stubs": {}
  },
  "api/sequence/add_work_schedule": {
   "functions": 1,
   "source": "ifcopenshell/api/sequence/add_work_schedule.py",
-  "stubs": {
-   "add_work_schedule": "truthiness of a value of unknown type: start_time"
-  }
+  "stubs": {}
  },
  "api/sequence/add_work_time": {
   "functions": 1,
@@ -1566,8 +1561,7 @@
   "source": "ifcopenshell/api/sequence/cascade_schedule.py",
   "stubs": {
    "Usecase.cascade_task": "truthiness of a value of unknown type: finish",
-   "Usecase.get_calendar": "in on a value of unknown type: task.id() not in self.calendar_cache",
-   "Usecase.get_task_time_attribute": "truthiness of a value of unknown type: value"
+   "Usecase.get_calendar": "in on a value of unknown type: task.id() not in self.calendar_cache"
   }
  },
  "api/sequence/copy_work_schedule": {
@@ -2230,9 +2224,9 @@
   "source": "ifcopenshell/util/sequence.py",
   "stubs": {
    "count_working_days": "== between values of unknown type: start == finish",
-   "derive_date": "truthiness of a value of unknown type: getattr",
+   "derive_date": "truthiness of a value of unknown type: current_date",
    "get_recent_working_day": "an augmented operator on a numpy array or a value of unknown type",
-   "get_sequence_assignment": "truthiness of a value of unknown type: relationship",
+   "get_sequence_assignment": "truthiness of a value of unknown type: result",
    "get_soonest_working_day": "an augmented operator on a numpy array or a value of unknown type",
    "get_start_or_finish_date": "truthiness of a value of unknown type: duration.days",
    "guess_date_range": "truthiness of a value of unknown type: derived_start",

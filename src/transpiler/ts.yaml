@@ -1134,7 +1134,7 @@ rules:
     context: condition
     # attribute: an IFC forward attribute value read by position (entity[i]): an entity, text, number,
     # boolean, null, or an aggregate, which IFC gives at least one item (except [0:?] aggregates).
-    when: value.__class__.__name__ in ["Compare", "UnaryOp", "Constant"] or value | kind in ["boolean", "number", "string", "entity", "file", "scalar", "set-nonempty", "attribute", "object", "match", "pattern"]
+    when: value.__class__.__name__ in ["Compare", "UnaryOp", "Constant"] or value | kind in ["boolean", "number", "string", "entity", "file", "scalar", "set-nonempty", "attribute", "object", "match", "pattern", "datetime", "date", "time"]
     output: '{{ value | emit }}'
   - input: $value
     context: condition
