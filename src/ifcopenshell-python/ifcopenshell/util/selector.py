@@ -47,7 +47,7 @@ filter_elements_grammar = lark.Lark("""start: filter_group
     facet: instance | entity | attribute | type | material | query | classification | location | property | group | parent
 
     instance: not? globalid
-    globalid: /[0-3][a-zA-Z0-9_$]{21}/
+    globalid: GLOBALID
     entity: not? ifc_class
     attribute: attribute_name comparison value
     type: "type" comparison value
@@ -57,20 +57,31 @@ filter_elements_grammar = lark.Lark("""start: filter_group
     location: "location" comparison value
     group: "group" comparison value
     parent: "parent" comparison value
-    query: "query:" keys comparison value
+    query: _QUERY keys comparison value
 
     pset: quoted_string | regex_string | unquoted_string
     prop: quoted_string | regex_string | unquoted_string
     keys: quoted_string | unquoted_string
 
-    attribute_name: /[A-Z]\\w+/
-    ifc_class: /Ifc\\w+/
+    attribute_name: ATTRIBUTE_NAME | IFC_CLASS
+    ifc_class: IFC_CLASS
 
     value: special | quoted_string | regex_string | decimal_string | unquoted_string
-    unquoted_string: /[^,.=><*!\\s]+/
+    // The LALR lexer gives one terminal for each word, so a word that is also a GlobalId, a class
+    // or an attribute name is an unquoted string where the grammar expects one.
+    unquoted_string: UNQUOTED | ATTRIBUTE_NAME | IFC_CLASS | GLOBALID
     decimal_string: SIGNED_DECIMAL
-    SIGNED_DECIMAL: ["+"|"-"] (INT "." INT | "." INT)
-    regex_string: "/" /[^\\/]+/ "/"
+
+    // Terminals that match the same text are tried in the order of their priorities. A name ends
+    // at a separator: , . = > < * ! + or white space. Terminals that start with _ are not in the tree.
+    GLOBALID.5: /[0-3][a-zA-Z0-9_$]{21}(?![^,.=><*!\\s+])/
+    IFC_CLASS.4: /Ifc\\w+(?![^,.=><*!\\s+])/
+    ATTRIBUTE_NAME.3: /[A-Z]\\w+(?![^,.=><*!\\s+])/
+    SIGNED_DECIMAL.2: /[+-]?(\\d+\\.\\d+|\\.\\d+)/
+    UNQUOTED: /[^,.=><*!\\s]+/
+    _QUERY.5: "query:"
+    _SLASH.1: "/"
+    regex_string: _SLASH /[^\\/]+/ _SLASH
     quoted_string: ESCAPED_STRING
 
     special: null | true | false
@@ -83,9 +94,12 @@ filter_elements_grammar = lark.Lark("""start: filter_group
     morethan: ">"
     lessthan: "<"
     contains: "*="
-    null: "NULL"
-    true: "TRUE"
-    false: "FALSE"
+    null: _NULL
+    true: _TRUE
+    false: _FALSE
+    _NULL.6: /NULL(?![^,.=><*!\\s+])/
+    _TRUE.6: /TRUE(?![^,.=><*!\\s+])/
+    _FALSE.6: /FALSE(?![^,.=><*!\\s+])/
 
     // Embed common.lark for packaging
     DIGIT: "0".."9"
@@ -111,11 +125,11 @@ filter_elements_grammar = lark.Lark("""start: filter_group
     CR : /\\r/
     LF : /\\n/
     NEWLINE: (CR? LF)+
-    COMMENT: "/*" /.*?/s "*/"
+    COMMENT.7: "/*" /.*?/s "*/"
 
     %ignore WS // Disregard spaces in text
     %ignore COMMENT // Allow /* ... */ block comments to toggle parts of a query
-""")
+""", parser="lalr")
 
 get_element_grammar = lark.Lark(
     """start: keys
