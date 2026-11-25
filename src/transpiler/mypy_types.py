@@ -18,7 +18,7 @@ ATTRIBUTES = HERE / "attributes.json"
 CACHE = HERE / "types.json"
 PYTHON = HERE.parent / "ifcopenshell-python"
 SCALARS = {"boolean", "number", "string", "entity", "file", "scalar"}
-SEQUENCES = {"builtins.list", "builtins.tuple", "typing.Sequence", "typing.MutableSequence"}
+SEQUENCES = {"builtins.list", "builtins.tuple", "typing.Sequence", "typing.MutableSequence", "collections.deque"}
 SETS = {"builtins.set", "builtins.frozenset", "typing.AbstractSet", "typing.MutableSet"}
 SIMPLE = {
     "integer": "number",
