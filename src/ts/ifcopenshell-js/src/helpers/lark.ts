@@ -4,7 +4,13 @@
 // The base class of generated lark.Transformer subclasses. It transforms the trees of any Lark.js
 // parser, as the Transformer of each generated parser only knows the trees of that parser.
 
-import { camel } from './lang.js';
+/** The method name of a rule or terminal: the camelCase name that the transpiler gives Python methods. */
+function camel(name: string): string {
+  const stripped = name.replace(/^_+/, '');
+  if (!stripped || stripped.toUpperCase() === stripped) return name;
+  const [head, ...rest] = stripped.split('_');
+  return name.slice(0, name.length - stripped.length) + head + rest.map(part => part.slice(0, 1).toUpperCase() + part.slice(1)).join('');
+}
 
 /** A Lark.js tree: the name of its rule and its children (trees, tokens or transformed values). */
 export interface LarkTree {
