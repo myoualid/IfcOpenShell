@@ -1148,6 +1148,10 @@ class Transpiler:
                 and not isinstance(annotation.slice, ast.Tuple)
             ):
                 return self.emit(annotation.slice, "annotation_kinds")
+        if self.rules.get("proven_types") and getattr(node, "lineno", None) is not None:
+            position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}:elements"
+            if proven := self.types.get(self.module, {}).get(position):
+                return proven[0]
         return "unknown"
 
     def nullable(self, node):

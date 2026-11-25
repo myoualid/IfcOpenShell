@@ -93,6 +93,18 @@ def fingerprint():
     return digest.hexdigest()
 
 
+def element_type(proper):
+    """The type of the elements of a list, tuple or set type, or None."""
+    from mypy import types
+
+    if isinstance(proper, types.Instance) and proper.type.fullname in SEQUENCES | SETS and proper.args:
+        return types.get_proper_type(proper.args[0])
+    if isinstance(proper, types.TupleType) and proper.partial_fallback.type.fullname == "builtins.tuple" and proper.items:
+        items = [types.get_proper_type(item) for item in proper.items]
+        return items[0] if all(item == items[0] for item in items) else None
+    return None
+
+
 def classify(proper, types):
     """(kind, nullable) of a mypy type, or None when it does not say what the value is."""
     nullable = False
@@ -228,6 +240,9 @@ def analyze():
                     returns = classify(types.get_proper_type(proper.ret_type), types)
                     if returns:
                         self.kinds[position + ":returns"] = returns
+                if (elements := element_type(proper)) is not None and (kind := classify(elements, types)):
+                    # The elements of a list, tuple or set (for sorted(), min(), all() and `in`).
+                    self.kinds[position + ":elements"] = kind
             return True
 
     found = {}
