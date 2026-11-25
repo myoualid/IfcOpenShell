@@ -322,7 +322,7 @@ class FormatTransformer(lark.Transformer):
     def replace(self, args):
         return str(args[0]).replace(str(args[1]), str(args[2]))
 
-    def sort(self, args):
+    def sort(self, args: list[list[str]]) -> list[str]:
         return sorted(args[0])
 
     def reverse(self, args):
@@ -356,7 +356,7 @@ class FormatTransformer(lark.Transformer):
             return str(int(result))
         return str(result)
 
-    def number(self, args):
+    def number(self, args: list[Union[str, int, float, None]]) -> str:
         arg_val = args[0]
         if isinstance(arg_val, str):
             arg_val = float(arg_val) if "." in arg_val else int(arg_val)
