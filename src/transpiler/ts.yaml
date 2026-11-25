@@ -637,7 +637,8 @@ rules:
     output: '{% set k = value | kind %}{% if k == "string" %}({{ value | emit }}.split({{ item | emit }}).length - 1){% elif k == "array" and item | kind in ["number", "string", "boolean"] %}{{ value | emit }}.filter((v: any) => v === {{ item | emit }}).length{% else %}{{ "count() on a value of unknown type" | unsupported }}{% endif %}'
   - input: $value
     context: condition
-    when: value | kind == "array"
+    # A numpy array in a truth test is an error in Python, so a sequence tested for truth is a list.
+    when: value | kind in ["array", "sequence"]
     output: '{{ value | emit }}{{ "?" if value | nullable }}.length > 0'
   - input: $value
     context: condition

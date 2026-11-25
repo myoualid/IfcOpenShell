@@ -98,8 +98,18 @@ def classify(proper, types):
     nullable = False
     if isinstance(proper, types.UnionType):
         items = [types.get_proper_type(item) for item in proper.items]
-        known = [item for item in items if not isinstance(item, types.NoneType)]
-        nullable = len(known) != len(items)
+        nullable = any(isinstance(item, types.NoneType) for item in items)
+        # A type from a module that is not installed (mathutils.Vector in VectorType) says nothing
+        # about the value; the other types of the union decide.
+        unimported = types.TypeOfAny.from_unimported_type
+        known = [
+            item
+            for item in items
+            if not isinstance(item, types.NoneType)
+            and not (isinstance(item, types.AnyType) and item.type_of_any == unimported)
+        ]
+        if not known:
+            return None
         kinds = {classify(item, types) for item in known}
         kinds = {kind and kind[0] for kind in kinds}
         if len(kinds) == 1 and None not in kinds:
