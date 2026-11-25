@@ -1306,9 +1306,7 @@
  "api/project/assign_declaration": {
   "functions": 1,
   "source": "ifcopenshell/api/project/assign_declaration.py",
-  "stubs": {
-   "assign_declaration": "in on a list of values of unknown type"
-  }
+  "stubs": {}
  },
  "api/project/create_file": {
   "functions": 1,
@@ -1560,7 +1558,7 @@
   "functions": 2,
   "source": "ifcopenshell/api/sequence/cascade_schedule.py",
   "stubs": {
-   "Usecase.cascade_task": "truthiness of a value of unknown type: finish",
+   "Usecase.cascade_task": "an augmented operator on a numpy array or a value of unknown type",
    "Usecase.get_calendar": "in on a value of unknown type: task.id() not in self.calendar_cache"
   }
  },
@@ -1614,16 +1612,12 @@
  "api/sequence/edit_work_plan": {
   "functions": 1,
   "source": "ifcopenshell/api/sequence/edit_work_plan.py",
-  "stubs": {
-   "edit_work_plan": "truthiness of a value of unknown type: value"
-  }
+  "stubs": {}
  },
  "api/sequence/edit_work_schedule": {
   "functions": 1,
   "source": "ifcopenshell/api/sequence/edit_work_schedule.py",
-  "stubs": {
-   "edit_work_schedule": "truthiness of a value of unknown type: value"
-  }
+  "stubs": {}
  },
  "api/sequence/edit_work_time": {
   "functions": 1,
@@ -2224,12 +2218,10 @@
   "source": "ifcopenshell/util/sequence.py",
   "stubs": {
    "count_working_days": "== between values of unknown type: start == finish",
-   "derive_date": "truthiness of a value of unknown type: current_date",
    "get_recent_working_day": "an augmented operator on a numpy array or a value of unknown type",
    "get_sequence_assignment": "truthiness of a value of unknown type: result",
    "get_soonest_working_day": "an augmented operator on a numpy array or a value of unknown type",
    "get_start_or_finish_date": "truthiness of a value of unknown type: duration.days",
-   "guess_date_range": "truthiness of a value of unknown type: derived_start",
    "is_day_in_work_time": "ordering of values of unknown type",
    "is_work_time_applicable_to_day": "in on a list of values of unknown type",
    "offset_date": "an operator on a numpy array or a value of unknown type"
