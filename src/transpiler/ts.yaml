@@ -180,7 +180,7 @@ geom_constants:
   NATIVE: IteratorOutput.NATIVE
   SERIALIZED: IteratorOutput.SERIALIZED
 # In modules importing these, operators on values of unknown type go through lang (add, sub, ...), which
-# also moves dates by durations (see helpers/dates.ts).
+# also moves dates by durations (Temporal).
 overloading_modules: [datetime, numpy]
 # Kind of values returned by runtime module functions; see `inference`.
 runtime_kinds: {}
@@ -229,11 +229,11 @@ operators:
 types:
   - input: null
     output: any
-  # Dates: Temporal objects; a timedelta is a number of microseconds (src/helpers/dates.ts). A date hint
+  # Dates: Temporal objects; a timedelta is a number of microseconds (Temporal, src/helpers/temporal.ts). A date hint
   # accepts a datetime too, as a Python datetime is a date.
   - input: $value
     when: value | source in ["datetime.datetime", "datetime.date", "datetime.time", "datetime", "date", "time"] and value | source not in classes
-    output: '{% set name = (value | source).split(".")[-1] %}{% if name == "date" %}{{ "helpers.dates" | use("dates") }}.DateLike{% else %}{{ "helpers.dates" | use("dates") }}.Temporal.Plain{{ {"datetime": "DateTime", "time": "Time"}[name] }}{% endif %}'
+    output: '{% set name = (value | source).split(".")[-1] %}{% if name == "date" %}({{ "helpers.temporal" | use("temporal") }}.Temporal.PlainDate | {{ "helpers.temporal" | use("temporal") }}.Temporal.PlainDateTime){% else %}{{ "helpers.temporal" | use("temporal") }}.Temporal.Plain{{ {"datetime": "DateTime", "time": "Time"}[name] }}{% endif %}'
   - input: $value
     when: value | source in ["datetime.timedelta", "timedelta"]
     output: number
@@ -816,7 +816,7 @@ rules:
       keywords: []
     when: not (value.__class__.__name__ == "Call" and value.func.attr is defined and value.func.attr == "as_aggregation_type")
     output: '{{ value | emit }}.asAggregationType().typeOfAggregationString()'
-  # Dates (see src/helpers/dates.ts): datetime, date and time are Temporal objects; a timedelta is a number
+  # Dates: datetime, date and time are Temporal objects; a timedelta is a number
   # of microseconds, so duration arithmetic stays plain number arithmetic.
   - input:
       node: Call
@@ -824,56 +824,56 @@ rules:
       args: $args
       keywords: $keywords
     when: callee | source in ["datetime.timedelta", "timedelta"]
-    output: '{{ "helpers.dates" | use("dates") }}.timedelta({{ "{" }} {% for a in args %}{{ ["days", "seconds", "microseconds", "milliseconds", "minutes", "hours", "weeks"][loop.index0] }}: {{ a | emit }}, {% endfor %}{% for k in keywords %}{{ k.arg }}: {{ k.value | emit }}, {% endfor %}{{ "}" }})'
+    output: '{% set units = {"weeks": "604800000000", "days": "86400000000", "hours": "3600000000", "minutes": "60000000", "seconds": "1000000", "milliseconds": "1000", "microseconds": "1"} %}{% set names = ["days", "seconds", "microseconds", "milliseconds", "minutes", "hours", "weeks"] %}Math.round({% for a in args %}({{ a | emit }}) * {{ units[names[loop.index0]] }} + {% endfor %}{% for k in keywords %}({{ k.value | emit }}) * {{ units[k.arg] }} + {% endfor %}0)'
   - input:
       node: Call
       func: $callee
       args: []
       keywords: []
     when: callee | source in ["datetime.datetime.now", "datetime.now"]
-    output: '{{ "helpers.dates" | use("dates") }}.now()'
+    output: '{{ "helpers.temporal" | use("temporal") }}.Temporal.Now.plainDateTimeISO()'
   - input:
       node: Call
       func: $callee
       args: $args
       keywords: []
     when: callee | source in ["datetime.datetime.combine", "datetime.combine"] and args | length >= 1
-    output: '{{ "helpers.dates" | use("dates") }}.combine({{ args[:2] | map("emit") | join(", ") }})'
+    output: '{{ "helpers.temporal" | use("temporal") }}.Temporal.PlainDate.from({{ args[0] | emit }}).toPlainDateTime({{ args[1] | emit if args | length > 1 else "new " ~ ("helpers.temporal" | use("temporal")) ~ ".Temporal.PlainTime()" }})'
   - input:
       node: Call
       func: $callee
       args: $args
       keywords: []
     when: callee | source in ["datetime.datetime.fromisoformat", "datetime.fromisoformat"]
-    output: '{{ "helpers.dates" | use("dates") }}.fromIsoDateTime({{ args[0] | emit }})'
+    output: '{{ "helpers.temporal" | use("temporal") }}.Temporal.PlainDateTime.from({{ args[0] | emit }})'
   - input:
       node: Call
       func: $callee
       args: $args
       keywords: []
     when: callee | source in ["datetime.date.fromisoformat", "date.fromisoformat"]
-    output: '{{ "helpers.dates" | use("dates") }}.fromIsoDate({{ args[0] | emit }})'
+    output: '{{ "helpers.temporal" | use("temporal") }}.Temporal.PlainDate.from({{ args[0] | emit }})'
   - input:
       node: Call
       func: $callee
       args: $args
       keywords: []
     when: callee | source in ["datetime.date", "datetime.time", "datetime.datetime"] or (callee | source in ["date", "time", "datetime"] and callee | source not in functions)
-    output: '{{ "helpers.dates" | use("dates") }}.{{ (callee | source).split(".")[-1] }}({{ args | map("emit") | join(", ") }})'
+    output: '{% set name = (callee | source).split(".")[-1] %}{% set head = 3 if name == "datetime" else 0 %}{% if name == "date" %}new {{ "helpers.temporal" | use("temporal") }}.Temporal.PlainDate({{ args | map("emit") | join(", ") }}){% else %}new {{ "helpers.temporal" | use("temporal") }}.Temporal.Plain{{ "DateTime" if name == "datetime" else "Time" }}({{ args[:head + 3] | map("emit") | join(", ") }}{% if args | length > head + 3 %}, Math.floor(({{ args[head + 3] | emit }}) / 1000), ({{ args[head + 3] | emit }}) % 1000{% endif %}){% endif %}'
   - input:
       node: BinOp
       left: $left
       op: $op
       right: $right
     when: op.__class__.__name__ == "Sub" and left | kind in ['datetime', 'date'] and right | kind in ['datetime', 'date']
-    output: '{{ "helpers.dates" | use("dates") }}.between({{ left | emit }}, {{ right | emit }})'
+    output: '{% if left | kind == "datetime" and right | kind == "datetime" %}{{ right | emit }}.until({{ left | emit }}, { largestUnit: "hours" }).total({ unit: "microseconds" }){% elif left | kind == "date" and right | kind == "date" %}({{ right | emit }}.until({{ left | emit }}).days * 86400000000){% else %}{{ "a date minus a datetime" | unsupported }}{% endif %}'
   - input:
       node: BinOp
       left: $left
       op: $op
       right: $right
     when: op.__class__.__name__ in ["Add", "Sub"] and left | kind in ['datetime', 'date']
-    output: '{{ "helpers.dates" | use("dates") }}.{{ "add" if op.__class__.__name__ == "Add" else ("subtract" if right | kind == "number" else "minus") }}({{ left | emit }}, {{ right | emit }})'
+    output: '{% set sign = "" if op.__class__.__name__ == "Add" else "-" %}{% if right | kind != "number" %}{{ "a date plus or minus a value that is not a duration" | unsupported }}{% elif left | kind == "datetime" %}{{ left | emit }}.add({ microseconds: {{ sign }}({{ right | emit }}) }){% else %}{{ left | emit }}.add({ days: Math.floor({{ sign }}({{ right | emit }}) / 86400000000) }){% endif %}'
   - input:
       node: BinOp
       left: $left
@@ -881,14 +881,14 @@ rules:
         node: Add
       right: $right
     when: right | kind in ['datetime', 'date']
-    output: '{{ "helpers.dates" | use("dates") }}.add({{ right | emit }}, {{ left | emit }})'
+    output: '{% if left | kind != "number" %}{{ "a date plus a value that is not a duration" | unsupported }}{% elif right | kind == "datetime" %}{{ right | emit }}.add({ microseconds: {{ left | emit }} }){% else %}{{ right | emit }}.add({ days: Math.floor(({{ left | emit }}) / 86400000000) }){% endif %}'
   - input:
       node: AugAssign
       target: $target
       op: $op
       value: $value
     when: op.__class__.__name__ in ["Add", "Sub"] and target | kind in ['datetime', 'date']
-    output: '{{ target | emit }} = {{ "helpers.dates" | use("dates") }}.{{ "add" if op.__class__.__name__ == "Add" else "subtract" }}({{ target | emit }}, {{ value | emit }});'
+    output: '{% set sign = "" if op.__class__.__name__ == "Add" else "-" %}{% if value | kind != "number" %}{{ "a date plus or minus a value that is not a duration" | unsupported }}{% elif target | kind == "datetime" %}{{ target | emit }} = {{ target | emit }}.add({ microseconds: {{ sign }}({{ value | emit }}) });{% else %}{{ target | emit }} = {{ target | emit }}.add({ days: Math.floor({{ sign }}({{ value | emit }}) / 86400000000) });{% endif %}'
   - input:
       node: Compare
       left: $left
@@ -897,13 +897,13 @@ rules:
       comparators:
         - $right
     when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE", "Eq", "NotEq"] and (left | kind in ['datetime', 'date'] or right | kind in ['datetime', 'date'])
-    output: '({{ "helpers.dates" | use("dates") }}.compare({{ left | emit }}, {{ right | emit }}) {{ {"Lt": "<", "LtE": "<=", "Gt": ">", "GtE": ">=", "Eq": "===", "NotEq": "!=="}[op.__class__.__name__] }} 0)'
+    output: '{% set ops = {"Lt": "<", "LtE": "<=", "Gt": ">", "GtE": ">=", "Eq": "===", "NotEq": "!=="} %}{% set none = left.__class__.__name__ == "Constant" and left.value is none or right.__class__.__name__ == "Constant" and right.value is none %}{% set kinds = [left | kind, right | kind] %}{% if none %}({{ left | emit }} {{ ops[op.__class__.__name__] }} {{ right | emit }}){% elif kinds == ["datetime", "datetime"] or kinds == ["date", "date"] %}({{ "helpers.temporal" | use("temporal") }}.Temporal.Plain{{ "DateTime" if kinds[0] == "datetime" else "Date" }}.compare({{ left | emit }}, {{ right | emit }}) {{ ops[op.__class__.__name__] }} 0){% else %}{{ "a comparison of a date with a datetime or a value of unknown type" | unsupported }}{% endif %}'
   - input:
       node: Attribute
       value: $value
       attr: $name
-    when: name in ["days", "seconds", "microseconds"] and value | kind not in ["entity", "file", "datetime", "date", "time", "dict", "array", "string"]
-    output: '{{ "helpers.dates" | use("dates") }}.{{ name }}({{ value | emit }})'
+    when: name in ["days", "seconds", "microseconds"] and value | kind == "number"
+    output: '{% set x = value | emit %}{% if name == "days" %}Math.floor({{ x }} / 86400000000){% elif name == "seconds" %}Math.floor(((({{ x }}) % 86400000000) + 86400000000) % 86400000000 / 1000000){% else %}((({{ x }}) % 1000000) + 1000000) % 1000000{% endif %}'
   - input:
       node: Attribute
       attr: tzinfo
@@ -917,7 +917,7 @@ rules:
       args: []
       keywords: []
     when: method in ["date", "time", "weekday"] and value | kind in ["datetime", "date"]
-    output: '{% if method == "date" %}{{ value | emit }}.toPlainDate(){% elif method == "time" %}{{ value | emit }}.toPlainTime(){% else %}{{ "helpers.dates" | use("dates") }}.weekday({{ value | emit }}){% endif %}'
+    output: '{% if method == "date" %}{{ value | emit }}.toPlainDate(){% elif method == "time" %}{{ value | emit }}.toPlainTime(){% else %}({{ value | emit }}.dayOfWeek - 1){% endif %}'
   - input:
       node: Call
       func:
@@ -999,7 +999,7 @@ rules:
       args: []
       keywords: []
     when: value | kind == "datetime"
-    output: '{{ "helpers.dates" | use("dates") }}.astimezone({{ value | emit }})'
+    output: '{{ value | emit }}.toZonedDateTime({{ "helpers.temporal" | use("temporal") }}.Temporal.Now.timeZoneId())'
   # str.strip, lstrip and rstrip with characters to remove (JS trim takes none).
   - input:
       node: Call
@@ -1248,7 +1248,7 @@ rules:
         attr: isoformat
       args: []
       keywords: []
-    output: '{{ "helpers.dates" | use("dates") }}.isoformat({{ value | emit }})'
+    output: '{% set k = value | kind %}{% if k == "date" %}{{ value | emit }}.toString(){% elif k in ["datetime", "time"] %}{{ value | emit }}.toString({ fractionalSecondDigits: {{ value | emit }}.millisecond || {{ value | emit }}.microsecond ? 6 : 0 }){% else %}{{ "isoformat() of a value that is not a date" | unsupported }}{% endif %}'
   # entity.walk(f, g, value): g applied to the values that match f, also inside lists.
   - input:
       node: Call
@@ -2599,7 +2599,7 @@ rules:
     # JS has one number type, so a float such as 85.0 arrives as 85. A float check guarding code that reads the
     # checked value (marked reads_checked) accepts any number; one that only picks between int and float
     # behaviour, such as IfcReal or IfcInteger, keeps testing for a non-integer.
-    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | source in ["re.Pattern", "typing.Pattern"] %}{{ value | emit }} instanceof RegExp{% elif kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined or (value.attr is defined and value.attr == "wrappedValue") %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function" && !({{ value | emit }} instanceof ifcopenshell.EntityInstance)){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name == "datetime" %}{{ value | emit }} instanceof {{ "helpers.dates" | use("dates") }}.Temporal.PlainDateTime{% elif name == "date" %}({{ value | emit }} instanceof {{ "helpers.dates" | use("dates") }}.Temporal.PlainDate || {{ value | emit }} instanceof {{ "helpers.dates" | use("dates") }}.Temporal.PlainDateTime){% elif name == "time" %}{{ value | emit }} instanceof {{ "helpers.dates" | use("dates") }}.Temporal.PlainTime{% elif name == "timedelta" %}typeof {{ value | emit }} === "number"{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ ("isinstance of ifcopenshell_wrapper." ~ name ~ " needs explicit schema casts") | unsupported }}{% else %}{{ ("isinstance of " ~ (kind | source) ~ ", a type with no TS check") | unsupported }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
+    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | source in ["re.Pattern", "typing.Pattern"] %}{{ value | emit }} instanceof RegExp{% elif kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined or (value.attr is defined and value.attr == "wrappedValue") %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function" && !({{ value | emit }} instanceof ifcopenshell.EntityInstance)){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name == "datetime" %}{{ value | emit }} instanceof {{ "helpers.temporal" | use("temporal") }}.Temporal.PlainDateTime{% elif name == "date" %}({{ value | emit }} instanceof {{ "helpers.temporal" | use("temporal") }}.Temporal.PlainDate || {{ value | emit }} instanceof {{ "helpers.temporal" | use("temporal") }}.Temporal.PlainDateTime){% elif name == "time" %}{{ value | emit }} instanceof {{ "helpers.temporal" | use("temporal") }}.Temporal.PlainTime{% elif name == "timedelta" %}typeof {{ value | emit }} === "number"{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ ("isinstance of ifcopenshell_wrapper." ~ name ~ " needs explicit schema casts") | unsupported }}{% else %}{{ ("isinstance of " ~ (kind | source) ~ ", a type with no TS check") | unsupported }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
   - input:
       node: Call
       func:
