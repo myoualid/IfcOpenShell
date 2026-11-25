@@ -1645,6 +1645,23 @@ rules:
         }
       {% for item in body if item.__class__.__name__ != "AnnAssign" %}{{ item | emit_in("member") | indent(2, true) }}
       {% endfor %}}
+  # A lark.Transformer subclass: its methods, named after rules and terminals, transform Lark.js trees
+  # (src/helpers/lark.ts). A constructor of a subclass calls super() first, as TS requires.
+  - input:
+      node: ClassDef
+      name: $name
+      bases:
+        - $base
+      keywords: []
+      body: $body
+      decorator_list: []
+    when: base | source in ["lark.Transformer", "Transformer"] and "lark" in imported_modules
+    output: |-
+      {% if top_level %}export {% endif %}class {{ name }} extends {{ "helpers.lark" | use("lark") }}.Transformer {
+        // Python instances accept new attributes at any time.
+        [key: string]: any;
+      {% for item in body %}{% set code = item | emit_in("member") %}{{ (code | replace(" {\n", " {\n  super();\n", 1) if item.name is defined and item.name == "__init__" and "super();" not in code else code) | indent(2, true) }}
+      {% endfor %}}
   - input:
       node: ClassDef
       name: $name
@@ -1706,6 +1723,23 @@ rules:
       {% if generator %}  return yielded;
       {% elif name != "__init__" and body[-1].__class__.__name__ not in ["Return", "Raise"] and (returns is none or not (returns.value is defined and returns.value is none)) %}  return null;
       {% endif %}}
+  # super().__init__() in a constructor.
+  - input:
+      node: Expr
+      value:
+        node: Call
+        func:
+          node: Attribute
+          value:
+            node: Call
+            func:
+              node: Name
+              id: super
+            args: []
+          attr: __init__
+        args: $args
+        keywords: []
+    output: 'super({{ args | map("emit") | join(", ") }});'
   - input:
       node: Raise
       exc: null

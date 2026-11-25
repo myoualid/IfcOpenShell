@@ -12,6 +12,6 @@
     "noImplicitOverride": false,
     "declarationMap": false
   },
-  "include": ["src/util/**/*.ts", "src/api/**/*.ts"],
+  "include": ["src/util/**/*.ts", "src/api/**/*.ts", "src/helpers/lark.ts"],
   "exclude": []
 }

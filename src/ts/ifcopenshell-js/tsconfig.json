@@ -27,5 +27,5 @@
   },
   "include": ["src/**/*.ts"],
   // Transpiled from ifcopenshell.util and ifcopenshell.api; built by tsconfig.python.json.
-  "exclude": ["src/util", "src/api"]
+  "exclude": ["src/util", "src/api", "src/helpers/lark.ts"]
 }
