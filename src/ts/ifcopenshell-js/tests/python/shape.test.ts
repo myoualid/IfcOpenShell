@@ -6,6 +6,7 @@
 import { beforeAll, expect, it } from 'vitest';
 import * as ifcopenshell from 'ifcopenshell';
 import * as geom from 'ifcopenshell/geom';
+import type { IfcOpenshellGeomElement } from '@ifcopenshell/wasm/api';
 import * as shape from 'ifcopenshell/util/shape';
 import { createInstance, describeOrSkip } from '../_helper.js';
 
@@ -36,7 +37,7 @@ describeOrSkip('util.shape with TypedArrays', () => {
     using model = ifcopenshell.File.fromString(BOX);
     const settings = new geom.Settings();
     settings.set('weld-vertices', false);
-    const geometry = geom.createShape(settings, model.byId(10)!)!.asTriangulationElement()!.geometry();
+    const geometry = (geom.createShape(settings, model.byId(10)!) as IfcOpenshellGeomElement).asTriangulationElement()!.geometry();
     expect(shape.getVertices(geometry).length).toBe(24 * 3);
     expect(shape.getVertices(geometry, { is2d: true }).length).toBe(24 * 2);
     expect(shape.getFaces(geometry).length).toBe(12 * 3);

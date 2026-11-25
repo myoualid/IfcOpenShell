@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 import ifcopenshell
 
@@ -85,7 +85,7 @@ class Usecase:
         for attribute in style.declaration.all_attributes():
             attribute_type = attribute.type_of_attribute()
             if attribute_type.as_aggregation_type() is None:
-                attribute_type = attribute_type.declared_type().name()
+                attribute_type = attribute_type.as_named_type().declared_type().name()
             else:
                 # doesn't have .declared_type()
                 attribute_type = attribute_type.type_of_element()
@@ -113,7 +113,7 @@ class Usecase:
 
     def edit_colour_or_factor(self, name: str, value: Union[dict[str, Any], ifcopenshell.entity_instance, None]):
         if isinstance(value, dict):
-            attribute = getattr(self.style, name)
+            attribute: Optional[ifcopenshell.entity_instance] = getattr(self.style, name)
             if not attribute or not attribute.is_a("IfcColourRgb"):
                 colour = self.file.createIfcColourRgb(None, 0, 0, 0)
                 setattr(self.style, name, colour)
@@ -122,14 +122,14 @@ class Usecase:
             attribute[2] = value["Green"]
             attribute[3] = value["Blue"]
         else:  # assume it's float value for IfcNormalisedRatioMeasure or None
-            existing_value = getattr(self.style, name)
+            existing_value: Optional[ifcopenshell.entity_instance] = getattr(self.style, name)
             if existing_value and existing_value.id():
                 self.file.remove(existing_value)
             if value is not None:
                 value = self.file.create_entity("IfcNormalisedRatioMeasure", value)
             setattr(self.style, name, value)
 
-    def edit_specular_highlight(self, value: Union[dict[str, Any], None]) -> None:
+    def edit_specular_highlight(self, value: Union[dict[str, float], None]) -> None:
         if value is None:
             self.style.SpecularHighlight = None
         elif value.get("IfcSpecularExponent", None):

@@ -255,6 +255,7 @@
 	#include "../ifcgeom/tree.h"
 	#include "../ifcgeom/taxonomy.h"
 	#include "../ifcgeom/function_item_evaluator.h"
+	#include "../ifcgeom/mesh_metrics.h"
 
 	#include "../ifcparse/express.h"
 	#include "../ifcparse/file.h"
@@ -290,6 +291,7 @@
 	#include "../ifcgeom/tree.h"
 	#include "../ifcgeom/taxonomy.h"
 	#include "../ifcgeom/function_item_evaluator.h"
+	#include "../ifcgeom/mesh_metrics.h"
 	#include "../ifcgeom/iterator.h"
 	#include "../ifcgeom/conversion_result.h"
 	#include "../ifcgeom/hybrid_kernel.h"

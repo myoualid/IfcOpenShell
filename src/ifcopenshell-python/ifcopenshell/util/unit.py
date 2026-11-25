@@ -575,7 +575,7 @@ def get_property_unit(
 
     if prop.is_a("IfcPhysicalSimpleQuantity"):
         entity = prop.declaration
-        measure_class = entity.attribute_by_index(3).type_of_attribute().declared_type().name()
+        measure_class = entity.attribute_by_index(3).type_of_attribute().as_named_type().declared_type().name()
     elif prop.is_a("IfcPropertySingleValue"):
         if value := prop.NominalValue:
             measure_class = value.is_a()

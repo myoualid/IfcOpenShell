@@ -6,11 +6,19 @@
 // vertex indices (3 for each face, 2 for each edge), as the triangulation buffers give them.
 // The generated util/shape re-exports them (see `hand_written` in src/transpiler/ts.yaml).
 
+import type { EntityInstance } from '../entity_instance.js';
+import { getPlacement } from './placement.js';
+
 /** The triangulation buffers that these functions read. */
 export interface Triangulation {
   vertsBuffer(): Float64Array;
   facesBuffer(): Int32Array;
   edgesBuffer(): Int32Array;
+  normalsBuffer(): Float64Array;
+  colorsBuffer(): Float64Array;
+  materialIdsBuffer(): Int32Array;
+  itemIdsBuffer(): Int32Array;
+  edgesItemIdsBuffer(): Int32Array;
 }
 
 /** Python util.shape `tol`. */
@@ -167,4 +175,181 @@ export function getTotalEdgeLength(geometry: Triangulation): number {
     length += Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
   }
   return length;
+}
+
+/** The extent (largest minus smallest value) of one coordinate (0: X, 1: Y, 2: Z) of flat x, y, z vertices. */
+function extent(vertices: Float64Array, axis: number): [number, number] {
+  let [low, high] = [Infinity, -Infinity];
+  for (let i = axis; i < vertices.length; i += 3) {
+    low = Math.min(low, vertices[i]!);
+    high = Math.max(high, vertices[i]!);
+  }
+  return [low, high];
+}
+
+/** The X length of a triangulation. */
+export function getX(geometry: Triangulation): number {
+  const [low, high] = extent(getVertices(geometry), 0);
+  return high - low;
+}
+
+/** The Y length of a triangulation. */
+export function getY(geometry: Triangulation): number {
+  const [low, high] = extent(getVertices(geometry), 1);
+  return high - low;
+}
+
+/** The Z length of a triangulation. */
+export function getZ(geometry: Triangulation): number {
+  const [low, high] = extent(getVertices(geometry), 2);
+  return high - low;
+}
+
+/** The lowest local Z of a triangulation. */
+export function getBottomElevation(geometry: Triangulation): number {
+  return extent(getVertices(geometry), 2)[0];
+}
+
+/** The highest local Z of a triangulation. */
+export function getTopElevation(geometry: Triangulation): number {
+  return extent(getVertices(geometry), 2)[1];
+}
+
+/** The corners of the bounding box of flat x, y, z vertices: [min x, min y, min z] and [max x, max y, max z]. */
+export function getBbox(vertices: Float64Array): [Float64Array, Float64Array] {
+  const low = new Float64Array(3);
+  const high = new Float64Array(3);
+  for (let axis = 0; axis < 3; axis++) [low[axis], high[axis]] = extent(vertices, axis);
+  return [low, high];
+}
+
+/** The centre of the bounding box of a triangulation, in its local coordinates. */
+export function getBboxCentroid(geometry: Triangulation): Float64Array {
+  const [low, high] = getBbox(getVertices(geometry));
+  return Float64Array.from([0, 1, 2], axis => (low[axis]! + high[axis]!) / 2);
+}
+
+/** The mean of the vertices of a triangulation, in its local coordinates. */
+export function getVertCentroid(geometry: Triangulation): Float64Array {
+  const vertices = getVertices(geometry);
+  const count = vertices.length / 3;
+  const sum = new Float64Array(3);
+  for (let i = 0; i < vertices.length; i++) sum[i % 3] += vertices[i]!;
+  return sum.map(value => value / count);
+}
+
+/** A shape element of the geometry iterator or createShape: its placement as 16 values, column by column. */
+export interface ShapeElement {
+  transformationBuffer(): Float64Array;
+}
+
+/** The 4x4 placement matrix of a shape, row-major (m[row * 4 + column]). */
+export function getShapeMatrix(shape: ShapeElement): Float64Array {
+  const buffer = shape.transformationBuffer();
+  const matrix = new Float64Array(16);
+  for (let row = 0; row < 4; row++) {
+    for (let column = 0; column < 4; column++) matrix[row * 4 + column] = buffer[column * 4 + row]!;
+  }
+  return matrix;
+}
+
+/** Flat x, y, z points moved by a row-major 4x4 matrix. */
+function transformed(matrix: ArrayLike<number>, points: Float64Array): Float64Array {
+  const result = new Float64Array(points.length);
+  for (let i = 0; i < points.length; i += 3) {
+    const [x, y, z] = [points[i]!, points[i + 1]!, points[i + 2]!];
+    for (let row = 0; row < 3; row++) {
+      result[i + row] = matrix[row * 4]! * x + matrix[row * 4 + 1]! * y + matrix[row * 4 + 2]! * z + matrix[row * 4 + 3]!;
+    }
+  }
+  return result;
+}
+
+/** The placement of an element as a matrix, or null when it has no IfcLocalPlacement. */
+function elementMatrix(element: EntityInstance, isSi: boolean): Float64Array | null {
+  const placement = element.get('ObjectPlacement') as EntityInstance | null;
+  if (!placement || !placement.isA('IfcLocalPlacement')) return null;
+  return getPlacement({ placement, shouldReturnSi: isSi });
+}
+
+/** The centre of the bounding box of a shape, in global coordinates. */
+export function getShapeBboxCentroid(shape: ShapeElement, geometry: Triangulation): Float64Array {
+  return transformed(getShapeMatrix(shape), getBboxCentroid(geometry));
+}
+
+/** The centre of the bounding box of an element, in global coordinates (in SI units with `isSi`). */
+export function getElementBboxCentroid(element: EntityInstance, geometry: Triangulation, options: { isSi?: boolean } = {}): Float64Array {
+  const { isSi = true } = options;
+  const centroid = getBboxCentroid(geometry);
+  const matrix = elementMatrix(element, isSi);
+  return matrix ? transformed(matrix, centroid) : centroid;
+}
+
+/** The vertices of a shape in global coordinates: x, y, z for each vertex. */
+export function getShapeVertices(shape: ShapeElement, geometry: Triangulation): Float64Array {
+  return transformed(getShapeMatrix(shape), getVertices(geometry));
+}
+
+/** The vertices of an element in global coordinates (in SI units with `isSi`): x, y, z for each vertex. */
+export function getElementVertices(element: EntityInstance, geometry: Triangulation, options: { isSi?: boolean } = {}): Float64Array {
+  const { isSi = true } = options;
+  const vertices = getVertices(geometry);
+  const matrix = elementMatrix(element, isSi);
+  return matrix ? transformed(matrix, vertices) : vertices;
+}
+
+/** The lowest global Z of a shape. */
+export function getShapeBottomElevation(shape: ShapeElement, geometry: Triangulation): number {
+  return extent(getShapeVertices(shape, geometry), 2)[0];
+}
+
+/** The highest global Z of a shape. */
+export function getShapeTopElevation(shape: ShapeElement, geometry: Triangulation): number {
+  return extent(getShapeVertices(shape, geometry), 2)[1];
+}
+
+/** The lowest global Z of an element. */
+export function getElementBottomElevation(element: EntityInstance, geometry: Triangulation, options: { isSi?: boolean } = {}): number {
+  return extent(getElementVertices(element, geometry, options), 2)[0];
+}
+
+/** The highest global Z of an element. */
+export function getElementTopElevation(element: EntityInstance, geometry: Triangulation, options: { isSi?: boolean } = {}): number {
+  return extent(getElementVertices(element, geometry, options), 2)[1];
+}
+
+/** The material colours of a triangulation: r, g, b, a for each material. */
+export function getMaterialColors(geometry: Triangulation): Float64Array {
+  return geometry.colorsBuffer();
+}
+
+/** The vertex normals of a triangulation: x, y, z for each vertex. */
+export function getNormals(geometry: Triangulation): Float64Array {
+  return geometry.normalsBuffer();
+}
+
+/** For each face, the index of its style in the materials of the triangulation, or -1. */
+export function getFacesMaterialStyleIds(geometry: Triangulation): Int32Array {
+  return geometry.materialIdsBuffer();
+}
+
+/** For each face, the id of its representation item. */
+export function getFacesRepresentationItemIds(geometry: Triangulation): Int32Array {
+  return geometry.itemIdsBuffer();
+}
+
+/** For each edge, the id of its representation item. */
+export function getEdgesRepresentationItemIds(geometry: Triangulation): Int32Array {
+  return geometry.edgesItemIdsBuffer();
+}
+
+/** A segment of x, y (or x, y, z) points made longer by `distance` at both ends. */
+export function _extendLine(start: ArrayLike<number>, end: ArrayLike<number>, distance: number): [Float64Array, Float64Array] {
+  const d = Float64Array.from(end, (value, i) => value - start[i]!);
+  const length = Math.hypot(...d);
+  if (length === 0) return [Float64Array.from(start), Float64Array.from(end)];
+  return [
+    Float64Array.from(start, (value, i) => value - (distance * d[i]!) / length),
+    Float64Array.from(end, (value, i) => value + (distance * d[i]!) / length),
+  ];
 }

@@ -52,9 +52,7 @@
  "api/alignment/_get_segment_endpoint": {
   "functions": 1,
   "source": "ifcopenshell/api/alignment/_get_segment_endpoint.py",
-  "stubs": {
-   "_get_segment_endpoint": "No rules rule at line 89: uses module np"
-  }
+  "stubs": {}
  },
  "api/alignment/_get_segment_start_point_label": {
   "functions": 5,
@@ -72,7 +70,7 @@
   "functions": 12,
   "source": "ifcopenshell/api/alignment/_map_alignment_horizontal_segment.py",
   "stubs": {
-   "_map_helmert_curve": "No rules rule at line 243: ifcopenshell_wrapper.helmert_curve_point(A0_1, A1_1, A2_1, length / 2)"
+   "_map_helmert_curve": "+ on values of unknown type"
   }
  },
  "api/alignment/_map_alignment_segment": {
@@ -127,9 +125,7 @@
  "api/alignment/add_zero_length_segment": {
   "functions": 1,
   "source": "ifcopenshell/api/alignment/add_zero_length_segment.py",
-  "stubs": {
-   "add_zero_length_segment": "numpy indexing (a tuple index)"
-  }
+  "stubs": {}
  },
  "api/alignment/create": {
   "functions": 1,
@@ -236,9 +232,7 @@
  "api/alignment/get_curve_segment_transition_code": {
   "functions": 1,
   "source": "ifcopenshell/api/alignment/get_curve_segment_transition_code.py",
-  "stubs": {
-   "get_curve_segment_transition_code": "No rules rule at line 60: uses module np"
-  }
+  "stubs": {}
  },
  "api/alignment/get_horizontal_layout": {
   "functions": 1,
@@ -313,9 +307,7 @@
  "api/alignment/update_fallback_position": {
   "functions": 1,
   "source": "ifcopenshell/api/alignment/update_fallback_position.py",
-  "stubs": {
-   "update_fallback_position": "numpy indexing (a tuple index)"
-  }
+  "stubs": {}
  },
  "api/alignment/update_key_point_referents": {
   "functions": 3,
@@ -331,9 +323,6 @@
   "functions": 8,
   "source": "ifcopenshell/api/alignment/util.py",
   "stubs": {
-   "evaluate_representation": "No rules rule at line 49: uses module np",
-   "evaluate_segment": "No rules rule at line 72: uses module np",
-   "generate_vertices": "No rules rule at line 100: uses module np",
    "print_alignment_deep": "an operator on a numpy array or a value of unknown type"
   }
  },
@@ -682,6 +671,7 @@
   "source": "ifcopenshell/api/geometry/add_door_representation.py",
   "stubs": {
    "Usecase.execute": "an operator on a numpy array or a value of unknown type",
+   "add_door_representation": "**values from a dict built at run time (pass the keyword arguments)",
    "create_ifc_box": "No rules rule at line 90: uses module np",
    "create_ifc_door_lining": "No rules rule at line 78: uses module np"
   }
@@ -703,10 +693,7 @@
  "api/geometry/add_profile_representation": {
   "functions": 2,
   "source": "ifcopenshell/api/geometry/add_profile_representation.py",
-  "stubs": {
-   "Usecase.get_x": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed",
-   "Usecase.get_y": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed"
-  }
+  "stubs": {}
  },
  "api/geometry/add_railing_representation": {
   "functions": 18,
@@ -743,6 +730,7 @@
   "source": "ifcopenshell/api/geometry/add_window_representation.py",
   "stubs": {
    "Usecase.execute": "calls util.shape_builder.V, which returns a numpy array",
+   "add_window_representation": "**values from a dict built at run time (pass the keyword arguments)",
    "create_ifc_window": "an operator on a numpy array or a value of unknown type",
    "create_ifc_window_frame_simple": "No rules rule at line 75: uses module np"
   }
@@ -842,16 +830,12 @@
  "api/georeference/add_georeferencing": {
   "functions": 1,
   "source": "ifcopenshell/api/georeference/add_georeferencing.py",
-  "stubs": {
-   "add_georeferencing": "truthiness of a value of unknown type: ifcopenshell.util.element.get_pset"
-  }
+  "stubs": {}
  },
  "api/georeference/edit_georeferencing": {
   "functions": 1,
   "source": "ifcopenshell/api/georeference/edit_georeferencing.py",
-  "stubs": {
-   "edit_georeferencing": "truthiness of a value of unknown type: (crs := ifcopenshell.util.element.get_pset(project, 'ePSet_P"
-  }
+  "stubs": {}
  },
  "api/georeference/edit_true_north": {
   "functions": 1,
@@ -1018,7 +1002,9 @@
  "api/material/assign_material": {
   "functions": 2,
   "source": "ifcopenshell/api/material/assign_material.py",
-  "stubs": {}
+  "stubs": {
+   "Usecase.execute": "defaultdict (a JS Map has no default values): use dict.setdefault"
+  }
  },
  "api/material/assign_profile": {
   "functions": 2,
@@ -1063,9 +1049,7 @@
  "api/material/edit_profile_usage": {
   "functions": 2,
   "source": "ifcopenshell/api/material/edit_profile_usage.py",
-  "stubs": {
-   "Usecase.calculate_position": "native constant ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS is not exposed"
-  }
+  "stubs": {}
  },
  "api/material/remove_constituent": {
   "functions": 1,
@@ -1559,8 +1543,7 @@
   "stubs": {
    "Usecase.cascade_task": "max() of values of unknown type, or with a key",
    "Usecase.get_calendar": "in on a value of unknown type: task.id() not in self.calendar_cache",
-   "Usecase.get_project_start": "truthiness of a value of unknown type: ifcopenshell.util.sequence.get_sequence_assignment",
-   "Usecase.get_work_hours": "truthiness of a value of unknown type: ifcopenshell.util.date.parse_duration"
+   "Usecase.get_project_start": "truthiness of a value of unknown type: ifcopenshell.util.sequence.get_sequence_assignment"
   }
  },
  "api/sequence/copy_work_schedule": {
@@ -1886,10 +1869,7 @@
  "api/style/edit_surface_style": {
   "functions": 2,
   "source": "ifcopenshell/api/style/edit_surface_style.py",
-  "stubs": {
-   "Usecase.edit_colour_or_factor": "truthiness of a value of unknown type: attribute",
-   "Usecase.edit_specular_highlight": "truthiness of a value of unknown type: value.get"
-  }
+  "stubs": {}
  },
  "api/style/remove_style": {
   "functions": 2,
@@ -2086,9 +2066,7 @@
  "util/data": {
   "functions": 1,
   "source": "ifcopenshell/util/data.py",
-  "stubs": {
-   "Clipping.parse": "the hand-written TS in helpers.data is for another version of this method (source hash 5f1279a883e9, expected 97fb46fcf2f7)"
-  }
+  "stubs": {}
  },
  "util/date": {
   "functions": 10,
@@ -2103,9 +2081,7 @@
  "util/element": {
   "functions": 70,
   "source": "ifcopenshell/util/element.py",
-  "stubs": {
-   "get_pset": "truthiness of a value of unknown type: pset"
-  }
+  "stubs": {}
  },
  "util/file": {
   "error": "not ported: reads files from disk",
@@ -2153,7 +2129,7 @@
   "functions": 6,
   "source": "ifcopenshell/util/pset.py",
   "stubs": {
-   "PsetQto.is_applicable": "truthiness of a value of unknown type: matched_type"
+   "PsetQto.is_applicable": "re.match (no rule for this use of the module)"
   }
  },
  "util/representation": {
@@ -2186,13 +2162,13 @@
   "functions": 9,
   "source": "ifcopenshell/util/selector.py",
   "stubs": {
+   "FacetTransformer.value": "re.compile (no rule for this use of the module)",
    "FormatTransformer.number": "truthiness of a value of unknown type: args[2]",
-   "FormatTransformer.round": "No rules rule at line 334: uses module InvalidOperation",
+   "FormatTransformer.round": "No rules rule at line 348: uses module InvalidOperation",
    "FormatTransformer.sort": "sorted() of values of unknown type",
-   "_get_element_value": "No rules rule at line 511: uses module np",
-   "filter_elements": "uses filter_elements_grammar, a module value that is not translated: Lark.js needs a literal grammar with the LALR parser",
-   "line 43": "Lark.js needs a literal grammar with the LALR parser",
-   "set_element_value": "No rules rule at line 746: uses module np"
+   "GetElementTransformer.regex_string": "re.compile (no rule for this use of the module)",
+   "_get_element_value": "No rules rule at line 525: uses module np",
+   "set_element_value": "No rules rule at line 760: uses module np"
   }
  },
  "util/sequence": {
@@ -2207,9 +2183,9 @@
    "get_start_or_finish_date": "truthiness of a value of unknown type: delta",
    "get_time_periods": "sorted() of values of unknown type",
    "get_work_day_duration": "truthiness of a value of unknown type: pset.get",
-   "get_work_duration": "truthiness of a value of unknown type: duration",
+   "get_work_duration": "an operator on a numpy array or a value of unknown type",
    "get_work_periods": "sorted() of values of unknown type",
-   "get_work_time": "min() of values of unknown type, or with a key",
+   "get_work_time": "max() of values of unknown type, or with a key",
    "is_day_in_work_time": "ordering of values of unknown type",
    "is_work_time_applicable_to_day": "in on a list of values of unknown type",
    "offset_date": "truthiness of a value of unknown type: months",
@@ -2220,44 +2196,19 @@
   "functions": 47,
   "source": "ifcopenshell/util/shape.py",
   "stubs": {
-   "_extend_line": "No rules rule at line 783: uses module np",
-   "_merge_coplanar_ngons": "No rules rule at line 1009: uses module np",
-   "bisect_mesh_plane_vf": "No rules rule at line 819: uses module np",
+   "_merge_coplanar_ngons": "No rules rule at line 1019: uses module np",
+   "bisect_mesh_plane_vf": "No rules rule at line 829: uses module np",
    "dissolve_faces": "len() of a value of unknown type: faces",
-   "get_bbox": "No rules rule at line 450: uses module np",
-   "get_bbox_centroid": "No rules rule at line 175: uses module np",
-   "get_bottom_elevation": "No rules rule at line 370: uses module np",
-   "get_edges_representation_item_ids": "No rules rule at line 318: uses module np",
-   "get_element_bbox_centroid": "No rules rule at line 206: uses module np",
-   "get_element_bottom_elevation": "min() of values of unknown type, or with a key",
-   "get_element_top_elevation": "max() of values of unknown type, or with a key",
-   "get_element_vertices": "No rules rule at line 360: uses module np",
-   "get_faces_material_style_ids": "No rules rule at line 304: uses module np",
-   "get_faces_representation_item_ids": "No rules rule at line 309: uses module np",
-   "get_footprint_area": "No rules rule at line 588: uses module np",
-   "get_material_colors": "No rules rule at line 279: uses module np",
-   "get_normals": "No rules rule at line 290: uses module np",
-   "get_shape_bbox_centroid": "No rules rule at line 222: uses module np",
-   "get_shape_bottom_elevation": "min() of values of unknown type, or with a key",
-   "get_shape_matrix": "No rules rule at line 163: uses module np",
-   "get_shape_top_elevation": "max() of values of unknown type, or with a key",
-   "get_shape_vertices": "No rules rule at line 336: uses module np",
-   "get_top_elevation": "No rules rule at line 380: uses module np",
-   "get_vert_centroid": "No rules rule at line 186: uses module np",
-   "get_x": "No rules rule at line 107: uses module np",
-   "get_y": "No rules rule at line 117: uses module np",
-   "get_z": "No rules rule at line 127: uses module np"
+   "get_footprint_area": "No rules rule at line 588: uses module np"
   }
  },
  "util/shape_builder": {
   "functions": 24,
   "source": "ifcopenshell/util/shape_builder.py",
   "stubs": {
-   "ShapeBuilder.create_axis2_placement_2d": "truthiness of a value of unknown type: x_direction",
-   "ShapeBuilder.create_ellipse_curve": "truthiness of a value of unknown type: trim_points",
    "ShapeBuilder.extrude_face_set": "No rules rule at line 1755: uses module np",
    "ShapeBuilder.face_surface": "No rules rule at line 1033: uses module np",
-   "ShapeBuilder.get_simple_2dcurve_data": "== between values of unknown type: p != points[prev_point]",
+   "ShapeBuilder.get_simple_2dcurve_data": "sorted() of values of unknown type",
    "ShapeBuilder.get_trim_points_from_mask": "No rules rule at line 666: uses module np",
    "ShapeBuilder.mep_bend_shape": "No rules rule at line 2249: uses module np",
    "ShapeBuilder.mep_transition_calculate": "No rules rule at line 2104: uses module np",
@@ -2267,7 +2218,6 @@
    "ShapeBuilder.polygonal_face_set": "all() of values of unknown type",
    "ShapeBuilder.rotate": "indexing a numpy array or a value of unknown type",
    "V": "No rules rule at line 74: uses module np",
-   "arc_to_polyline_points": "len() of a value of unknown type: start",
    "intersect_x_axis_2d": "+ on values of unknown type"
   }
  },
@@ -2298,7 +2248,7 @@
   "source": "ifcopenshell/util/unit.py",
   "stubs": {
    "format_length": "No rules rule at line 947: uses module Fraction",
-   "is_attr_type": "isinstance of ifcopenshell_wrapper.aggregation_type needs explicit schema casts",
+   "is_attr_type": "declared_type() of a declaration that is not cast: cast it with as_named_type() or as_type_declaration()",
    "iter_element_and_attributes_per_type": "iterating a file gives entities of no proven type"
   }
  }

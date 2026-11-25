@@ -18,3 +18,9 @@ export class Settings extends IfcOpenshellGeomSettings {
     return this.settingNames();
   }
 }
+
+/** Values of the dimensionality setting (OutputDimensionalityTypes in conversion_settings.h). */
+export const Dimensionality = { CURVES: 0, SURFACES_AND_SOLIDS: 1, CURVES_SURFACES_AND_SOLIDS: 2 } as const;
+
+/** Values of the iterator-output setting (IteratorOutputOptions in conversion_settings.h). */
+export const IteratorOutput = { TRIANGULATED: 0, NATIVE: 1, SERIALIZED: 2 } as const;

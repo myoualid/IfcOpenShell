@@ -136,6 +136,7 @@ def get_pset(
                 definition = relationship.RelatingPropertyDefinition
                 # IfcPropertySetDefinitionSet is a defined type wrapping a list
                 # of property set definitions, so unpack it into its members.
+                definitions: tuple[ifcopenshell.entity_instance, ...]
                 if definition.is_a("IfcPropertySetDefinitionSet"):
                     definitions = definition.wrappedValue
                 else:

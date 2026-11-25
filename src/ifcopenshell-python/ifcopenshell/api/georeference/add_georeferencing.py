@@ -46,9 +46,9 @@ def add_georeferencing(file: ifcopenshell.file, ifc_class: str = "IfcMapConversi
         ifcopenshell.api.georeference.add_georeferencing(model)
     """
     if file.schema == "IFC2X3":
-        if not (project := file.by_type("IfcProject")):
+        if not (projects := file.by_type("IfcProject")):
             return
-        project = project[0]
+        project = projects[0]
         if ifcopenshell.util.element.get_pset(project, "ePSet_ProjectedCRS"):
             return
         conversion = ifcopenshell.api.pset.add_pset(file, project, "ePSet_MapConversion")

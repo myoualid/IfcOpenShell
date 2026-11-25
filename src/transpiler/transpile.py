@@ -386,6 +386,44 @@ def template_text(text):
     return text.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
 
 
+def flag_names(node):
+    """The names of the re flags in an expression such as re.I | re.M."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return flag_names(node.left) + flag_names(node.right)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "re":
+        if node.attr in ("I", "IGNORECASE", "M", "MULTILINE", "S", "DOTALL"):
+            return [node.attr]
+    if isinstance(node, ast.Constant) and node.value == 0:
+        return []
+    unsupported(f"re flags {ast.unparse(node)}")
+
+
+# Python regex syntax that JS RegExp does not have, or has with another meaning.
+PYTHON_ONLY_REGEX = re.compile(r"\\[AZ]|\(\?[aiLmsux]|\(\?>|\(\?\(|\\[0-7]{3}")
+
+
+def js_regex(pattern, prefix="", suffix=""):
+    """The body of a JS regex literal for a Python pattern, with named groups in JS syntax."""
+    if PYTHON_ONLY_REGEX.search(pattern):
+        unsupported(f"regex syntax that JS does not have: {pattern!r}")
+    body = re.sub(r"\(\?P<(\w+)>", r"(?<\1>", pattern)
+    body = re.sub(r"\(\?P=(\w+)\)", r"\\k<\1>", body)
+    body = re.sub(r"(?<!\\)/", r"\\/", body)
+    return f"{prefix}(?:{body}){suffix}" if prefix or suffix else body
+
+
+def regex_groups(pattern):
+    """The number of groups of a Python pattern."""
+    return re.compile(pattern).groups
+
+
+def js_replacement(text):
+    """A re.sub replacement as a String.replace replacement: \\1 and \\g<name> become $1 and $<name>."""
+    text = text.replace("$", "$$")
+    text = re.sub(r"\\g<(\d+)>|\\(\d+)", lambda m: "$" + (m[1] or m[2]), text)
+    return re.sub(r"\\g<(\w+)>", r"$<\1>", text)
+
+
 def unsupported(reason):
     """Make the function that a rule renders a stub, with this reason."""
     raise ValueError(reason)
@@ -440,6 +478,11 @@ class Transpiler:
             emit=self.emit,
             emit_in=self.emit_in,
             formatted=self.formatted,
+            is_cast_declaration=self.is_cast_declaration,
+            js_regex=js_regex,
+            regex_groups=regex_groups,
+            js_replacement=js_replacement,
+            flag_names=flag_names,
             # Characters of a regex character class, escaped where they have a meaning there.
             regex_class=lambda text: "".join("\\" + c if c in "\\]^-/" else c for c in text),
             format_text=self.format_text,
@@ -866,6 +909,8 @@ class Transpiler:
         imports = dict(self.imports)
         try:
             qualified = f"{self.module}.{self.current_class}.{node.name}"
+            if qualified in self.rules.get("unsupported_functions", {}):
+                raise ValueError(self.rules["unsupported_functions"][qualified])
             if entry := self.rules.get("hand_written", {}).get(qualified):
                 if (actual := source_hash(node)) != entry["source"]:
                     raise ValueError(
@@ -1041,6 +1086,25 @@ class Transpiler:
         if inferred == "unknown" and isinstance(node, ast.Name):
             inferred = self.assigned_kind(node.id)
         return "object" if proven and inferred == "unknown" else inferred
+
+    CASTS = ("as_named_type", "as_type_declaration", "as_simple_type")
+
+    def is_cast_declaration(self, node):
+        """Whether a declaration is the result of an explicit cast (as_named_type(), ...), so that
+        declared_type() exists on its TS type: directly, or through a local only bound to casts."""
+        def cast(value):
+            return isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and value.func.attr in self.CASTS
+        if cast(node):
+            return True
+        if not isinstance(node, ast.Name) or self.current_top is None:
+            return False
+        values = [
+            n.value
+            for n in ast.walk(self.current_top)
+            if isinstance(n, (ast.Assign, ast.NamedExpr))
+            and any(isinstance(t, ast.Name) and t.id == node.id for t in (n.targets if isinstance(n, ast.Assign) else [n.target]))
+        ]
+        return bool(values) and all(cast(v) for v in values)
 
     def assigned_kind(self, name):
         """The kind of a local that is only bound by plain assignments, when all their values have one kind."""

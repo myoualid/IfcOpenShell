@@ -379,6 +379,7 @@ CREATE_VECTOR_TYPEMAP_IN(ifcopenshell::geom::taxonomy::style::ptr, MATERIALS, st
 %include "../ifcgeom/geometry_serializer.h"
 %include "../ifcgeom/taxonomy.h"
 %include "../ifcgeom/function_item_evaluator.h"
+%include "../ifcgeom/mesh_metrics.h"
 
 %{
 #include "../serializers/geometry_serializer_plugin.h"

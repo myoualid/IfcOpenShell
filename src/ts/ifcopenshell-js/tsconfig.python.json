@@ -12,6 +12,6 @@
     "noImplicitOverride": false,
     "declarationMap": false
   },
-  "include": ["src/util/**/*.ts", "src/api/**/*.ts", "src/helpers/lang.ts", "src/helpers/placement.ts", "src/helpers/object_placement.ts", "src/helpers/geolocation.ts", "src/helpers/shape_builder_methods.ts", "src/helpers/dimension.ts", "src/helpers/railing.ts", "src/helpers/alignment.ts", "src/helpers/representation.ts", "src/helpers/walls.ts", "src/helpers/clipping.ts", "src/helpers/data.ts", "src/helpers/lark.ts"],
+  "include": ["src/util/**/*.ts", "src/api/**/*.ts", "src/helpers/placement.ts", "src/helpers/shape.ts", "src/helpers/object_placement.ts", "src/helpers/geolocation.ts", "src/helpers/shape_builder_methods.ts", "src/helpers/dimension.ts", "src/helpers/railing.ts", "src/helpers/alignment.ts", "src/helpers/representation.ts", "src/helpers/walls.ts", "src/helpers/clipping.ts", "src/helpers/data.ts", "src/helpers/lark.ts"],
   "exclude": []
 }

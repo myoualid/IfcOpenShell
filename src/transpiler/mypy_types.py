@@ -98,8 +98,18 @@ def classify(proper, types):
     nullable = False
     if isinstance(proper, types.UnionType):
         items = [types.get_proper_type(item) for item in proper.items]
-        known = [item for item in items if not isinstance(item, types.NoneType)]
-        nullable = len(known) != len(items)
+        nullable = any(isinstance(item, types.NoneType) for item in items)
+        # A type from a module that is not installed (mathutils.Vector in VectorType) says nothing
+        # about the value; the other types of the union decide.
+        unimported = types.TypeOfAny.from_unimported_type
+        known = [
+            item
+            for item in items
+            if not isinstance(item, types.NoneType)
+            and not (isinstance(item, types.AnyType) and item.type_of_any == unimported)
+        ]
+        if not known:
+            return None
         kinds = {classify(item, types) for item in known}
         kinds = {kind and kind[0] for kind in kinds}
         if len(kinds) == 1 and None not in kinds:
@@ -117,7 +127,9 @@ def classify(proper, types):
     if isinstance(proper, types.LiteralType):
         proper = proper.fallback
     if isinstance(proper, types.TupleType):
-        return "array", False
+        # A named tuple is an object with named fields in TS, not an array.
+        named = proper.partial_fallback.type.fullname != "builtins.tuple"
+        return ("object" if named else "array"), False
     if isinstance(proper, types.TypedDictType):
         return "dict", False
     if isinstance(proper, types.CallableType):
@@ -162,6 +174,10 @@ def classify(proper, types):
         return "number", False
     if name.endswith((".entity_instance", ".entity_instance_mixin")):
         return "entity", False
+    if name == "re.Match":
+        return "match", False  # A RegExpExecArray in TS.
+    if name == "re.Pattern":
+        return "pattern", False  # A RegExp in TS.
     if name in ("ifcopenshell.file.file", "ifcopenshell.ifcopenshell_wrapper.file"):
         return "file", False
     if name.startswith("ifcopenshell.") and not name.startswith("ifcopenshell.ifcopenshell_wrapper."):
