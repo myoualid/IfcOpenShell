@@ -571,11 +571,11 @@ def get_property_unit(
         return unit
 
     value = None
-    measure_class = None
+    measure_class: Optional[str] = None
 
     if prop.is_a("IfcPhysicalSimpleQuantity"):
         entity = prop.declaration
-        measure_class = entity.attribute_by_index(3).type_of_attribute().declared_type().name()
+        measure_class = entity.attribute_by_index(3).type_of_attribute().as_named_type().declared_type().name()
     elif prop.is_a("IfcPropertySingleValue"):
         if value := prop.NominalValue:
             measure_class = value.is_a()
@@ -1106,8 +1106,8 @@ def convert_file_length_units(ifc_file: ifcopenshell.file, target_units: str = "
     if (
         ifc_file.schema == "IFC2X3"
         and (crs := ifcopenshell.util.element.get_pset(ifc_file.by_type("IfcProject")[0], name="ePSet_ProjectedCRS"))
-        and crs.get("MapUnit")
-    ) or (ifc_file.schema != "IFC2X3" and (crs := ifc_file.by_type("IfcProjectedCRS")) and crs[0].MapUnit):
+        and crs.get("MapUnit") is not None
+    ) or (ifc_file.schema != "IFC2X3" and (crss := ifc_file.by_type("IfcProjectedCRS")) and crss[0].MapUnit):
         has_map_unit = True
 
     if has_map_unit:

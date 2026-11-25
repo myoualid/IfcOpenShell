@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Any, assert_never
+from typing import Any, Union, assert_never
 
 import ifcopenshell
 import ifcopenshell.api.pset
@@ -142,7 +142,7 @@ class Usecase:
     file: ifcopenshell.file
 
     @staticmethod
-    def unpack_unit_value(value_candidate: Any) -> tuple[Any, Any]:
+    def unpack_unit_value(value_candidate: Union[float, dict[str, Any], None]) -> tuple[Any, Any]:
         """
         Returns tuple of the format: (Unit, NominalValue)
 

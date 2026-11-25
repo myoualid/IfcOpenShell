@@ -809,6 +809,16 @@ def bisect_mesh_plane_vf(
     """
     if len(faces) == 0:
         return []
+    # The geometry library cuts the mesh in C++, when it has it.
+    wrapper = ifcopenshell.ifcopenshell_wrapper
+    if hasattr(wrapper, "bisect_mesh_plane"):
+        flat = wrapper.bisect_mesh_plane(
+            np.ravel(verts).tolist(), np.ravel(faces).tolist(), float(plane_z), precision, float(extend)
+        )
+        points = [flat[i : i + 4] for i in range(0, len(flat), 4)]
+        if extend > 0:
+            return [([x0, y0], [x1, y1]) for x0, y0, x1, y1 in points]
+        return [[(x0, y0), (x1, y1)] for x0, y0, x1, y1 in points]
     v0 = verts[faces[:, 0]]
     v1 = verts[faces[:, 1]]
     v2 = verts[faces[:, 2]]

@@ -94,7 +94,7 @@ def remove_product(file: ifcopenshell.file, product: ifcopenshell.entity_instanc
         for axis in product.UAxes + product.VAxes + (product.WAxes or ()):
             ifcopenshell.api.grid.remove_grid_axis(file, axis=axis)
 
-    def element_exists(element_id):
+    def element_exists(element_id: int) -> bool:
         try:
             file.by_id(element_id)
             return True

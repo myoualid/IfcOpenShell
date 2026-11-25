@@ -54,8 +54,9 @@ def unassign_product(
     if relating_product.is_a("IfcGridAxis"):
         grid = None
         for attribute in ("PartOfW", "PartOfV", "PartOfU"):
-            if getattr(relating_product, attribute, None):
-                grid = getattr(relating_product, attribute)[0]
+            grids: tuple[ifcopenshell.entity_instance, ...] = getattr(relating_product, attribute, ())
+            if grids:
+                grid = grids[0]
                 break
         relating_product = grid
 

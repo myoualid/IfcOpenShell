@@ -21,11 +21,16 @@ the whole file a module of throwing functions rather than disappearing.
 `ts.yaml`; refresh it with `generate.py --precompute`, which needs an installed
 ifcopenshell close to this checkout.
 
+The generated TypeScript targets the `ifcopenshell` npm package's
+[Core API](https://docs.ifcopenshell.org/output/typescript-api/Core.html).
+The caller initializes IfcOpenShell and supplies the file.
+
 ## How it works
 
 `transpile.py` parses Python, discovers bindings, matches patterns and renders
 Jinja templates. All translation rules, including types, syntax, API names,
-imports and data-shape inference, live in `ts.yaml`. Rules emit plain TypeScript. Where a function needs a Python library without a TS
+imports and data-shape inference, live in `ts.yaml`. There is no preamble or
+runtime compatibility library: rules emit native TypeScript operations directly. Where a function needs a Python library without a TS
 counterpart, or a type that cannot be proven, it becomes a stub.
 Pass `--rules another.yaml` to use a different rule set. Treat rule files as trusted code.
 
@@ -56,29 +61,15 @@ counter. `condition` and `iterable` template filters select rules with the
 matching `context`; these handle empty arrays/dictionaries at their use sites.
 Scalar short-circuit expressions use `&&`/`||`; optional collections use `??`.
 
-Select the exploratory C++ target explicitly:
-
-```powershell
-python src/transpiler/transpile.py src/ifcopenshell-python/ifcopenshell/util/unit.py --rules src/transpiler/cpp.yaml -o src/transpiler/unit.cpp
-```
-
-`ts.yaml` remains the default. `cpp.yaml` uses the same engine, with its own
-indented rules and copies of the source data-shape inference rules. No inheritance
-from the TypeScript target is required.
-
-The C++20 sketch uses `std::map`, `std::vector`, `std::array`, `std::optional`,
-range loops, structured bindings, and immediately invoked lambdas to materialize
-comprehensions. Boost string algorithms keep string rewrites concise. IFC mappings
-reference this checkout's `ifcopenshell::file`, `instances_by_type`, value-like
-`express::entity`, and `get_value<T>` interfaces.
-
-`unit.cpp` is a design artifact, not a compilable implementation. It renders bodies
-for 21 of the 33 functions and emits throwing stubs for the rest. TODOs expose
-unresolved local declaration scopes, optional unwrapping, container conversions,
-recursive variants and operand-valued short-circuiting. Forward declarations,
-string/enum decoding, attribute writes, caches and schema-specific casts also
-need decisions. Dynamic attribute types currently come from a small explicit
-YAML table. No C++ compilation or runtime validation was attempted.
+The unit cache remains a property on the normal `ifcopenshell.File` object.
+No utility-specific file type or module augmentation is generated. Properties
+missing from the target API may produce TypeScript typing errors; those need
+resolution in the source/API rather than synthetic types in the transpiler.
+Loops, defaults, keyword calls to local functions, unpacking, comprehensions and
+unit conversions are supported. Unknown calls are rejected. Types (see below), inference
+and API mappings cover the patterns in the source, rather than general Python semantics.
+Where the type of a value is not known, the Python gets the type annotation it lacks.
+No Python or WASM code is executed during translation.
 
 ## Types
 
@@ -93,8 +84,11 @@ the pure Python build of mypy, since `mypy_types.py` subclasses its visitors.
 The generated code does not emulate Python libraries. Functions that use `numpy`, `datetime`
 arithmetic, `isodate`, `dateutil`, `lark`, `shapely`, Blender modules or native functions that
 the WASM build does not expose become stubs that throw with the reason; `transpile.json` lists
-them. `src/ts/ifcopenshell-js/src/helpers/lang.ts` holds the few Python semantics that plain TS
-does not give, such as the truthiness of empty containers.
+them. The rules write native TS for the kinds they know (`mypy_types.py` proves them): a truth
+test of a list is `.length > 0`, a set is a `Set`, a dict with entity or number keys is a `Map`,
+a pattern is a `RegExp`. An expression whose kind is not known makes its function a stub, with
+the expression in the reason; typing the Python is the way to translate it. A `File` keeps one
+wrapper per entity, so `===`, `Set` and `Map` compare entities by identity, as Python's `==` does.
 
 LALR grammars (`lark.Lark(grammar, parser="lalr")`) become [Lark.js](https://github.com/lark-parser/lark.js)
 parsers: `generate.py` runs lark-js on the same grammar and writes `<module>_grammar<n>.js` (an ES module), with its type

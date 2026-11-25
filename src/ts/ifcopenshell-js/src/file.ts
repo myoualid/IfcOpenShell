@@ -1,6 +1,6 @@
 
 import { IfcOpenshellFile } from '@ifcopenshell/wasm/api';
-import type { AttributeValueType, EntityInstance } from './entity_instance.js';
+import type { AttributeValueType, EntityInstance, EntityInstanceInfo } from './entity_instance.js';
 import { IfcOpenShellError, abortError, nativeModule } from './init.js';
 
 /** Options controlling IFC byte-stream loading. */
@@ -35,7 +35,26 @@ export class File extends IfcOpenshellFile {
   }
 
   set toDelete(value: Iterable<EntityInstance> | null) {
-    this.toDeleteSet = value ? new EntityInstanceSet(value) : null;
+    this.toDeleteSet = value ? new Set(value) : null;
+  }
+
+  /** The wrapper of each entity read from this file, by identity(): one wrapper per entity. */
+  private readonly entities = new Map<number, EntityInstance>();
+
+  /** @internal The wrapper of the entity with this identity(), if it was read before. */
+  entityByIdentity(identity: number): EntityInstance | undefined {
+    return this.entities.get(identity);
+  }
+
+  /** @internal Keep the wrapper of a newly read entity. */
+  rememberEntity(identity: number, entity: EntityInstance): void {
+    this.entities.set(identity, entity);
+  }
+
+  /** Remove an entity. Its identity() may be reused by a later entity, so its wrapper is dropped. */
+  override remove(entity: EntityInstance): void {
+    this.entities.delete(entity.identity());
+    super.remove(entity);
   }
 
   /** @internal The open File with this native file pointer, or null. */
@@ -62,11 +81,13 @@ export class File extends IfcOpenshellFile {
 
   override destroy(): void {
     this.forget();
+    this.entities.clear();
     super.destroy();
   }
 
   override dispose(): void {
     this.forget();
+    this.entities.clear();
     super.dispose();
   }
 
@@ -115,19 +136,24 @@ export class File extends IfcOpenshellFile {
 
   /**
    * Create an entity with any of its IFC attributes: by schema name in an object, or by
-   * position in an array. Give `id` to create the entity with that id.
+   * position in an array. An object may also give positions as keys ("0", "1"), so that
+   * `{ ...[a], Name: b }` sets the first attribute and `Name`. Give `id` to create the
+   * entity with that id. As Python create_entity(**info), the object may be the getInfo() of an
+   * entity without its `type`: its `id` is the id of the new entity, when `id` is not given.
    */
   create(
     ifcClass: string,
-    attributes: Record<string, AttributeValueType> | AttributeValueType[] = {},
+    attributes: Record<string, AttributeValueType> | Omit<EntityInstanceInfo, 'type'> | AttributeValueType[] = {},
     id?: number,
   ): EntityInstance {
-    const entity = (id ? this.createEntityByNameWithId(ifcClass, id) : this.createEntityByName(ifcClass)) as EntityInstance | null;
+    const { id: infoId, ...values } = Array.isArray(attributes) ? { id: undefined } : (attributes as Record<string, unknown>);
+    const entityId = id ?? (typeof infoId === 'number' ? infoId : undefined);
+    const entity = (entityId ? this.createEntityByNameWithId(ifcClass, entityId) : this.createEntityByName(ifcClass)) as EntityInstance | null;
     if (!entity) throw new IfcOpenShellError(`Failed to create ${ifcClass}`);
     try {
       const entries = Array.isArray(attributes)
         ? attributes.map((value, index) => [index, value] as const)
-        : Object.entries(attributes);
+        : Object.entries(values).map(([key, value]) => [/^\d+$/.test(key) ? Number(key) : key, value as AttributeValueType] as const);
       for (const [nameOrIndex, value] of entries) entity.set(nameOrIndex, value);
       return entity;
     } catch (error) {
@@ -176,51 +202,10 @@ export class File extends IfcOpenshellFile {
       return entities.map((item, i) => [item, indices[i]!] as [EntityInstance, number]);
     }
     if (allowDuplicate) return entities;
-    // JS Set uses object identity; native getters produce a fresh handle for each occurrence.
-    const unique = new Map<number, EntityInstance>();
-    for (const item of entities) {
-      if (!unique.has(item.identity())) unique.set(item.identity(), item);
-    }
-    return new EntityInstanceSet(unique.values());
+    return new Set(entities);
   }
 
 
-}
-
-/** Set membership follows IFC identity, like Python entity equality. */
-class EntityInstanceSet extends Set<EntityInstance> {
-  private readonly byIdentity = new Map<number, EntityInstance>();
-
-  constructor(values: Iterable<EntityInstance>) {
-    super();
-    for (const value of values) this.add(value);
-  }
-
-  override add(value: EntityInstance): this {
-    const identity = value.identity();
-    if (!this.byIdentity.has(identity)) {
-      this.byIdentity.set(identity, value);
-      super.add(value);
-    }
-    return this;
-  }
-
-  override has(value: EntityInstance): boolean {
-    return this.byIdentity.has(value.identity());
-  }
-
-  override delete(value: EntityInstance): boolean {
-    const identity = value.identity();
-    const member = this.byIdentity.get(identity);
-    if (!member) return false;
-    this.byIdentity.delete(identity);
-    return super.delete(member);
-  }
-
-  override clear(): void {
-    this.byIdentity.clear();
-    super.clear();
-  }
 }
 
 /** Parse IFC bytes after explicitly loading their schema plugin. */

@@ -66,6 +66,15 @@ export class EntityInstance extends IfcOpenshellInstance {
     return this.getArgument(nameOrIndex) as AttributeValueType;
   }
 
+  /**
+   * `g(value)` where `f(value)` holds, applied to each item of nested lists, as
+   * entity_instance.walk in Python.
+   */
+  static walk(f: (value: unknown) => boolean, g: (value: unknown) => unknown, value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(item => EntityInstance.walk(f, g, item));
+    return f(value) ? g(value) : value;
+  }
+
   attributes(): string[] {
     return this.getAttributeNames();
   }
@@ -195,9 +204,17 @@ function inverseNameSet(entity: EntityInstance): Set<string> {
 
 /**
  * @internal Wrap a native instance, installing `entity.AttributeName` accessors for its class.
- * Registered as the WASM instance factory.
+ * Registered as the WASM instance factory. An entity of an open File has one wrapper, so that ===,
+ * Set and Map compare entities by identity(), as Python's == does.
  */
 export function adoptInstance(handle: IfcOpenshellInstance): EntityInstance {
+  const file = File.byPointer(handle.filePointer());
+  const identity = handle.identity();
+  const known = file?.entityByIdentity(identity);
+  if (known) {
+    handle.destroy();
+    return known;
+  }
   const key = handle.className(true);
   let InstanceClass = instanceClasses.get(key);
   if (!InstanceClass) {
@@ -209,7 +226,9 @@ export function adoptInstance(handle: IfcOpenshellInstance): EntityInstance {
     Object.defineProperty(InstanceClass.prototype, inverseNames, { value: new Set(handle.getInverseAttributeNames()) });
     instanceClasses.set(key, InstanceClass);
   }
-  return new InstanceClass(handle);
+  const entity = new InstanceClass(handle);
+  file?.rememberEntity(identity, entity);
+  return entity;
 }
 
 /** Non-enumerable, so listing an entity does not read every attribute. */

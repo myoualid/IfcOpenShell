@@ -3,11 +3,19 @@
 
 // util.date functions that use isodate, dateutil or datetime formatting in Python, written by hand
 // with Temporal. The generated util/date re-exports them (see `hand_written` in src/transpiler/ts.yaml).
-// A day-time duration is a number of microseconds (see dates.ts). A duration with years or months is
+// A day-time duration is a number of microseconds. A duration with years or months is
 // { years, months, tdelta }, as isodate.Duration.
 
 import type { EntityInstance } from '../entity_instance.js';
-import { MICROSECONDS_PER_DAY, Temporal, combine, isoformat } from './dates.js';
+import { Temporal } from './temporal.js';
+
+/** A duration is a number of microseconds. */
+const MICROSECONDS_PER_DAY = 86_400_000_000;
+
+/** ISO 8601 text with six fraction digits when there are microseconds, else none, as Python writes it. */
+function isoText(value: Temporal.PlainDateTime | Temporal.PlainTime): string {
+  return value.toString({ fractionalSecondDigits: value.millisecond || value.microsecond ? 6 : 0 });
+}
 
 /** A duration with calendar years or months, as isodate.Duration. */
 export interface CalendarDuration {
@@ -154,14 +162,14 @@ export function datetime2ifc(dt: DateValue | Duration | string | null | undefine
     return Math.trunc((value as Temporal.PlainDateTime).toZonedDateTime(Temporal.Now.timeZoneId()).epochMilliseconds / 1000);
   }
   if (ifcType === 'IfcDateTime') {
-    if (isDateTime) return isoformat(value as Temporal.PlainDateTime);
-    if (isDate) return isoformat(combine(value as Temporal.PlainDate));
+    if (isDateTime) return isoText(value as Temporal.PlainDateTime);
+    if (isDate) return isoText((value as Temporal.PlainDate).toPlainDateTime());
   } else if (ifcType === 'IfcDate') {
     if (isDateTime) return (value as Temporal.PlainDateTime).toPlainDate().toString();
     if (isDate) return (value as Temporal.PlainDate).toString();
   } else if (ifcType === 'IfcTime') {
-    if (isDateTime) return isoformat((value as Temporal.PlainDateTime).toPlainTime());
-    if (isTime) return isoformat(value as Temporal.PlainTime);
+    if (isDateTime) return isoText((value as Temporal.PlainDateTime).toPlainTime());
+    if (isTime) return isoText(value as Temporal.PlainTime);
   } else if (ifcType === 'IfcCalendarDate' && (isDate || isDateTime)) {
     const day = value as Temporal.PlainDate;
     return { DayComponent: day.day, MonthComponent: day.month, YearComponent: day.year };

@@ -44,6 +44,37 @@ export function multiply(a: Matrix4, b: Matrix4): Matrix4 {
   return result;
 }
 
+/** The inverse of a 4x4 matrix, by Gauss-Jordan elimination with partial pivoting. */
+export function invert(m: Matrix4): Matrix4 {
+  const a = Float64Array.from(m);
+  const result = identity();
+  for (let column = 0; column < 4; column++) {
+    let pivot = column;
+    for (let row = column + 1; row < 4; row++) {
+      if (Math.abs(a[row * 4 + column]!) > Math.abs(a[pivot * 4 + column]!)) pivot = row;
+    }
+    if (a[pivot * 4 + column] === 0) throw new Error('Singular matrix');
+    for (let k = 0; k < 4; k++) {
+      [a[column * 4 + k], a[pivot * 4 + k]] = [a[pivot * 4 + k]!, a[column * 4 + k]!];
+      [result[column * 4 + k], result[pivot * 4 + k]] = [result[pivot * 4 + k]!, result[column * 4 + k]!];
+    }
+    const scale = a[column * 4 + column]!;
+    for (let k = 0; k < 4; k++) {
+      a[column * 4 + k] = a[column * 4 + k]! / scale;
+      result[column * 4 + k] = result[column * 4 + k]! / scale;
+    }
+    for (let row = 0; row < 4; row++) {
+      const factor = a[row * 4 + column]!;
+      if (row === column || factor === 0) continue;
+      for (let k = 0; k < 4; k++) {
+        a[row * 4 + k] = a[row * 4 + k]! - factor * a[column * 4 + k]!;
+        result[row * 4 + k] = result[row * 4 + k]! - factor * result[column * 4 + k]!;
+      }
+    }
+  }
+  return result;
+}
+
 /**
  * A 4x4 matrix from a location and the Z and X axes. Y is Z × X, and X is projected onto the
  * plane normal to Z, as IfcBuildAxes does.
@@ -161,4 +192,12 @@ export function rotation(angle: number, axis: 'X' | 'Y' | 'Z', options: { isDegr
     case 'Z':
       return new Float64Array([cos, -sin, 0, 0, sin, cos, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
   }
+}
+
+/** The elevation of a storey in project units: the Z of its placement, else its Elevation, else 0. */
+export function getStoreyElevation(storey: EntityInstance): number {
+  const placement = storey.get('ObjectPlacement') as EntityInstance | null;
+  if (placement) return getPlacement({ placement })[2 * 4 + 3]!;
+  const elevation = storey.attributes().includes('Elevation') ? (storey.get('Elevation') as number | null) : null;
+  return elevation || 0;
 }

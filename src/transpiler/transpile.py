@@ -294,6 +294,136 @@ def source_hash(node):
     return hashlib.sha256(ast.unparse(node).encode("utf-8")).hexdigest()[:12]
 
 
+# str methods that no other value the generated code handles has.
+TEXT_METHODS = {
+    "upper",
+    "lower",
+    "strip",
+    "lstrip",
+    "rstrip",
+    "startswith",
+    "endswith",
+    "split",
+    "splitlines",
+    "capitalize",
+    "title",
+    "isdigit",
+    "zfill",
+}
+
+
+def attribute_kinds():
+    """IFC attribute names whose declarations in all schemas have one kind: entity, string, number, boolean, array."""
+    attributes = json.loads((Path(__file__).parent / "attributes.json").read_text(encoding="utf-8"))
+    kinds = {}
+    for name, entry in attributes.items():
+        found = {"array" if isinstance(t, list) else t for t in entry["types"]}
+        if len(found) == 1:
+            kinds[name] = found.pop()
+        elif found <= {"entity", "string", "number", "boolean"}:
+            kinds[name] = "scalar"  # Truthiness and equality are the same for these kinds in JS.
+    return kinds
+
+
+# A format specification: [[fill]align][sign][0][width][,][.precision][type]. A nested replacement field
+# ({} in str.format, {expression} in an f-string) is marked as \x01index\x01.
+FORMAT_SPEC = re.compile(
+    r"(?:(?P<fill>.)?(?P<align>[<>^=]))?(?P<sign>[+ -])?(?P<zero>0)?(?P<width>\d+|\x01\d+\x01)?(?P<comma>,)?"
+    r"(?:\.(?P<precision>\d+|\x01\d+\x01))?(?P<type>[dfF%xXs])?"
+)
+
+
+def format_field(value, spec, nested=()):
+    """TS code that formats the TS expression `value` as Python's format(value, spec) does.
+
+    Only the specifications with one obvious TS spelling are supported; others make the function a stub.
+    """
+    if not spec:
+        return value
+    match = FORMAT_SPEC.fullmatch(spec)
+    groups = match.groupdict() if match else {}
+    if not match or groups["comma"] or groups["sign"] or groups["align"] in ("^", "="):
+        unsupported(f"format specification {spec!r}")
+
+    def part(text):
+        return nested[int(text[1:-1])] if text and text.startswith("\x01") else text
+
+    kind, precision, width = groups["type"] or "", part(groups["precision"]), part(groups["width"])
+    if kind in ("f", "F"):
+        number = lambda v: f"{v}.toFixed({precision or 6})"
+    elif kind == "%":
+        number = lambda v: f'({v} * 100).toFixed({precision or 6}) + "%"'
+    elif kind in ("x", "X"):
+        number = lambda v: f"{v}.toString(16)" + (".toUpperCase()" if kind == "X" else "")
+    elif kind == "d":
+        number = lambda v: f"String({v})"
+    elif kind == "s" and not groups["zero"]:
+        number = None
+    else:
+        unsupported(f"format specification {spec!r}")
+    if number is None:
+        text = f"String({value})" + (f".slice(0, {precision})" if precision else "")
+        if not width:
+            return text
+        fill = json.dumps(groups["fill"] or " ")
+        return f"{text}.{'padStart' if groups['align'] == '>' else 'padEnd'}({width}, {fill})"
+    if precision and kind in ("d", "x", "X"):
+        unsupported(f"format specification {spec!r}")
+    if not width:
+        return number(value)
+    if groups["zero"] and not groups["align"]:
+        # Python puts the zeros after the sign.
+        return (
+            f'((v: number) => (v < 0 ? "-" : "") + {number("Math.abs(v)")}.padStart({width} - (v < 0 ? 1 : 0), "0"))'
+            f"({value})"
+        )
+    fill = json.dumps(groups["fill"] or " ")
+    return f"{number(value)}.{'padEnd' if groups['align'] == '<' else 'padStart'}({width}, {fill})"
+
+
+def template_text(text):
+    """Literal text in a TS template literal."""
+    return text.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+
+
+def flag_names(node):
+    """The names of the re flags in an expression such as re.I | re.M."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return flag_names(node.left) + flag_names(node.right)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "re":
+        if node.attr in ("I", "IGNORECASE", "M", "MULTILINE", "S", "DOTALL"):
+            return [node.attr]
+    if isinstance(node, ast.Constant) and node.value == 0:
+        return []
+    unsupported(f"re flags {ast.unparse(node)}")
+
+
+# Python regex syntax that JS RegExp does not have, or has with another meaning.
+PYTHON_ONLY_REGEX = re.compile(r"\\[AZ]|\(\?[aiLmsux]|\(\?>|\(\?\(|\\[0-7]{3}")
+
+
+def js_regex(pattern, prefix="", suffix=""):
+    """The body of a JS regex literal for a Python pattern, with named groups in JS syntax."""
+    if PYTHON_ONLY_REGEX.search(pattern):
+        unsupported(f"regex syntax that JS does not have: {pattern!r}")
+    body = re.sub(r"\(\?P<(\w+)>", r"(?<\1>", pattern)
+    body = re.sub(r"\(\?P=(\w+)\)", r"\\k<\1>", body)
+    body = re.sub(r"(?<!\\)/", r"\\/", body)
+    return f"{prefix}(?:{body}){suffix}" if prefix or suffix else body
+
+
+def regex_groups(pattern):
+    """The number of groups of a Python pattern."""
+    return re.compile(pattern).groups
+
+
+def js_replacement(text):
+    """A re.sub replacement as a String.replace replacement: \\1 and \\g<name> become $1 and $<name>."""
+    text = text.replace("$", "$$")
+    text = re.sub(r"\\g<(\d+)>|\\(\d+)", lambda m: "$" + (m[1] or m[2]), text)
+    return re.sub(r"\\g<(\w+)>", r"$<\1>", text)
+
+
 def unsupported(reason):
     """Make the function that a rule renders a stub, with this reason."""
     raise ValueError(reason)
@@ -303,6 +433,8 @@ class Transpiler:
     def __init__(self, rules, index=None, precomputed=None, types=None):
         self.types = types or {}
         self.rules = yaml.safe_load(Path(rules).read_text(encoding="utf-8"))
+        # The kind of each IFC attribute name, when all its declarations in the schemas have one kind.
+        self.rules["attribute_kinds"] = attribute_kinds()
         # The version of this checkout, for ifcopenshell.version.
         self.rules["ifcopenshell_version"] = (PACKAGE.parents[2] / "VERSION").read_text(encoding="utf-8").strip()
         # LALR grammars become Lark.js parsers, which generate.py makes with lark-js.
@@ -317,6 +449,8 @@ class Transpiler:
         self.functions = {}
         self.classes = {}
         self.current_class = None
+        self.current_top = None  # The top-level function or class being translated.
+        self.assigning = set()  # Locals whose assigned kinds are being computed.
         self.symbols = {}
         self.aliases = {}
         self.imports = {}
@@ -332,18 +466,32 @@ class Transpiler:
         self.return_annotation = None
         self.generator = False
         self.loops = []
+        self.module_imports = set()
         self.declared = []
         self.list_names = set()
         self.list_constants = list_constants()
         self.env = Environment(undefined=StrictUndefined, keep_trailing_newline=True)
         self.cache = {}
         self.env.tests["startswith"] = lambda value, prefix: str(value).startswith(prefix)
+        self.env.tests["ellipsis"] = lambda value: isinstance(value, ast.Constant) and value.value is Ellipsis
         self.env.filters.update(
             emit=self.emit,
-            emit_in=lambda n, context: self.emit(n, context=context),
+            emit_in=self.emit_in,
+            formatted=self.formatted,
+            is_cast_declaration=self.is_cast_declaration,
+            js_regex=js_regex,
+            regex_groups=regex_groups,
+            js_replacement=js_replacement,
+            flag_names=flag_names,
+            # Characters of a regex character class, escaped where they have a meaning there.
+            regex_class=lambda text: "".join("\\" + c if c in "\\]^-/" else c for c in text),
+            format_text=self.format_text,
             type=lambda n: self.emit(n, "types"),
             kind=self.kind,
+            element_kind=self.element_kind,
+            inferred_return=self.inferred_return,
             nullable=self.nullable,
+            returns_kind=self.returns_kind,
             condition=lambda n: self.emit(n, context="condition"),
             iterable=lambda n: self.emit(n, context="iterable"),
             literal=json.dumps,
@@ -361,6 +509,7 @@ class Transpiler:
             defining_module=self.defining_module,
             signature=self.signature,
             bind=self.bind,
+            is_dataclass_name=lambda name: name in self.classes and is_dataclass(self.classes[name]),
             runtime_path=self.runtime_path,
             alias_value=self.alias_value,
             api_run=self.api_run,
@@ -402,6 +551,7 @@ class Transpiler:
             list_constants=self.list_constants,
             # Python operators may dispatch to runtime objects (arrays, dates) in this module.
             overloading=bool(self.imported_modules & set(self.rules.get("overloading_modules", ()))),
+            imported_modules=self.module_imports,
             **captures,
         )
 
@@ -695,6 +845,98 @@ class Transpiler:
                     names |= {a.asname or a.name for a in node.names}
         return names - set(self.rules.get("supported_modules", ())) - set(self.runtime_names)
 
+    def formatted(self, node):
+        """TS code of an f-string replacement field: its value, conversion and format specification."""
+        value = self.emit(node.value)
+        if node.conversion in (ord("r"), ord("a")):
+            # In messages: text in quotes, other values as text (not Python's repr).
+            value = f"JSON.stringify({value})" if self.kind(node.value) == "string" else f"String({value})"
+        elif node.conversion == ord("s"):
+            value = f"String({value})"
+        if node.format_spec is None:
+            return value
+        spec, nested = "", []
+        for item in node.format_spec.values:
+            if isinstance(item, ast.Constant):
+                spec += item.value
+            else:
+                spec += f"\x01{len(nested)}\x01"
+                nested.append(self.formatted(item))
+        return format_field(value, spec, nested)
+
+    def format_text(self, text, args, keywords):
+        """`text.format(...)` as a TS template literal, with the format specifications of its fields."""
+        import string
+
+        positional = [self.emit(a) for a in args]
+        named = {k.arg: self.emit(k.value) for k in keywords if k.arg}
+        if len(named) != len(keywords) or any(isinstance(a, ast.Starred) for a in args):
+            unsupported("str.format() with unpacked arguments")
+        counter = iter(range(len(positional) + 1))
+
+        def field(name):
+            if name == "":
+                index = next(counter)
+                if index >= len(positional):
+                    unsupported("str.format() with fewer arguments than fields")
+                return positional[index]
+            if name.isdigit() and int(name) < len(positional):
+                return positional[int(name)]
+            if name in named:
+                return named[name]
+            unsupported(f"str.format() field {name!r}")
+
+        out = "`"
+        for literal, name, spec, conversion in string.Formatter().parse(text):
+            out += template_text(literal)
+            if name is None:
+                continue
+            value = field(name)
+            if conversion in ("r", "a"):
+                value = f"String({value})"  # In messages: the value as text (not Python's repr).
+            elif conversion == "s":
+                value = f"String({value})"
+            nested = []
+            for _, inner, _, _ in string.Formatter().parse(spec or ""):
+                if inner is not None:
+                    nested.append(field(inner))
+            marked = re.sub(r"\{[^{}]*\}", lambda m, c=iter(range(len(nested))): f"\x01{next(c)}\x01", spec or "")
+            out += "${" + format_field(value, marked, nested) + "}"
+        return out + "`"
+
+    def emit_in(self, node, context):
+        """Emit a node in a context; with method_stubs, a method that cannot be translated becomes a stub."""
+        if context != "member" or not isinstance(node, ast.FunctionDef) or not self.rules.get("method_stubs"):
+            return self.emit(node, context=context)
+        imports = dict(self.imports)
+        try:
+            qualified = f"{self.module}.{self.current_class}.{node.name}"
+            if qualified in self.rules.get("unsupported_functions", {}):
+                raise ValueError(self.rules["unsupported_functions"][qualified])
+            if entry := self.rules.get("hand_written", {}).get(qualified):
+                if (actual := source_hash(node)) != entry["source"]:
+                    raise ValueError(
+                        f"the hand-written TS in {entry['module']} is for another version of this method"
+                        f" (source hash {actual}, expected {entry['source']})"
+                    )
+                static = "staticmethod" in [ast.unparse(d) for d in node.decorator_list]
+                return self.render(
+                    self.rules["hand_written_method"],
+                    {"cls": self.current_class, "method": node.name, "target": entry["module"], "static": static},
+                )
+            self.check_foreign(node, self.foreign)
+            return self.emit(node, context=context)
+        except Exception as error:
+            reason = str(error) if isinstance(error, ValueError) else f"{type(error).__name__}: {error}"
+            name = f"{self.current_class}.{node.name}"
+            self.unsupported.append(f"{name}: {reason}")
+            self.imports = imports  # Drop imports only the failed method needed.
+            static = "staticmethod" in [ast.unparse(d) for d in node.decorator_list]
+            return self.render(
+                self.rules["unsupported_method"],
+                {"name": name, "method": node.name, "reason": reason, "static": static},
+            )
+
     def check_foreign(self, node, foreign):
         """Reject code that uses a dropped import, rather than emit a reference that fails at runtime."""
         bound = {n.id for n in ast.walk(node) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
@@ -712,11 +954,25 @@ class Transpiler:
         annotations = [n.annotation for n in ast.walk(node) if isinstance(n, (ast.arg, ast.AnnAssign)) and n.annotation]
         annotations += [n.returns for n in ast.walk(node) if isinstance(n, ast.FunctionDef) and n.returns]
         type_positions |= {id(n) for annotation in annotations for n in ast.walk(annotation)}
+        # Calls that a rule writes inline, without the module (np.isclose of numbers, for example).
+        type_positions |= {
+            id(call.func.value)
+            for call in ast.walk(node)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and ast.unparse(call.func) in self.rules.get("inline_numpy", ())
+        }
         for name in ast.walk(node):
             if id(name) in type_positions:
                 continue
             if isinstance(name, ast.Name) and isinstance(name.ctx, ast.Load) and name.id in foreign - bound:
                 raise ValueError(f"No rules rule at line {name.lineno}: uses module {name.id}")
+            if (
+                isinstance(name, ast.Name)
+                and isinstance(name.ctx, ast.Load)
+                and name.id in self.unavailable.keys() - bound
+            ):
+                raise ValueError(f"uses {name.id}, a module value that is not translated: {self.unavailable[name.id]}")
 
     def annotate(self, name, annotation, values_only=False):
         """Record the kind of an annotated name, and of its values (`name[]`) for dict[K, V]."""
@@ -823,9 +1079,120 @@ class Transpiler:
         position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}"
         return self.types.get(self.module, {}).get(position)
 
+    def returns_kind(self, node):
+        """The kind of what a call of a callable value returns, from mypy_types; "unknown" if it is not proven."""
+        if not self.rules.get("proven_types") or getattr(node, "lineno", None) is None:
+            return "unknown"
+        position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}:returns"
+        return (self.types.get(self.module, {}).get(position) or ["unknown"])[0]
+
     def kind(self, node):
         proven = self.proven(node)
-        return proven[0] if proven else self.emit(node, "inference")
+        if proven and proven[0] != "object":
+            return proven[0]
+        # "object" only says that the value is always true: the rules may know more (a path, a Lark tree).
+        inferred = self.emit(node, "inference")
+        if inferred == "unknown" and isinstance(node, ast.Name):
+            inferred = self.assigned_kind(node.id)
+        return "object" if proven and inferred == "unknown" else inferred
+
+    CASTS = ("as_named_type", "as_type_declaration", "as_simple_type")
+
+    def is_cast_declaration(self, node):
+        """Whether a declaration is the result of an explicit cast (as_named_type(), ...), so that
+        declared_type() exists on its TS type: directly, or through a local only bound to casts."""
+        def cast(value):
+            return isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and value.func.attr in self.CASTS
+        if cast(node):
+            return True
+        if not isinstance(node, ast.Name) or self.current_top is None:
+            return False
+        values = [
+            n.value
+            for n in ast.walk(self.current_top)
+            if isinstance(n, (ast.Assign, ast.NamedExpr))
+            and any(isinstance(t, ast.Name) and t.id == node.id for t in (n.targets if isinstance(n, ast.Assign) else [n.target]))
+        ]
+        return bool(values) and all(cast(v) for v in values)
+
+    def assigned_kind(self, name):
+        """The kind of a local that is only bound by plain assignments, when all their values have one kind."""
+        if name in self.scope or name in self.assigning or self.current_top is None:
+            return "unknown"
+        values = []
+        for n in ast.walk(self.current_top):
+            if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets):
+                if len(n.targets) != 1:
+                    return "unknown"
+                values.append(n.value)
+            elif isinstance(n, ast.NamedExpr) and n.target.id == name:
+                values.append(n.value)
+            elif isinstance(n, (ast.AugAssign, ast.AnnAssign, ast.For, ast.comprehension, ast.withitem)):
+                target = getattr(n, "target", None) or getattr(n, "optional_vars", None)
+                if any(isinstance(t, ast.Name) and t.id == name for t in ast.walk(target or ast.Pass())):
+                    return "unknown"
+            elif isinstance(n, ast.arg) and n.arg == name:
+                return "unknown"
+        if not values:
+            return "unknown"
+        self.assigning.add(name)
+        try:
+            kinds = {self.kind(v) for v in values}
+        finally:
+            self.assigning.discard(name)
+        scalar_like = {"entity", "string", "number", "boolean", "attribute", "scalar"}
+        if not kinds <= scalar_like:
+            return "unknown"
+        if len(kinds) == 1:
+            return kinds.pop()
+        # Mixed kinds whose truthiness is the same in Python and JS.
+        return "attribute" if "attribute" in kinds else "scalar"
+
+    def inferred_return(self, callee):
+        """The kind of what a function of this module with no return annotation returns, from the kinds
+        that mypy proves for its return values; unknown when they differ or are not proven."""
+        if not isinstance(callee, ast.Name) or callee.id not in self.functions or callee.id in self.shadowed:
+            return "unknown"
+        function = self.functions[callee.id]
+        if function.returns is not None:
+            return "unknown"
+        kinds = set()
+        for node in ast.walk(function):
+            if isinstance(node, ast.Return) and node.value is not None:
+                if isinstance(node.value, ast.Constant) and node.value.value is None:
+                    continue
+                proven = self.proven(node.value)
+                if isinstance(node.value, ast.Constant):
+                    value = node.value.value
+                    kinds.add(
+                        "string" if isinstance(value, str) else "boolean" if isinstance(value, bool) else "number"
+                    )
+                else:
+                    kinds.add(proven[0] if proven else "unknown")
+        return kinds.pop() if len(kinds) == 1 else "unknown"
+
+    def element_kind(self, node):
+        """The kind of the elements of a list, tuple, set or comprehension; unknown when they differ."""
+        if isinstance(node, (ast.ListComp, ast.GeneratorExp, ast.SetComp)):
+            return self.kind(node.elt)
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)) and node.elts:
+            kinds = {self.kind(e) for e in node.elts}
+            return kinds.pop() if len(kinds) == 1 else "unknown"
+        if isinstance(node, ast.Name) and f"{node.id}[]" in self.symbols:
+            return self.symbols[f"{node.id}[]"]
+        if isinstance(node, ast.Name) and node.id in self.scope and node.id not in self.shadowed - set(self.scope):
+            annotation = ast.parse(self.scope[node.id]).body[0].value
+            if (
+                isinstance(annotation, ast.Subscript)
+                and ast.unparse(annotation.value) in ("list", "List", "Sequence", "set", "Set", "Iterable")
+                and not isinstance(annotation.slice, ast.Tuple)
+            ):
+                return self.emit(annotation.slice, "annotation_kinds")
+        if self.rules.get("proven_types") and getattr(node, "lineno", None) is not None:
+            position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}:elements"
+            if proven := self.types.get(self.module, {}).get(position):
+                return proven[0]
+        return "unknown"
 
     def nullable(self, node):
         proven = self.proven(node)
@@ -914,6 +1281,18 @@ class Transpiler:
         self.module = module
         self.grammars = {}
         tree = ast.parse(source)
+        if entry := self.rules.get("hand_written_modules", {}).get(module):
+            # The whole module is written by hand in TS (module-level numpy data, for example).
+            self.unsupported = []
+            if (actual := source_hash(tree)) != entry["source"]:
+                raise ValueError(
+                    f"the hand-written TS in {entry['module']} is for another version of this module"
+                    f" (source hash {actual}, expected {entry['source']})"
+                )
+            header = self.render(self.rules["header"], {}) if "header" in self.rules else ""
+            depth = "../" * module.count(".")
+            target = entry["module"].replace(".", "/")
+            return f'{header}\n\nexport * from "{depth}{target}.js";\n'
         static_classmethods(tree)
         untyped_overloads(tree)
         mark_checked_reads(tree)
@@ -968,9 +1347,20 @@ class Transpiler:
         self.unsupported = []
         self.symbols = {}
         self.imports = {}
-        foreign = self.foreign_names(tree)
+        foreign = self.foreign = self.foreign_names(tree)
+        # Top-level names of the modules this module imports.
+        self.module_imports = {
+            a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names
+        } | {
+            n.module.split(".")[0]
+            for n in ast.walk(tree)
+            if isinstance(n, ast.ImportFrom) and n.module and n.level == 0
+        }
+        self.unavailable = {}
+        self.text_parameters = {}
         output = []
         for node in tree.body:
+            self.current_top = node
             functions = [node] if isinstance(node, ast.FunctionDef) else []
             if isinstance(node, ast.ClassDef):
                 functions = [n for n in node.body if isinstance(n, ast.FunctionDef)]
@@ -1017,16 +1407,6 @@ class Transpiler:
             for n in ast.walk(node):
                 if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
                     self.annotate(n.target.id, n.annotation, values_only=True)
-            # A parameter defaulting to True or False is a flag, whatever its annotation says.
-            for function in functions:
-                arguments = function.args
-                positional = arguments.args[len(arguments.args) - len(arguments.defaults) :]
-                for argument, default in [
-                    *zip(positional, arguments.defaults),
-                    *zip(arguments.kwonlyargs, arguments.kw_defaults),
-                ]:
-                    if isinstance(default, ast.Constant) and isinstance(default.value, bool):
-                        self.symbols[argument.arg] = "boolean"
             for function in functions:
                 self.symbols.update(
                     {
@@ -1034,6 +1414,76 @@ class Transpiler:
                         for a in function.args.args + function.args.kwonlyargs
                     }
                 )
+            # A parameter with no annotation that the function uses only as the receiver of text methods
+            # (text.upper(), text.split(...)) is text.
+            for function in functions:
+                for argument in function.args.args + function.args.kwonlyargs:
+                    if argument.annotation is not None:
+                        continue
+                    uses = [
+                        n
+                        for n in ast.walk(function)
+                        if isinstance(n, ast.Name) and n.id == argument.arg and isinstance(n.ctx, ast.Load)
+                    ]
+                    receivers = {
+                        id(n.func.value)
+                        for n in ast.walk(function)
+                        if isinstance(n, ast.Call)
+                        and isinstance(n.func, ast.Attribute)
+                        and isinstance(n.func.value, ast.Name)
+                        and n.func.value.id == argument.arg
+                        and n.func.attr in TEXT_METHODS
+                    }
+                    rebound = any(
+                        isinstance(n, ast.Name) and n.id == argument.arg and isinstance(n.ctx, ast.Store)
+                        for n in ast.walk(function)
+                    )
+                    tested = {
+                        id(n)
+                        for n in ast.walk(function)
+                        for test in [getattr(n, "test", None)]
+                        if isinstance(test, ast.Name)
+                        and test.id == argument.arg
+                        or isinstance(test, ast.UnaryOp)
+                        and isinstance(test.operand, ast.Name)
+                        and test.operand.id == argument.arg
+                        for n in [test.operand if isinstance(test, ast.UnaryOp) else test]
+                    }
+                    # Passed to a text parameter of a function of this module (found earlier in the module).
+                    passed = {
+                        id(value)
+                        for n in ast.walk(function)
+                        if isinstance(n, ast.Call)
+                        and isinstance(n.func, ast.Name)
+                        and n.func.id in self.text_parameters
+                        for i, value in enumerate(n.args)
+                        if isinstance(value, ast.Name)
+                        and value.id == argument.arg
+                        and i < len(self.functions[n.func.id].args.args)
+                        and self.functions[n.func.id].args.args[i].arg in self.text_parameters[n.func.id]
+                    }
+                    if (
+                        (receivers or passed)
+                        and not rebound
+                        and all(id(n) in receivers | tested | passed for n in uses)
+                    ):
+                        self.symbols[argument.arg] = "string"
+                        self.text_parameters.setdefault(function.name, set()).add(argument.arg)
+            # A parameter defaulting to True or False is a flag, whatever its annotation says. A parameter
+            # with no annotation and a number or text default has the kind of its default.
+            for function in functions:
+                arguments = function.args
+                positional = arguments.args[len(arguments.args) - len(arguments.defaults) :]
+                for argument, default in [
+                    *zip(positional, arguments.defaults),
+                    *zip(arguments.kwonlyargs, arguments.kw_defaults),
+                ]:
+                    if not isinstance(default, ast.Constant):
+                        continue
+                    if isinstance(default.value, bool):
+                        self.symbols[argument.arg] = "boolean"
+                    elif argument.annotation is None and isinstance(default.value, (int, float, str)):
+                        self.symbols[argument.arg] = "string" if isinstance(default.value, str) else "number"
             # Resolve local data shapes without embedding target-language decisions here.
             bindings = [n for n in ast.walk(node) if isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr))]
             # A parameter annotated as a union of kinds (an entity or a list) keeps no single kind when
@@ -1196,12 +1646,31 @@ class Transpiler:
                 locates_module = isinstance(node, ast.Assign) and "__file__" in ast.unparse(node.value)
                 type_alias = isinstance(node, ast.Assign) and is_type(node.value)
                 if not isinstance(node, (ast.Import, ast.ImportFrom)) and not locates_module and not type_alias:
-                    self.check_foreign(node, foreign)
+                    if isinstance(node, ast.ClassDef) and self.rules.get("method_stubs"):
+                        # Methods are checked one by one in emit_in, so that one method does not stop its class.
+                        for part in node.bases + node.keywords + node.decorator_list + node.body:
+                            if not isinstance(part, ast.FunctionDef):
+                                self.check_foreign(part, foreign)
+                    else:
+                        self.check_foreign(node, foreign)
                 result = self.emit(node).rstrip()
             except Exception as error:
                 name = getattr(node, "name", f"line {node.lineno}")
                 reason = str(error) if isinstance(error, ValueError) else f"{type(error).__name__}: {error}"
                 self.unsupported.append(f"{name}: {reason}")
+                targets = [t for n in [node] if isinstance(n, ast.Assign) for t in n.targets] + (
+                    [node.target] if isinstance(node, ast.AnnAssign) else []
+                )
+                if targets and all(isinstance(t, ast.Name) for t in targets) and self.rules.get("module_value_stubs"):
+                    value = node.value
+                    if isinstance(value, ast.Call) and ast.unparse(value.func).split(".")[-1] in ("TypeVar", "NewType"):
+                        # A type variable that annotations use: any.
+                        output.append("\n".join(f"export type {t.id} = any;" for t in targets))
+                        continue
+                    # The module still loads; functions that use this value become stubs with this reason.
+                    self.unavailable.update({t.id: reason for t in targets})
+                    output.append("\n".join(f"export const {self.ident(t.id)}: any = undefined;" for t in targets))
+                    continue
                 if not isinstance(node, (ast.FunctionDef, ast.ClassDef)):
                     raise ValueError(reason) from error  # Never silently discard module data.
                 self.imports = imports  # Drop imports only the failed function needed.

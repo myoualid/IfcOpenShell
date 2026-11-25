@@ -69,7 +69,7 @@ def distance_along_from_station(file: ifcopenshell.file, alignment: entity_insta
         start_station = ifcopenshell.api.alignment.get_alignment_start_station(file, alignment)
         return station - start_station
 
-    referents = [
+    referents: list[tuple[float, float, Optional[bool]]] = [
         (
             _referent_distance_along(referent),
             ifcopenshell.util.element.get_pset(referent, name="Pset_Stationing", prop="Station"),

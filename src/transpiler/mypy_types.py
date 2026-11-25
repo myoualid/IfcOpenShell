@@ -18,7 +18,7 @@ ATTRIBUTES = HERE / "attributes.json"
 CACHE = HERE / "types.json"
 PYTHON = HERE.parent / "ifcopenshell-python"
 SCALARS = {"boolean", "number", "string", "entity", "file", "scalar"}
-SEQUENCES = {"builtins.list", "builtins.tuple", "typing.Sequence", "typing.MutableSequence"}
+SEQUENCES = {"builtins.list", "builtins.tuple", "typing.Sequence", "typing.MutableSequence", "collections.deque"}
 SETS = {"builtins.set", "builtins.frozenset", "typing.AbstractSet", "typing.MutableSet"}
 SIMPLE = {
     "integer": "number",
@@ -71,6 +71,15 @@ def schema_attributes():
     return {name: attributes[name] for name in sorted(attributes)}
 
 
+def dump_attributes(attributes):
+    """attributes.json text: one attribute per line, so that a schema change gives a small diff."""
+    lines = [
+        f"{json.dumps(name)}: {json.dumps(entry, separators=(', ', ': '))}"
+        for name, entry in sorted(attributes.items())
+    ]
+    return "{\n" + ",\n".join(lines) + "\n}\n"
+
+
 def sources():
     package = PYTHON / "ifcopenshell"
     paths = sorted(package.glob("util/*.py")) + sorted(package.glob("api/*/*.py"))
@@ -84,24 +93,59 @@ def fingerprint():
     return digest.hexdigest()
 
 
+def element_type(proper):
+    """The type of the elements of a list, tuple or set type, or None."""
+    from mypy import types
+
+    if isinstance(proper, types.Instance) and proper.type.fullname in SEQUENCES | SETS and proper.args:
+        return types.get_proper_type(proper.args[0])
+    if isinstance(proper, types.TupleType) and proper.partial_fallback.type.fullname == "builtins.tuple" and proper.items:
+        items = [types.get_proper_type(item) for item in proper.items]
+        return items[0] if all(item == items[0] for item in items) else None
+    return None
+
+
 def classify(proper, types):
     """(kind, nullable) of a mypy type, or None when it does not say what the value is."""
     nullable = False
     if isinstance(proper, types.UnionType):
         items = [types.get_proper_type(item) for item in proper.items]
-        known = [item for item in items if not isinstance(item, types.NoneType)]
-        nullable = len(known) != len(items)
+        nullable = any(isinstance(item, types.NoneType) for item in items)
+        # A type from a module that is not installed (mathutils.Vector in VectorType) says nothing
+        # about the value; the other types of the union decide.
+        unimported = types.TypeOfAny.from_unimported_type
+        known = [
+            item
+            for item in items
+            if not isinstance(item, types.NoneType)
+            and not (isinstance(item, types.AnyType) and item.type_of_any == unimported)
+        ]
+        if not known:
+            return None
         kinds = {classify(item, types) for item in known}
         kinds = {kind and kind[0] for kind in kinds}
         if len(kinds) == 1 and None not in kinds:
             return kinds.pop(), nullable
-        return ("scalar", nullable) if kinds <= SCALARS else None
+        if kinds == {"array", "ndarray"}:
+            # A list or a numpy array (SequenceOfVectors): only len(), iteration and indexing are common.
+            return "sequence", nullable
+        if kinds <= SCALARS:
+            return "scalar", nullable
+        if kinds <= SCALARS | {"datetime", "date", "time"}:
+            # Text or a date: true in the same cases in Python and JS (dates are always true), but not
+            # comparable with ===, so not a scalar.
+            return "attribute", nullable
+        return None
     if isinstance(proper, types.LiteralType):
         proper = proper.fallback
     if isinstance(proper, types.TupleType):
-        return "array", False
+        # A named tuple is an object with named fields in TS, not an array.
+        named = proper.partial_fallback.type.fullname != "builtins.tuple"
+        return ("object" if named else "array"), False
     if isinstance(proper, types.TypedDictType):
         return "dict", False
+    if isinstance(proper, types.CallableType):
+        return "object", False  # Functions are always true, in Python and in JS.
     if not isinstance(proper, types.Instance):
         return None
     name = proper.type.fullname
@@ -115,6 +159,20 @@ def classify(proper, types):
         return "array", False
     if name in SETS:
         return "set", False
+    if name in ("builtins.dict", "typing.Mapping", "typing.MutableMapping"):
+        # dict[str, ...] is a JS object in the generated code; other keys (entities, numbers, tuples) a Map.
+        key = types.get_proper_type(proper.args[0]) if proper.args else None
+        if not isinstance(key, types.Instance):
+            return None
+        if key.type.fullname == "builtins.str":
+            return "dict", False
+        if key.type.fullname in ("builtins.int",) or key.type.fullname.endswith(".entity_instance"):
+            return "map", False
+        return None
+    if name in ("numpy.bool", "numpy.bool_"):
+        return "boolean", False
+    if name in ("numpy.floating", "numpy.integer", "numpy.signedinteger", "numpy.unsignedinteger", "numpy.number"):
+        return "number", False
     if name.startswith("numpy."):
         return "ndarray", False
     # Dates are Temporal objects in TS; a timedelta is a number of microseconds.
@@ -128,8 +186,17 @@ def classify(proper, types):
         return "number", False
     if name.endswith((".entity_instance", ".entity_instance_mixin")):
         return "entity", False
-    if name == "ifcopenshell.file.file":
+    if name == "re.Match":
+        return "match", False  # A RegExpExecArray in TS.
+    if name == "re.Pattern":
+        return "pattern", False  # A RegExp in TS.
+    if name in ("ifcopenshell.file.file", "ifcopenshell.ifcopenshell_wrapper.file"):
         return "file", False
+    if name.startswith("ifcopenshell.") and not name.startswith("ifcopenshell.ifcopenshell_wrapper."):
+        return None  # util and api classes: the rules bind their method calls from the class.
+    if not proper.type.fallback_to_any and not any(proper.type.get(method) for method in ("__bool__", "__len__")):
+        # Always true in Python (re.Match, schema declarations, iterators...), as an object is in JS.
+        return "object", False
     return None
 
 
@@ -182,9 +249,19 @@ def analyze():
 
         def visit(self, node):
             if isinstance(node, nodes.Expression) and node in result.types:
-                kind = classify(types.get_proper_type(result.types[node]), types)
+                proper = types.get_proper_type(result.types[node])
+                position = f"{node.line}:{node.column}:{node.end_line}:{node.end_column}"
+                kind = classify(proper, types)
                 if kind:
-                    self.kinds[f"{node.line}:{node.column}:{node.end_line}:{node.end_column}"] = kind
+                    self.kinds[position] = kind
+                if isinstance(proper, types.CallableType):
+                    # What a call of the value returns (a sort key passed as a parameter, for example).
+                    returns = classify(types.get_proper_type(proper.ret_type), types)
+                    if returns:
+                        self.kinds[position + ":returns"] = returns
+                if (elements := element_type(proper)) is not None and (kind := classify(elements, types)):
+                    # The elements of a list, tuple or set (for sorted(), min(), all() and `in`).
+                    self.kinds[position + ":elements"] = kind
             return True
 
     found = {}
