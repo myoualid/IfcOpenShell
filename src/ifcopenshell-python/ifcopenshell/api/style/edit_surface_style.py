@@ -85,7 +85,7 @@ class Usecase:
         for attribute in style.declaration.all_attributes():
             attribute_type = attribute.type_of_attribute()
             if attribute_type.as_aggregation_type() is None:
-                attribute_type = attribute_type.declared_type().name()
+                attribute_type = attribute_type.as_named_type().declared_type().name()
             else:
                 # doesn't have .declared_type()
                 attribute_type = attribute_type.type_of_element()
