@@ -130,6 +130,8 @@ unsupported_functions:
   api.library.assign_reference.assign_reference: "products is annotated as one entity_instance but used as a list"
   api.project.append_asset.append_asset: "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
   util.unit.iter_element_and_attributes_per_type: "iterating a file gives entities of no proven type"
+  api.geometry.add_profile_representation.Usecase.get_x: "create_shape gives an element or a geometry; the Python must cast its result"
+  api.geometry.add_profile_representation.Usecase.get_y: "create_shape gives an element or a geometry; the Python must cast its result"
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
 # A module value that cannot be translated is undefined; the functions that use it become stubs.
@@ -1703,6 +1705,16 @@ rules:
       keywords: $keywords
     when: args and args[0].value is defined and args[0].value is string and node | api_run is not none
     output: '{{ node | api_run | emit }}'
+  # typing.cast(T, value): the Python says which of the types of a value it has.
+  - input:
+      node: Call
+      func: $callee
+      args:
+        - $target
+        - $value
+      keywords: []
+    when: callee | source in ["cast", "typing.cast"]
+    output: '({{ value | emit }} as {{ target | type }})'
   - input:
       node: Call
       func:

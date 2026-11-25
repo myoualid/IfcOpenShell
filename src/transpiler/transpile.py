@@ -894,6 +894,9 @@ class Transpiler:
             return self.emit(node, context=context)
         imports = dict(self.imports)
         try:
+            qualified = f"{self.module}.{self.current_class}.{node.name}"
+            if qualified in self.rules.get("unsupported_functions", {}):
+                raise ValueError(self.rules["unsupported_functions"][qualified])
             self.check_foreign(node, self.foreign)
             return self.emit(node, context=context)
         except Exception as error:
