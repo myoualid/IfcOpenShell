@@ -787,9 +787,10 @@ class Transpiler:
     def formatted(self, node):
         """TS code of an f-string replacement field: its value, conversion and format specification."""
         value = self.emit(node.value)
-        if node.conversion == ord("r") or node.conversion == ord("a"):
-            unsupported("!r and !a conversions give Python representations")
-        if node.conversion == ord("s"):
+        if node.conversion in (ord("r"), ord("a")):
+            # In messages: text in quotes, other values as text (not Python's repr).
+            value = f"JSON.stringify({value})" if self.kind(node.value) == "string" else f"String({value})"
+        elif node.conversion == ord("s"):
             value = f"String({value})"
         if node.format_spec is None:
             return value
@@ -830,10 +831,10 @@ class Transpiler:
             if name is None:
                 continue
             value = field(name)
-            if conversion == "s":
+            if conversion in ("r", "a"):
+                value = f"String({value})"  # In messages: the value as text (not Python's repr).
+            elif conversion == "s":
                 value = f"String({value})"
-            elif conversion:
-                unsupported("!r and !a conversions give Python representations")
             nested = []
             for _, inner, _, _ in string.Formatter().parse(spec or ""):
                 if inner is not None:
