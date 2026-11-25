@@ -131,10 +131,8 @@ unsupported_functions:
   util.selector._get_element_value: "walks values of any type; its placement keys index numpy matrices"
   util.selector.set_element_value: "walks values of any type; its placement keys index numpy matrices"
   api.project.append_asset.append_asset: "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
-  api.geometry.add_profile_representation.Usecase.get_x: "create_shape gives an element or a geometry; the Python must cast its result"
   api.alignment.util.generate_vertices: "create_shape gives an element or a geometry; the Python must cast its result"
   api.geometry.add_profile_representation.Usecase.execute: "Clipping.parse gives an entity or a Clipping, where the Python annotates its clippings as Clipping"
-  api.geometry.add_profile_representation.Usecase.get_y: "create_shape gives an element or a geometry; the Python must cast its result"
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
 # A module value that cannot be translated is undefined; the functions that use it become stubs.
