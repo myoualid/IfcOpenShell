@@ -10,7 +10,9 @@
 
 #include <array>
 #include <cmath>
+#include <set>
 #include <stdexcept>
+#include <utility>
 
 namespace bg = boost::geometry;
 
@@ -57,6 +59,38 @@ multi_polygon_2 union_all(std::vector<multi_polygon_2> parts) {
 		parts = std::move(merged);
 	}
 	return parts.front();
+}
+
+void check_triangles(const std::vector<double>& verts, const std::vector<int>& faces) {
+	if (verts.size() % 3 || faces.size() % 3) {
+		throw std::invalid_argument("verts and faces must have three values for each vertex and triangle");
+	}
+}
+
+vector3 vertex(const std::vector<double>& verts, int index) {
+	return {verts[3 * index], verts[3 * index + 1], verts[3 * index + 2]};
+}
+
+// cross(v1 - v0, v2 - v0) of a triangle: its normal, as long as twice its area.
+vector3 triangle_normal(const std::vector<double>& verts, const std::vector<int>& faces, size_t f) {
+	const vector3 v0 = vertex(verts, faces[f]);
+	return cross(subtract(vertex(verts, faces[f + 1]), v0), subtract(vertex(verts, faces[f + 2]), v0));
+}
+
+// The area of the triangles whose unit normal passes the test. A triangle without area has no normal:
+// numpy gives NaN, which no comparison passes.
+template <typename Test>
+double area_where(const std::vector<double>& verts, const std::vector<int>& faces, Test test) {
+	check_triangles(verts, faces);
+	double area = 0.;
+	for (size_t f = 0; f + 2 < faces.size(); f += 3) {
+		const vector3 n = triangle_normal(verts, faces, f);
+		const double length = std::sqrt(dot(n, n));
+		if (length > 0. && test(vector3{n[0] / length, n[1] / length, n[2] / length})) {
+			area += length / 2.;
+		}
+	}
+	return area;
 }
 
 } // namespace
@@ -164,4 +198,68 @@ std::vector<double> ifcopenshell::geom::mesh_metrics::bisect_mesh_plane(const st
 		segments.insert(segments.end(), points.begin(), points.end());
 	}
 	return segments;
+}
+
+double ifcopenshell::geom::mesh_metrics::mesh_area(const std::vector<double>& verts, const std::vector<int>& faces) {
+	check_triangles(verts, faces);
+	double area = 0.;
+	for (size_t f = 0; f + 2 < faces.size(); f += 3) {
+		const vector3 n = triangle_normal(verts, faces, f);
+		area += std::sqrt(dot(n, n)) / 2.;
+	}
+	return area;
+}
+
+double ifcopenshell::geom::mesh_metrics::side_area(const std::vector<double>& verts, const std::vector<int>& faces, double dx, double dy, double dz, double angle) {
+	const vector3 direction = normalized({dx, dy, dz});
+	const double acceptable_dot = std::cos(angle * std::acos(-1.) / 180.) + 0.01;
+	return area_where(verts, faces, [&](const vector3& n) { return dot(n, direction) > acceptable_dot; });
+}
+
+double ifcopenshell::geom::mesh_metrics::outer_surface_area(const std::vector<double>& verts, const std::vector<int>& faces, double tol) {
+	return area_where(verts, faces, [tol](const vector3& n) { return std::abs(n[2]) < tol; });
+}
+
+double ifcopenshell::geom::mesh_metrics::footprint_perimeter(const std::vector<double>& verts, const std::vector<int>& faces, double tol) {
+	check_triangles(verts, faces);
+	// The edges of the downward triangles, in the order util.shape visits them: an edge that is already
+	// there (either way) is shared, and shared edges are not on the boundary.
+	std::set<std::pair<int, int>> all_edges, shared_edges;
+	for (size_t f = 0; f + 2 < faces.size(); f += 3) {
+		const vector3 n = triangle_normal(verts, faces, f);
+		const double length = std::sqrt(dot(n, n));
+		if (!(length > 0. && n[2] / length < -tol)) {
+			continue;
+		}
+		for (int i = 0; i < 3; ++i) {
+			const std::pair<int, int> edge{faces[f + i], faces[f + (i + 1) % 3]};
+			const std::pair<int, int> reversed{edge.second, edge.first};
+			if (all_edges.count(reversed) || all_edges.count(edge)) {
+				shared_edges.insert(edge);
+				shared_edges.insert(reversed);
+			} else {
+				all_edges.insert(edge);
+			}
+		}
+	}
+	double perimeter = 0.;
+	for (const auto& edge : all_edges) {
+		if (!shared_edges.count(edge)) {
+			const vector3 d = subtract(vertex(verts, edge.first), vertex(verts, edge.second));
+			perimeter += std::sqrt(dot(d, d));
+		}
+	}
+	return perimeter;
+}
+
+double ifcopenshell::geom::mesh_metrics::total_edge_length(const std::vector<double>& verts, const std::vector<int>& edges) {
+	if (verts.size() % 3 || edges.size() % 2) {
+		throw std::invalid_argument("verts and edges must have three values for each vertex and two for each edge");
+	}
+	double length = 0.;
+	for (size_t e = 0; e + 1 < edges.size(); e += 2) {
+		const vector3 d = subtract(vertex(verts, edges[e + 1]), vertex(verts, edges[e]));
+		length += std::sqrt(dot(d, d));
+	}
+	return length;
 }

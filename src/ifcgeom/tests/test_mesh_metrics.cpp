@@ -13,6 +13,11 @@ namespace {
 
 using ifcopenshell::geom::mesh_metrics::bisect_mesh_plane;
 using ifcopenshell::geom::mesh_metrics::footprint_area;
+using ifcopenshell::geom::mesh_metrics::footprint_perimeter;
+using ifcopenshell::geom::mesh_metrics::mesh_area;
+using ifcopenshell::geom::mesh_metrics::outer_surface_area;
+using ifcopenshell::geom::mesh_metrics::side_area;
+using ifcopenshell::geom::mesh_metrics::total_edge_length;
 
 // A 2 x 3 x 4 box with separate vertices for each face, as the kernels triangulate it.
 void box(std::vector<double>& verts, std::vector<int>& faces) {
@@ -102,4 +107,37 @@ TEST_CASE("bisect_mesh_plane rounds the points and keeps the order of the edges"
 	// A triangle that only touches the plane at a vertex gives no segment.
 	CHECK(bisect_mesh_plane({0, 0, 0, 1, 0, 1, 0, 1, 1}, {0, 1, 2}, 0.).empty());
 	CHECK_THROWS_AS(bisect_mesh_plane({0., 0.}, {}, 0.), std::invalid_argument);
+}
+
+TEST_CASE("mesh metrics give the values of util.shape", "[mesh_metrics]") {
+	std::vector<double> verts;
+	std::vector<int> faces;
+	box(verts, faces);
+	// The values of ifcopenshell.util.shape for the same box.
+	CHECK(mesh_area(verts, faces) == Catch::Approx(52.));
+	CHECK(side_area(verts, faces, 1., 0., 0.) == Catch::Approx(12.));
+	CHECK(side_area(verts, faces) == Catch::Approx(8.));
+	CHECK(side_area(verts, faces, 0., 0., 1.) == Catch::Approx(6.));
+	CHECK(side_area(verts, faces, 0., 1., 1., 45.) == 0.);
+	CHECK(side_area(verts, faces, 0., 1., 1., 60.) == Catch::Approx(14.));
+	CHECK(outer_surface_area(verts, faces) == Catch::Approx(40.));
+	// The two bottom triangles share their diagonal, which is not on the boundary.
+	CHECK(footprint_perimeter(verts, faces) == Catch::Approx(10.));
+	// The outline of each side of the box: 4 x (2 + 3) + 4 x (2 + 4) + 4 x (3 + 4).
+	std::vector<int> edges;
+	for (int first = 0; first < 24; first += 4) {
+		edges.insert(edges.end(), {first, first + 1, first + 1, first + 2, first + 2, first + 3, first + 3, first});
+	}
+	CHECK(total_edge_length(verts, edges) == Catch::Approx(72.));
+}
+
+TEST_CASE("mesh metrics skip triangles without area and reject incomplete input", "[mesh_metrics]") {
+	const std::vector<double> verts = {0, 0, 0, 1, 0, 0, 0, 1, 0};
+	// A degenerate triangle has no normal: it is in the area, but in no area that tests its normal.
+	CHECK(mesh_area(verts, {0, 1, 2, 0, 0, 1}) == Catch::Approx(0.5));
+	CHECK(side_area(verts, {0, 0, 1}, 0., 0., 1.) == 0.);
+	CHECK(outer_surface_area(verts, {0, 0, 1}) == 0.);
+	CHECK(footprint_perimeter(verts, {0, 2, 1}) == Catch::Approx(2. + std::sqrt(2.)));
+	CHECK_THROWS_AS(mesh_area({0., 0.}, {}), std::invalid_argument);
+	CHECK_THROWS_AS(total_edge_length({0., 0., 0.}, {0}), std::invalid_argument);
 }

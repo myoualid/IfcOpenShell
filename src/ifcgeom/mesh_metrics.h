@@ -35,6 +35,40 @@ IFC_GEOM_API double footprint_area(const std::vector<double>& verts, const std::
  */
 IFC_GEOM_API std::vector<double> bisect_mesh_plane(const std::vector<double>& verts, const std::vector<int>& faces, double z, int precision = 3, double extend = 0.);
 
+/**
+ * The surface area of the triangles of a mesh: ifcopenshell.util.shape.get_area_vf.
+ *
+ * @param verts x, y, z for each vertex
+ * @param faces three vertex indices for each triangle
+ */
+IFC_GEOM_API double mesh_area(const std::vector<double>& verts, const std::vector<int>& faces);
+
+/**
+ * The area of the triangles that face a direction, within an angle in degrees:
+ * ifcopenshell.util.shape.get_side_area. A triangle counts when its unit normal . the unit direction is
+ * more than cos(angle) + 0.01. Triangles without a normal (no area) do not count.
+ */
+IFC_GEOM_API double side_area(const std::vector<double>& verts, const std::vector<int>& faces, double dx = 0., double dy = 1., double dz = 0., double angle = 90.);
+
+/**
+ * The area of the triangles whose unit normal has a Z component smaller than `tol` in absolute value (the
+ * vertical faces): ifcopenshell.util.shape.get_outer_surface_area.
+ */
+IFC_GEOM_API double outer_surface_area(const std::vector<double>& verts, const std::vector<int>& faces, double tol = 1e-6);
+
+/**
+ * The length of the boundary of the triangles that face down (unit normal Z smaller than -tol): the edges
+ * that no other such triangle shares, as ifcopenshell.util.shape.get_footprint_perimeter.
+ */
+IFC_GEOM_API double footprint_perimeter(const std::vector<double>& verts, const std::vector<int>& faces, double tol = 1e-6);
+
+/**
+ * The total length of the edges of a mesh: ifcopenshell.util.shape.get_total_edge_length.
+ *
+ * @param edges two vertex indices for each edge
+ */
+IFC_GEOM_API double total_edge_length(const std::vector<double>& verts, const std::vector<int>& edges);
+
 } // namespace mesh_metrics
 } // namespace geom
 } // namespace ifcopenshell
