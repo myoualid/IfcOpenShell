@@ -143,8 +143,10 @@ def classify(proper, types):
         return "ndarray", False
     if name.endswith((".entity_instance", ".entity_instance_mixin")):
         return "entity", False
-    if name == "ifcopenshell.file.file":
+    if name in ("ifcopenshell.file.file", "ifcopenshell.ifcopenshell_wrapper.file"):
         return "file", False
+    if name.startswith("ifcopenshell.") and not name.startswith("ifcopenshell.ifcopenshell_wrapper."):
+        return None  # util and api classes: the rules bind their method calls from the class.
     if not proper.type.fallback_to_any and not any(proper.type.get(method) for method in ("__bool__", "__len__")):
         # Always true in Python (re.Match, schema declarations, iterators...), as an object is in JS.
         return "object", False
