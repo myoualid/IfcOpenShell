@@ -432,11 +432,11 @@ class CostValueUnserialiser:
                 data["AppliedValue"] = formula["AppliedValue"]
             return data
 
-    def get_value(self, value):
+    def get_value(self, value: lark.Tree) -> Optional[str]:
         if value.children:
             return value.children[0].value
 
-    def get_category(self, category):
+    def get_category(self, category: lark.Tree) -> Optional[str]:
         if category.children:
             return category.children[0].value
 
