@@ -83,8 +83,11 @@ the pure Python build of mypy, since `mypy_types.py` subclasses its visitors.
 The generated code does not emulate Python libraries. Functions that use `numpy`, `datetime`
 arithmetic, `isodate`, `dateutil`, `lark`, `shapely`, Blender modules or native functions that
 the WASM build does not expose become stubs that throw with the reason; `transpile.json` lists
-them. `src/ts/ifcopenshell-js/src/helpers/lang.ts` holds the few Python semantics that plain TS
-does not give, such as the truthiness of empty containers.
+them. The rules write native TS for the kinds they know (`mypy_types.py` proves them): a truth
+test of a list is `.length > 0`, a set is a `Set`, a dict with entity or number keys is a `Map`,
+a pattern is a `RegExp`. An expression whose kind is not known makes its function a stub, with
+the expression in the reason; typing the Python is the way to translate it. A `File` keeps one
+wrapper per entity, so `===`, `Set` and `Map` compare entities by identity, as Python's `==` does.
 
 `generate.py` also writes `api/index.ts` and `util/index.ts`, which export every package and
 module as a namespace (`ifcopenshell/api`, `ifcopenshell/util`; the latter re-exports the
