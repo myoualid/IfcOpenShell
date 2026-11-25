@@ -130,7 +130,6 @@ unsupported_functions:
   util.placement.get_grid_axis_coordinates: "the WASM build does not bind to_polygon, evaluate or the loop edges of taxonomy items"
   util.selector._get_element_value: "walks values of any type; its placement keys index numpy matrices"
   util.selector.set_element_value: "walks values of any type; its placement keys index numpy matrices"
-  api.library.assign_reference.assign_reference: "products is annotated as one entity_instance but used as a list"
   api.project.append_asset.append_asset: "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
   api.geometry.add_profile_representation.Usecase.get_x: "create_shape gives an element or a geometry; the Python must cast its result"
   api.alignment.util.generate_vertices: "create_shape gives an element or a geometry; the Python must cast its result"
