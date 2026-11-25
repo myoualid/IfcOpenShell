@@ -27,5 +27,5 @@
   },
   "include": ["src/**/*.ts"],
   // Transpiled from ifcopenshell.util and ifcopenshell.api; built by tsconfig.python.json.
-  "exclude": ["src/util", "src/api", "src/helpers/placement.ts", "src/helpers/shape.ts", "src/helpers/object_placement.ts", "src/helpers/geolocation.ts", "src/helpers/shape_builder_methods.ts", "src/helpers/dimension.ts", "src/helpers/railing.ts", "src/helpers/alignment.ts", "src/helpers/representation.ts", "src/helpers/structural.ts", "src/helpers/walls.ts", "src/helpers/clipping.ts", "src/helpers/data.ts", "src/helpers/lark.ts"]
+  "exclude": ["src/util", "src/api", "src/helpers/placement.ts", "src/helpers/shape.ts", "src/helpers/wall_regeneration.ts", "src/helpers/window.ts", "src/helpers/door.ts", "src/helpers/object_placement.ts", "src/helpers/geolocation.ts", "src/helpers/shape_builder_methods.ts", "src/helpers/dimension.ts", "src/helpers/railing.ts", "src/helpers/alignment.ts", "src/helpers/representation.ts", "src/helpers/structural.ts", "src/helpers/walls.ts", "src/helpers/clipping.ts", "src/helpers/data.ts", "src/helpers/lark.ts"]
 }

@@ -491,6 +491,7 @@ class Transpiler:
             element_kind=self.element_kind,
             inferred_return=self.inferred_return,
             nullable=self.nullable,
+            returns_kind=self.returns_kind,
             condition=lambda n: self.emit(n, context="condition"),
             iterable=lambda n: self.emit(n, context="iterable"),
             literal=json.dumps,
@@ -508,6 +509,7 @@ class Transpiler:
             defining_module=self.defining_module,
             signature=self.signature,
             bind=self.bind,
+            is_dataclass_name=lambda name: name in self.classes and is_dataclass(self.classes[name]),
             runtime_path=self.runtime_path,
             alias_value=self.alias_value,
             api_run=self.api_run,
@@ -1077,6 +1079,13 @@ class Transpiler:
         position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}"
         return self.types.get(self.module, {}).get(position)
 
+    def returns_kind(self, node):
+        """The kind of what a call of a callable value returns, from mypy_types; "unknown" if it is not proven."""
+        if not self.rules.get("proven_types") or getattr(node, "lineno", None) is None:
+            return "unknown"
+        position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}:returns"
+        return (self.types.get(self.module, {}).get(position) or ["unknown"])[0]
+
     def kind(self, node):
         proven = self.proven(node)
         if proven and proven[0] != "object":
@@ -1179,6 +1188,10 @@ class Transpiler:
                 and not isinstance(annotation.slice, ast.Tuple)
             ):
                 return self.emit(annotation.slice, "annotation_kinds")
+        if self.rules.get("proven_types") and getattr(node, "lineno", None) is not None:
+            position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}:elements"
+            if proven := self.types.get(self.module, {}).get(position):
+                return proven[0]
         return "unknown"
 
     def nullable(self, node):

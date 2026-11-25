@@ -36,12 +36,20 @@ def _polynomial_length(A: float, B: float, C: float, L: float) -> float:
     b = 4.0 * B * C
     c = B * B + 1
 
-    v1 = lambda a, b, c, x: (b + 2.0 * a * x) / (4.0 * a)
-    v2 = lambda a, b, c, x: math.sqrt(a * x * x + b * x + c)
-    v3 = lambda a, b, c, x: (4.0 * a * c - b * b) / (8.0 * math.pow(a, 1.5))
-    v4 = lambda a, b, c, x: math.log(math.fabs(2.0 * a * x + b + 2.0 * math.sqrt(a * (a * x * x + b * x + c))))
+    def v1(a: float, b: float, c: float, x: float) -> float:
+        return (b + 2.0 * a * x) / (4.0 * a)
 
-    fn = lambda a, b, c, x: v1(a, b, c, x) * v2(a, b, c, x) + v3(a, b, c, x) * v4(a, b, c, x)
+    def v2(a: float, b: float, c: float, x: float) -> float:
+        return math.sqrt(a * x * x + b * x + c)
+
+    def v3(a: float, b: float, c: float, x: float) -> float:
+        return (4.0 * a * c - b * b) / (8.0 * math.pow(a, 1.5))
+
+    def v4(a: float, b: float, c: float, x: float) -> float:
+        return math.log(math.fabs(2.0 * a * x + b + 2.0 * math.sqrt(a * (a * x * x + b * x + c))))
+
+    def fn(a: float, b: float, c: float, x: float) -> float:
+        return v1(a, b, c, x) * v2(a, b, c, x) + v3(a, b, c, x) * v4(a, b, c, x)
 
     curve_length = fn(a, b, c, L) - fn(
         a, b, c, 0

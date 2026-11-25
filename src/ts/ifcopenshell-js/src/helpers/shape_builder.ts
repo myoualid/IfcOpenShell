@@ -174,3 +174,14 @@ export function npIntersectLineLine(v1: VectorLike, v2: VectorLike, v3: VectorLi
   const u = dot(cross(r, d1), crossD1D2) / crossNorm ** 2;
   return [Float64Array.from(v1, (x, i) => x + t * d1[i]!), Float64Array.from(v3, (x, i) => x + u * d2[i]!)];
 }
+
+/**
+ * A vector of numbers (`V(1, 2, 3)`), or a vector or sequence of vectors as Float64Arrays (`V([1, 2])`,
+ * `V([[0, 0], [1, 0]])`), as util.shape_builder.V gives numpy arrays.
+ */
+export function V(...args: (number | VectorLike | ArrayLike<VectorLike>)[]): Float64Array | Float64Array[] {
+  if (typeof args[0] === 'number') return Float64Array.from(args as number[]);
+  if (args.length !== 1) throw new Error('Only single argument is supported if providing a vector or a sequence of them.');
+  const value = args[0]!;
+  return isVector(value) ? Float64Array.from(value) : Array.from(value as ArrayLike<VectorLike>, v => Float64Array.from(v));
+}

@@ -67,8 +67,9 @@ class Usecase:
         if not ifc:
             ifc = ifcopenshell.api.cost.add_cost_value(self.file, parent=parent)
         if "AppliedValue" in data:
-            if data["AppliedValue"]:
-                ifc.AppliedValue = self.file.createIfcMonetaryMeasure(data["AppliedValue"])
+            applied_value: Optional[float] = data["AppliedValue"]
+            if applied_value:
+                ifc.AppliedValue = self.file.createIfcMonetaryMeasure(applied_value)
             else:
                 ifc.AppliedValue = None
         ifc.Category = data["Category"] if "Category" in data else None

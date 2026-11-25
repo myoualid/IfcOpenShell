@@ -72,6 +72,16 @@ END-ISO-10303-21;`));
     expect(file.ids).toEqual(before);
   });
 
+  it('creates an entity again from its info, with its id, as Python create_entity(**info)', () => {
+    using file = new ifcopenshell.File('IFC4');
+    const wall = file.create('IfcWall', { Name: 'Wall', Tag: 'W1' }, 42);
+    const { type, ...info } = wall.getInfo();
+    file.remove(wall);
+    const copy = file.create(type, info);
+    expect(copy.id()).toBe(42);
+    expect(copy.getInfo()).toMatchObject({ type: 'IfcWall', Name: 'Wall', Tag: 'W1' });
+  });
+
   it('deduplicates inverses and preserves duplicates and attribute indices on request', () => {
     using file = new ifcopenshell.File('IFC4');
     const wall = file.create('IfcWall');

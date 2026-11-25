@@ -196,7 +196,29 @@ hand_written:
   util.shape_builder.np_matrix_to_euler: {module: helpers.shape_builder, source: ec0358138b17}
   util.shape_builder.np_normal: {module: helpers.shape_builder, source: 6acc2d016836}
   util.shape_builder.np_intersect_line_line: {module: helpers.shape_builder, source: 4c05dc8bba2b}
+  util.shape_builder.V: {module: helpers.shape_builder, source: "f265402937d7"}
   util.shape_builder.ShapeBuilder.polyline: {module: helpers.shape_builder_methods, source: 8ed4c7da8471}
+  util.shape_builder.ShapeBuilder.mirror: {module: helpers.shape_builder_methods, source: "82403000bb71"}
+  util.shape_builder.ShapeBuilder.get_trim_points_from_mask: {module: helpers.shape_builder_methods, source: "ecd847df52ac"}
+  util.shape_builder.ShapeBuilder.rotate: {module: helpers.shape_builder_methods, source: "76776b6676b9"}
+  util.shape_builder.ShapeBuilder.face_surface: {module: helpers.shape_builder_methods, source: "6786547674b8"}
+  util.shape_builder.ShapeBuilder.get_simple_2dcurve_data: {module: helpers.shape_builder_methods, source: "dbe6f87027d2"}
+  util.shape_builder.ShapeBuilder.extrude_face_set: {module: helpers.shape_builder_methods, source: "d006b8725c08"}
+  util.shape_builder.ShapeBuilder.mep_transition_shape: {module: helpers.shape_builder_methods, source: "7ef9eb411e96"}
+  util.shape_builder.ShapeBuilder.mep_transition_length: {module: helpers.shape_builder_methods, source: "2543f5405b01"}
+  util.shape_builder.ShapeBuilder.mep_transition_calculate: {module: helpers.shape_builder_methods, source: "89c731492698"}
+  util.shape_builder.ShapeBuilder.mep_bend_shape: {module: helpers.shape_builder_methods, source: "eed5affdc378"}
+  api.geometry.add_window_representation.create_ifc_window_frame_simple: {module: helpers.window, source: "61a3b6807389"}
+  api.geometry.add_window_representation.create_ifc_window: {module: helpers.window, source: "8bd71b7fe514"}
+  api.geometry.add_window_representation.Usecase.execute: {module: helpers.window, source: "906e16661efa"}
+  api.geometry.add_door_representation.create_ifc_door_lining: {module: helpers.door, source: "14f3e495d8ce"}
+  api.geometry.add_door_representation.create_ifc_box: {module: helpers.door, source: "c3d4f3c0df16"}
+  api.geometry.add_door_representation.Usecase.execute: {module: helpers.door, source: "fdbe0dce5e03"}
+  api.geometry.regenerate_wall_representation.Regenerator.regenerate: {module: helpers.wall_regeneration, source: "3e5a6bc4ecd5"}
+  api.geometry.regenerate_wall_representation.Regenerator.join: {module: helpers.wall_regeneration, source: "84035be5586a"}
+  api.geometry.regenerate_wall_representation.Regenerator.get_wall_vectors: {module: helpers.wall_regeneration, source: "4c78e3ea80e1"}
+  api.geometry.regenerate_wall_representation.Regenerator.get_join_vector: {module: helpers.wall_regeneration, source: "dd72942ad5a4"}
+  api.geometry.regenerate_wall_representation.Regenerator.get_axes: {module: helpers.wall_regeneration, source: "f30da4560553"}
   util.shape_builder.ShapeBuilder.get_rectangle_coords: {module: helpers.shape_builder_methods, source: 6fe6663a6fa8}
   util.data.Clipping.parse: {module: helpers.data, source: "5f1279a883e9"}
   util.data.Clipping.apply: {module: helpers.data, source: a3c11bd39621}
@@ -238,9 +260,7 @@ hand_written_import: |-
 hand_written_method: |-
   {{ "static " if static else "" }}{{ method | camel }} = {{ target | use(target | replace(".", "_")) }}.{{ cls }}{{ (method | camel)[:1] | upper }}{{ (method | camel)[1:] }};
 # Functions whose types the rules cannot prove, so they stay stubs, with the reason.
-unsupported_functions:
-  api.project.append_asset.append_asset: "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
-  util.unit.iter_element_and_attributes_per_type: "iterating a file gives entities of no proven type"
+unsupported_functions: {}
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
 # A module value that cannot be translated is undefined; the functions that use it become stubs.
@@ -1405,7 +1425,7 @@ rules:
       target: $target
       annotation: $annotation
       value: $value
-    output: '{% if value is not none %}{% if top_level %}export const {% endif %}{{ target | emit }}{% if top_level %}: {{ annotation | type }}{% endif %} = {{ value | emit }};{% endif %}'
+    output: '{% if value is not none %}{% if top_level %}export {{ "let" if target.id is defined and target.id in reassigned else "const" }} {% endif %}{{ target | emit }}{% if top_level %}: {{ annotation | type }}{% endif %} = {{ value | emit }};{% endif %}'
   - input:
       node: NamedExpr
       target: $target
@@ -1803,7 +1823,8 @@ rules:
       func:
         node: Name
         id: $name
-    when: name in classes and (node.func | signature is none or (node | bind(node.func | signature)).error is none)
+    # A dataclass called with **values reads them with fromKwargs, which maps the Python names.
+    when: name in classes and not (name | is_dataclass_name and node.keywords | selectattr("arg", "none") | list) and (node.func | signature is none or (node | bind(node.func | signature)).error is none)
     output: '{% if node.func | signature is none %}new {{ name }}(){% else %}{% set b = node | bind(node.func | signature) %}new {{ name }}({{ b.positional | map("emit") | join(", ") }}{% if b.options %}{% if b.positional %}, {% endif %}{ {% for option in b.options %}{% if option[0] is none %}...{{ option[1] | emit }}{% else %}{{ option[0] | camel }}: {{ option[1] | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %}){% endif %}'
   - input:
       node: Call
@@ -1869,7 +1890,7 @@ rules:
       args:
         - $values
       keywords: $keywords
-    output: '{% set key = (keywords | selectattr("arg", "equalto", "key") | first) %}{% set reverse = (keywords | selectattr("arg", "equalto", "reverse") | first) %}{% set others = keywords | rejectattr("arg", "in", ["key", "reverse"]) | list %}{% set k = (key.value.body | kind) if key is defined and key.value.__class__.__name__ == "Lambda" else (values | element_kind if key is not defined else "unknown") %}{% set returns = (key.value | signature).returns if key is defined and key.value.__class__.__name__ == "Name" and key.value | signature is not none else none %}{% set parts = key.value.body.elts if key is defined and key.value.__class__.__name__ == "Lambda" and key.value.body.__class__.__name__ == "Tuple" else (returns.slice.elts | reject("ellipsis") | list if returns is not none and returns.__class__.__name__ == "Subscript" and returns.value | source in ["tuple", "Tuple"] and returns.slice.__class__.__name__ == "Tuple" else []) %}{% if parts and (parts | map("kind") | reject("in", ["number", "string"]) | list | length == 0 if key.value.__class__.__name__ == "Lambda" else parts | map("emit", "annotation_kinds") | reject("in", ["number", "string"]) | list | length == 0) %}{% set k = "tuple" %}{% endif %}{% set f = ("(" ~ key.value | emit ~ ")") if key is defined else "" %}{% set desc = reverse is defined and reverse.value.value is defined and reverse.value.value is true %}{% set a, b = ("b", "a") if desc else ("a", "b") %}{% set cmp = ("(a: any, b: any) => " ~ f ~ "(" ~ a ~ ") - " ~ f ~ "(" ~ b ~ ")") if k == "number" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); for (let i = 0; i < x.length; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return x.length - y.length; }") if k == "tuple" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); return x < y ? -1 : x > y ? 1 : 0; }") %}{% if others or k not in ["number", "string", "tuple"] or reverse is defined and not (reverse.value.value is defined and reverse.value.value is boolean) %}{{ "sorted() of values of unknown type" | unsupported }}{% else %}[...{{ values | iterable }}].sort({{ cmp }}){% endif %}'
+    output: '{% set key = (keywords | selectattr("arg", "equalto", "key") | first) %}{% set reverse = (keywords | selectattr("arg", "equalto", "reverse") | first) %}{% set others = keywords | rejectattr("arg", "in", ["key", "reverse"]) | list %}{% set k = (key.value.body | kind) if key is defined and key.value.__class__.__name__ == "Lambda" else (values | element_kind if key is not defined else key.value | returns_kind) %}{% set returns = (key.value | signature).returns if key is defined and key.value.__class__.__name__ == "Name" and key.value | signature is not none else none %}{% set parts = key.value.body.elts if key is defined and key.value.__class__.__name__ == "Lambda" and key.value.body.__class__.__name__ == "Tuple" else (returns.slice.elts | reject("ellipsis") | list if returns is not none and returns.__class__.__name__ == "Subscript" and returns.value | source in ["tuple", "Tuple"] and returns.slice.__class__.__name__ == "Tuple" else []) %}{% if parts and (parts | map("kind") | reject("in", ["number", "string"]) | list | length == 0 if key.value.__class__.__name__ == "Lambda" else parts | map("emit", "annotation_kinds") | reject("in", ["number", "string"]) | list | length == 0) %}{% set k = "tuple" %}{% endif %}{% set f = ("(" ~ key.value | emit ~ ")") if key is defined else "" %}{% set desc = reverse is defined and reverse.value.value is defined and reverse.value.value is true %}{% set a, b = ("b", "a") if desc else ("a", "b") %}{% set cmp = ("(a: any, b: any) => " ~ f ~ "(" ~ a ~ ") - " ~ f ~ "(" ~ b ~ ")") if k == "number" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); for (let i = 0; i < x.length; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return x.length - y.length; }") if k == "tuple" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); return x < y ? -1 : x > y ? 1 : 0; }") %}{% if others or k not in ["number", "string", "tuple"] or reverse is defined and not (reverse.value.value is defined and reverse.value.value is boolean) %}{{ "sorted() of values of unknown type" | unsupported }}{% else %}[...{{ values | iterable }}].sort({{ cmp }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1878,7 +1899,7 @@ rules:
         attr: sort
       args: []
       keywords: $keywords
-    output: '{% set key = (keywords | selectattr("arg", "equalto", "key") | first) %}{% set reverse = (keywords | selectattr("arg", "equalto", "reverse") | first) %}{% set others = keywords | rejectattr("arg", "in", ["key", "reverse"]) | list %}{% set k = (key.value.body | kind) if key is defined and key.value.__class__.__name__ == "Lambda" else (values | element_kind if key is not defined else "unknown") %}{% set returns = (key.value | signature).returns if key is defined and key.value.__class__.__name__ == "Name" and key.value | signature is not none else none %}{% set parts = key.value.body.elts if key is defined and key.value.__class__.__name__ == "Lambda" and key.value.body.__class__.__name__ == "Tuple" else (returns.slice.elts | reject("ellipsis") | list if returns is not none and returns.__class__.__name__ == "Subscript" and returns.value | source in ["tuple", "Tuple"] and returns.slice.__class__.__name__ == "Tuple" else []) %}{% if parts and (parts | map("kind") | reject("in", ["number", "string"]) | list | length == 0 if key.value.__class__.__name__ == "Lambda" else parts | map("emit", "annotation_kinds") | reject("in", ["number", "string"]) | list | length == 0) %}{% set k = "tuple" %}{% endif %}{% set f = ("(" ~ key.value | emit ~ ")") if key is defined else "" %}{% set desc = reverse is defined and reverse.value.value is defined and reverse.value.value is true %}{% set a, b = ("b", "a") if desc else ("a", "b") %}{% set cmp = ("(a: any, b: any) => " ~ f ~ "(" ~ a ~ ") - " ~ f ~ "(" ~ b ~ ")") if k == "number" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); for (let i = 0; i < x.length; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return x.length - y.length; }") if k == "tuple" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); return x < y ? -1 : x > y ? 1 : 0; }") %}{% if others or k not in ["number", "string", "tuple"] or reverse is defined and not (reverse.value.value is defined and reverse.value.value is boolean) %}{{ "list.sort() of values of unknown type" | unsupported }}{% else %}{{ values | emit }}.sort({{ cmp }}){% endif %}'
+    output: '{% set key = (keywords | selectattr("arg", "equalto", "key") | first) %}{% set reverse = (keywords | selectattr("arg", "equalto", "reverse") | first) %}{% set others = keywords | rejectattr("arg", "in", ["key", "reverse"]) | list %}{% set k = (key.value.body | kind) if key is defined and key.value.__class__.__name__ == "Lambda" else (values | element_kind if key is not defined else key.value | returns_kind) %}{% set returns = (key.value | signature).returns if key is defined and key.value.__class__.__name__ == "Name" and key.value | signature is not none else none %}{% set parts = key.value.body.elts if key is defined and key.value.__class__.__name__ == "Lambda" and key.value.body.__class__.__name__ == "Tuple" else (returns.slice.elts | reject("ellipsis") | list if returns is not none and returns.__class__.__name__ == "Subscript" and returns.value | source in ["tuple", "Tuple"] and returns.slice.__class__.__name__ == "Tuple" else []) %}{% if parts and (parts | map("kind") | reject("in", ["number", "string"]) | list | length == 0 if key.value.__class__.__name__ == "Lambda" else parts | map("emit", "annotation_kinds") | reject("in", ["number", "string"]) | list | length == 0) %}{% set k = "tuple" %}{% endif %}{% set f = ("(" ~ key.value | emit ~ ")") if key is defined else "" %}{% set desc = reverse is defined and reverse.value.value is defined and reverse.value.value is true %}{% set a, b = ("b", "a") if desc else ("a", "b") %}{% set cmp = ("(a: any, b: any) => " ~ f ~ "(" ~ a ~ ") - " ~ f ~ "(" ~ b ~ ")") if k == "number" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); for (let i = 0; i < x.length; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return x.length - y.length; }") if k == "tuple" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); return x < y ? -1 : x > y ? 1 : 0; }") %}{% if others or k not in ["number", "string", "tuple"] or reverse is defined and not (reverse.value.value is defined and reverse.value.value is boolean) %}{{ "list.sort() of values of unknown type" | unsupported }}{% else %}{{ values | emit }}.sort({{ cmp }}){% endif %}'
   - input:
       node: Call
       func:

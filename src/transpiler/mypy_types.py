@@ -18,7 +18,7 @@ ATTRIBUTES = HERE / "attributes.json"
 CACHE = HERE / "types.json"
 PYTHON = HERE.parent / "ifcopenshell-python"
 SCALARS = {"boolean", "number", "string", "entity", "file", "scalar"}
-SEQUENCES = {"builtins.list", "builtins.tuple", "typing.Sequence", "typing.MutableSequence"}
+SEQUENCES = {"builtins.list", "builtins.tuple", "typing.Sequence", "typing.MutableSequence", "collections.deque"}
 SETS = {"builtins.set", "builtins.frozenset", "typing.AbstractSet", "typing.MutableSet"}
 SIMPLE = {
     "integer": "number",
@@ -91,6 +91,18 @@ def fingerprint():
     for path in [Path(__file__), ATTRIBUTES, *sources()]:
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def element_type(proper):
+    """The type of the elements of a list, tuple or set type, or None."""
+    from mypy import types
+
+    if isinstance(proper, types.Instance) and proper.type.fullname in SEQUENCES | SETS and proper.args:
+        return types.get_proper_type(proper.args[0])
+    if isinstance(proper, types.TupleType) and proper.partial_fallback.type.fullname == "builtins.tuple" and proper.items:
+        items = [types.get_proper_type(item) for item in proper.items]
+        return items[0] if all(item == items[0] for item in items) else None
+    return None
 
 
 def classify(proper, types):
@@ -237,9 +249,19 @@ def analyze():
 
         def visit(self, node):
             if isinstance(node, nodes.Expression) and node in result.types:
-                kind = classify(types.get_proper_type(result.types[node]), types)
+                proper = types.get_proper_type(result.types[node])
+                position = f"{node.line}:{node.column}:{node.end_line}:{node.end_column}"
+                kind = classify(proper, types)
                 if kind:
-                    self.kinds[f"{node.line}:{node.column}:{node.end_line}:{node.end_column}"] = kind
+                    self.kinds[position] = kind
+                if isinstance(proper, types.CallableType):
+                    # What a call of the value returns (a sort key passed as a parameter, for example).
+                    returns = classify(types.get_proper_type(proper.ret_type), types)
+                    if returns:
+                        self.kinds[position + ":returns"] = returns
+                if (elements := element_type(proper)) is not None and (kind := classify(elements, types)):
+                    # The elements of a list, tuple or set (for sorted(), min(), all() and `in`).
+                    self.kinds[position + ":elements"] = kind
             return True
 
     found = {}

@@ -21,11 +21,16 @@ the whole file a module of throwing functions rather than disappearing.
 `ts.yaml`; refresh it with `generate.py --precompute`, which needs an installed
 ifcopenshell close to this checkout.
 
+The generated TypeScript targets the `ifcopenshell` npm package's
+[Core API](https://docs.ifcopenshell.org/output/typescript-api/Core.html).
+The caller initializes IfcOpenShell and supplies the file.
+
 ## How it works
 
 `transpile.py` parses Python, discovers bindings, matches patterns and renders
 Jinja templates. All translation rules, including types, syntax, API names,
-imports and data-shape inference, live in `ts.yaml`. Rules emit plain TypeScript. Where a function needs a Python library without a TS
+imports and data-shape inference, live in `ts.yaml`. There is no preamble or
+runtime compatibility library: rules emit native TypeScript operations directly. Where a function needs a Python library without a TS
 counterpart, or a type that cannot be proven, it becomes a stub.
 Pass `--rules another.yaml` to use a different rule set. Treat rule files as trusted code.
 
@@ -55,6 +60,16 @@ iteration uses `Object.keys()`/`Object.entries()`, and `range` loops use a nativ
 counter. `condition` and `iterable` template filters select rules with the
 matching `context`; these handle empty arrays/dictionaries at their use sites.
 Scalar short-circuit expressions use `&&`/`||`; optional collections use `??`.
+
+The unit cache remains a property on the normal `ifcopenshell.File` object.
+No utility-specific file type or module augmentation is generated. Properties
+missing from the target API may produce TypeScript typing errors; those need
+resolution in the source/API rather than synthetic types in the transpiler.
+Loops, defaults, keyword calls to local functions, unpacking, comprehensions and
+unit conversions are supported. Unknown calls are rejected. Types (see below), inference
+and API mappings cover the patterns in the source, rather than general Python semantics.
+Where the type of a value is not known, the Python gets the type annotation it lacks.
+No Python or WASM code is executed during translation.
 
 ## Types
 

@@ -286,7 +286,7 @@ def np_intersect_line_line(
     return point_on_line1, point_on_line2
 
 
-def intersect_x_axis_2d(p1: VectorType, p2: VectorType, y=0) -> Optional[float]:
+def intersect_x_axis_2d(p1: VectorType, p2: VectorType, y: float = 0) -> Optional[float]:
     """Intersect a line defined by 2 points to a horizontal line defined by y
 
     Useful for axis-aligned intersection checks.
@@ -295,8 +295,8 @@ def intersect_x_axis_2d(p1: VectorType, p2: VectorType, y=0) -> Optional[float]:
     :param p2: Second 2D point of the line, order doesn't matter
     :param y: Intersect at this y value (i.e. defaults to y=0)
     """
-    x1, y1 = p1
-    x2, y2 = p2
+    x1, y1 = float(p1[0]), float(p1[1])
+    x2, y2 = float(p2[0]), float(p2[1])
     if is_x(y1, y2):  # Parallel
         return
     t = (y - y1) / (y2 - y1)
@@ -1702,10 +1702,10 @@ class ShapeBuilder:
         :return: IfcPolygonalFaceSet
         """
 
-        def is_sequence_of_ints(x):
+        def is_sequence_of_ints(x: object) -> bool:
             return isinstance(x, Sequence) and not isinstance(x, (str, bytes)) and all(isinstance(el, int) for el in x)
 
-        def is_sequence_of_sequence_of_ints(x):
+        def is_sequence_of_sequence_of_ints(x: object) -> bool:
             return (
                 isinstance(x, Sequence) and not isinstance(x, (str, bytes)) and all(is_sequence_of_ints(el) for el in x)
             )
