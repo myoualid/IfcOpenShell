@@ -135,7 +135,13 @@ def classify(proper, types):
         if kinds == {"array", "ndarray"}:
             # A list or a numpy array (SequenceOfVectors): only len(), iteration and indexing are common.
             return "sequence", nullable
-        return ("scalar", nullable) if kinds <= SCALARS else None
+        if kinds <= SCALARS:
+            return "scalar", nullable
+        if kinds <= SCALARS | {"datetime", "date", "time"}:
+            # Text or a date: true in the same cases in Python and JS (dates are always true), but not
+            # comparable with ===, so not a scalar.
+            return "attribute", nullable
+        return None
     if isinstance(proper, types.LiteralType):
         proper = proper.fallback
     if isinstance(proper, types.TupleType):
