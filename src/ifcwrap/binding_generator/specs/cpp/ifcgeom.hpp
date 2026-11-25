@@ -106,13 +106,18 @@ IFCAPI_HANDLE(taxonomy_boolean_result, ifcopenshell::geom::taxonomy::boolean_res
  * handle, C++ method, exported name, and exact parameter types when needed to
  * select an overload. Clang supplies the remaining type information.
  */
+IFCAPI_DISCOVER_METHOD(triangulation, area, area)
 IFCAPI_DISCOVER_METHOD(triangulation, edges, edges)
 IFCAPI_DISCOVER_METHOD(triangulation, edges_item_ids, edges_item_ids)
 IFCAPI_DISCOVER_METHOD(triangulation, faces, faces)
 IFCAPI_DISCOVER_METHOD(triangulation, footprint_area, footprint_area, double, double, double)
+IFCAPI_DISCOVER_METHOD(triangulation, footprint_perimeter, footprint_perimeter, double)
 IFCAPI_DISCOVER_METHOD(triangulation, item_ids, item_ids)
 IFCAPI_DISCOVER_METHOD(triangulation, material_ids, material_ids)
 IFCAPI_DISCOVER_METHOD(triangulation, materials, materials)
+IFCAPI_DISCOVER_METHOD(triangulation, outer_surface_area, outer_surface_area, double)
+IFCAPI_DISCOVER_METHOD(triangulation, side_area, side_area, double, double, double, double)
+IFCAPI_DISCOVER_METHOD(triangulation, total_edge_length, total_edge_length)
 IFCAPI_DISCOVER_METHOD(triangulation, normals, normals)
 IFCAPI_DISCOVER_METHOD(triangulation, polyhedral_faces_with_holes, polyhedral_faces_with_holes)
 IFCAPI_DISCOVER_METHOD(triangulation, polyhedral_faces_without_holes, polyhedral_faces_without_holes)
@@ -311,6 +316,7 @@ IFCAPI_DISCOVER_POLICY(transformation, ccomponents, matrix, "data()->ccomponents
 // Free functions outside the spec namespace that are selected for the C ABI.
 IFCAPI_DISCOVER_FUNCTION(ifcopenshell::geom, helmert_curve_point)
 IFCAPI_DISCOVER_FUNCTION(ifcopenshell::geom::mesh_metrics, bisect_mesh_plane)
+IFCAPI_DISCOVER_FUNCTION(ifcopenshell::geom::mesh_metrics, mesh_area)
 IFCAPI_DISCOVER_FUNCTION(ifcgeom::bindings, create_tree)
 IFCAPI_DISCOVER_FUNCTION(ifcgeom::bindings, create_tree_from_file)
 IFCAPI_DISCOVER_FUNCTION(ifcgeom::bindings, create_tree_from_file_with_settings)

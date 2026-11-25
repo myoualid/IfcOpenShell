@@ -252,3 +252,23 @@ int ifcopenshell::geom::native::item_id(int i) const {
 double ifcopenshell::geom::triangulation::footprint_area(double x, double y, double z) const {
 	return ifcopenshell::geom::mesh_metrics::footprint_area(verts_, faces_, x, y, z);
 }
+
+double ifcopenshell::geom::triangulation::area() const {
+	return ifcopenshell::geom::mesh_metrics::mesh_area(verts_, faces_);
+}
+
+double ifcopenshell::geom::triangulation::side_area(double x, double y, double z, double angle) const {
+	return ifcopenshell::geom::mesh_metrics::side_area(verts_, faces_, x, y, z, angle);
+}
+
+double ifcopenshell::geom::triangulation::outer_surface_area(double tol) const {
+	return ifcopenshell::geom::mesh_metrics::outer_surface_area(verts_, faces_, tol);
+}
+
+double ifcopenshell::geom::triangulation::footprint_perimeter(double tol) const {
+	return ifcopenshell::geom::mesh_metrics::footprint_perimeter(verts_, faces_, tol);
+}
+
+double ifcopenshell::geom::triangulation::total_edge_length() const {
+	return ifcopenshell::geom::mesh_metrics::total_edge_length(verts_, edges_);
+}
