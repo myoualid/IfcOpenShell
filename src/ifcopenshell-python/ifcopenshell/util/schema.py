@@ -20,7 +20,7 @@ import functools
 import json
 import os
 import time
-from typing import Any, Literal, Union
+from typing import Any, Literal, Union, cast
 
 import ifcopenshell
 import ifcopenshell.ifcopenshell_wrapper as ifcopenshell_wrapper
@@ -241,7 +241,7 @@ def reassign_class(
         old_attribute = info.get(name, None)
         if old_attribute is not None:
             if ifcopenshell.util.attribute.get_primitive_type(attribute) == "enum":
-                if old_attribute in ifcopenshell.util.attribute.get_enum_items(attribute):
+                if cast(str, old_attribute) in ifcopenshell.util.attribute.get_enum_items(attribute):
                     new_attributes[name] = old_attribute
             else:
                 new_attributes[name] = old_attribute
@@ -331,8 +331,8 @@ class Migrator:
         self.fallback_element_to_proxy = fallback_element_to_proxy
         self.migrated_ids = {}
         self.attribute_overrides = {}
-        self.class_4_to_2x3 = json.load(open(os.path.join(cwd, "class_4_to_2x3.json"), "r"))
-        self.class_2x3_to_4 = json.load(open(os.path.join(cwd, "class_2x3_to_4.json"), "r"))
+        self.class_4_to_2x3: dict[str, str] = json.load(open(os.path.join(cwd, "class_4_to_2x3.json"), "r"))
+        self.class_2x3_to_4: dict[str, str] = json.load(open(os.path.join(cwd, "class_2x3_to_4.json"), "r"))
 
         # IFC classes, and their IFC attributes mapping
         self.attributes_mapping = {
@@ -437,8 +437,8 @@ class Migrator:
         schema = ifcopenshell.ifcopenshell_wrapper.schema_by_name(new_file.schema_identifier)
         new_element = self.migrate_class(element, new_file)
         # print("Migrated class from {} to {}".format(element, new_element))
-        new_element_schema = schema.declaration_by_name(new_element.is_a())
-        if not hasattr(new_element_schema, "all_attributes"):
+        new_element_schema = schema.declaration_by_name(new_element.is_a()).as_entity()
+        if new_element_schema is None:
             return element  # The element has no attributes, so migration is done
         new_element = self.migrate_attributes(element, new_file, new_element, new_element_schema)
         self.migrated_ids[element.id()] = new_element.id()
@@ -509,7 +509,7 @@ class Migrator:
         element: ifcopenshell.entity_instance,
         new_file: ifcopenshell.file,
         new_element: ifcopenshell.entity_instance,
-        new_element_schema: ifcopenshell_wrapper.declaration,
+        new_element_schema: ifcopenshell_wrapper.entity,
     ) -> ifcopenshell.entity_instance:
         for attribute_index, value in self.attribute_overrides.get(element.id(), {}).items():
             new_element[attribute_index] = value
