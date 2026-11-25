@@ -63,8 +63,9 @@ def assign_product(
         axis = relating_product
         grid = None
         for attribute in ("PartOfW", "PartOfV", "PartOfU"):
-            if getattr(axis, attribute, None):
-                grid = getattr(axis, attribute)[0]
+            grids: tuple[ifcopenshell.entity_instance, ...] = getattr(axis, attribute, ())
+            if grids:
+                grid = grids[0]
                 break
         for rel in grid.ReferencedBy or []:
             if rel.Name == axis.AxisTag and related_object in rel.RelatedObjects:

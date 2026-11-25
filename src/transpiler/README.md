@@ -56,30 +56,6 @@ counter. `condition` and `iterable` template filters select rules with the
 matching `context`; these handle empty arrays/dictionaries at their use sites.
 Scalar short-circuit expressions use `&&`/`||`; optional collections use `??`.
 
-Select the exploratory C++ target explicitly:
-
-```powershell
-python src/transpiler/transpile.py src/ifcopenshell-python/ifcopenshell/util/unit.py --rules src/transpiler/cpp.yaml -o src/transpiler/unit.cpp
-```
-
-`ts.yaml` remains the default. `cpp.yaml` uses the same engine, with its own
-indented rules and copies of the source data-shape inference rules. No inheritance
-from the TypeScript target is required.
-
-The C++20 sketch uses `std::map`, `std::vector`, `std::array`, `std::optional`,
-range loops, structured bindings, and immediately invoked lambdas to materialize
-comprehensions. Boost string algorithms keep string rewrites concise. IFC mappings
-reference this checkout's `ifcopenshell::file`, `instances_by_type`, value-like
-`express::entity`, and `get_value<T>` interfaces.
-
-`unit.cpp` is a design artifact, not a compilable implementation. It renders bodies
-for 21 of the 33 functions and emits throwing stubs for the rest. TODOs expose
-unresolved local declaration scopes, optional unwrapping, container conversions,
-recursive variants and operand-valued short-circuiting. Forward declarations,
-string/enum decoding, attribute writes, caches and schema-specific casts also
-need decisions. Dynamic attribute types currently come from a small explicit
-YAML table. No C++ compilation or runtime validation was attempted.
-
 ## Types
 
 `mypy_types.py` proves the types of expressions with mypy, and `ts.yaml` asks for them through the

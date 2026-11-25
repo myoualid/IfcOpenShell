@@ -67,7 +67,7 @@ def edit_attributes(file: ifcopenshell.file, product: ifcopenshell.entity_instan
         if (element_type := getattr_safe(product, "ElementType")) is not ...:
             if element_type is None and predefined_type == "USERDEFINED":
                 product.PredefinedType = "NOTDEFINED"
-            elif element_type and predefined_type != "USERDEFINED":
+            elif element_type is not None and predefined_type != "USERDEFINED":
                 product.PredefinedType = "USERDEFINED"
 
         elif (object_type := getattr_safe(product, "ObjectType")) is not ...:

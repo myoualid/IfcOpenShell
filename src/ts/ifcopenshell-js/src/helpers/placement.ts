@@ -193,3 +193,11 @@ export function rotation(angle: number, axis: 'X' | 'Y' | 'Z', options: { isDegr
       return new Float64Array([cos, -sin, 0, 0, sin, cos, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
   }
 }
+
+/** The elevation of a storey in project units: the Z of its placement, else its Elevation, else 0. */
+export function getStoreyElevation(storey: EntityInstance): number {
+  const placement = storey.get('ObjectPlacement') as EntityInstance | null;
+  if (placement) return getPlacement({ placement })[2 * 4 + 3]!;
+  const elevation = storey.attributes().includes('Elevation') ? (storey.get('Elevation') as number | null) : null;
+  return elevation || 0;
+}

@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
-from typing import Any
+from typing import Any, Optional
 
 import ifcopenshell.geom
 import ifcopenshell.util.representation
@@ -102,7 +102,7 @@ class Usecase:
     def execute(self, usage: ifcopenshell.entity_instance, attributes: dict[str, Any]) -> None:
         self.usage = usage
         self.attributes = attributes
-        self.cardinal_point = attributes.get("CardinalPoint")
+        self.cardinal_point: Optional[int] = attributes.get("CardinalPoint")
         if self.cardinal_point and self.cardinal_point != usage.CardinalPoint:
             self.update_cardinal_point()
 

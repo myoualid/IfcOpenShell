@@ -71,6 +71,15 @@ def schema_attributes():
     return {name: attributes[name] for name in sorted(attributes)}
 
 
+def dump_attributes(attributes):
+    """attributes.json text: one attribute per line, so that a schema change gives a small diff."""
+    lines = [
+        f"{json.dumps(name)}: {json.dumps(entry, separators=(', ', ': '))}"
+        for name, entry in sorted(attributes.items())
+    ]
+    return "{\n" + ",\n".join(lines) + "\n}\n"
+
+
 def sources():
     package = PYTHON / "ifcopenshell"
     paths = sorted(package.glob("util/*.py")) + sorted(package.glob("api/*/*.py"))
@@ -95,13 +104,24 @@ def classify(proper, types):
         kinds = {kind and kind[0] for kind in kinds}
         if len(kinds) == 1 and None not in kinds:
             return kinds.pop(), nullable
-        return ("scalar", nullable) if kinds <= SCALARS else None
+        if kinds == {"array", "ndarray"}:
+            # A list or a numpy array (SequenceOfVectors): only len(), iteration and indexing are common.
+            return "sequence", nullable
+        if kinds <= SCALARS:
+            return "scalar", nullable
+        if kinds <= SCALARS | {"datetime", "date", "time"}:
+            # Text or a date: true in the same cases in Python and JS (dates are always true), but not
+            # comparable with ===, so not a scalar.
+            return "attribute", nullable
+        return None
     if isinstance(proper, types.LiteralType):
         proper = proper.fallback
     if isinstance(proper, types.TupleType):
         return "array", False
     if isinstance(proper, types.TypedDictType):
         return "dict", False
+    if isinstance(proper, types.CallableType):
+        return "object", False  # Functions are always true, in Python and in JS.
     if not isinstance(proper, types.Instance):
         return None
     name = proper.type.fullname
@@ -115,6 +135,20 @@ def classify(proper, types):
         return "array", False
     if name in SETS:
         return "set", False
+    if name in ("builtins.dict", "typing.Mapping", "typing.MutableMapping"):
+        # dict[str, ...] is a JS object in the generated code; other keys (entities, numbers, tuples) a Map.
+        key = types.get_proper_type(proper.args[0]) if proper.args else None
+        if not isinstance(key, types.Instance):
+            return None
+        if key.type.fullname == "builtins.str":
+            return "dict", False
+        if key.type.fullname in ("builtins.int",) or key.type.fullname.endswith(".entity_instance"):
+            return "map", False
+        return None
+    if name in ("numpy.bool", "numpy.bool_"):
+        return "boolean", False
+    if name in ("numpy.floating", "numpy.integer", "numpy.signedinteger", "numpy.unsignedinteger", "numpy.number"):
+        return "number", False
     if name.startswith("numpy."):
         return "ndarray", False
     # Dates are Temporal objects in TS; a timedelta is a number of microseconds.
@@ -128,8 +162,13 @@ def classify(proper, types):
         return "number", False
     if name.endswith((".entity_instance", ".entity_instance_mixin")):
         return "entity", False
-    if name == "ifcopenshell.file.file":
+    if name in ("ifcopenshell.file.file", "ifcopenshell.ifcopenshell_wrapper.file"):
         return "file", False
+    if name.startswith("ifcopenshell.") and not name.startswith("ifcopenshell.ifcopenshell_wrapper."):
+        return None  # util and api classes: the rules bind their method calls from the class.
+    if not proper.type.fallback_to_any and not any(proper.type.get(method) for method in ("__bool__", "__len__")):
+        # Always true in Python (re.Match, schema declarations, iterators...), as an object is in JS.
+        return "object", False
     return None
 
 

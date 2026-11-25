@@ -117,7 +117,8 @@ filter_elements_grammar = lark.Lark("""start: filter_group
     %ignore COMMENT // Allow /* ... */ block comments to toggle parts of a query
 """)
 
-get_element_grammar = lark.Lark("""start: keys
+get_element_grammar = lark.Lark(
+    """start: keys
 
     keys: key ("." key)*
     key: quoted_string | regex_string | unquoted_string
@@ -132,9 +133,12 @@ get_element_grammar = lark.Lark("""start: keys
     WS: /[ \\t\\f\\r\\n]/+
 
     %ignore WS // Disregard spaces in text
- """)
+ """,
+    parser="lalr",
+)
 
-format_grammar = lark.Lark("""start: expression
+format_grammar = lark.Lark(
+    """start: expression
 
     ?expression: add_sub
     ?add_sub: mul_div
@@ -194,11 +198,13 @@ format_grammar = lark.Lark("""start: expression
     NEWLINE: (CR? LF)+
 
     %ignore WS // Disregard spaces in text
-""")
+""",
+    parser="lalr",
+)
 
 
 class FormatTransformer(lark.Transformer):
-    def __init__(self, element=None):
+    def __init__(self, element: Optional[ifcopenshell.entity_instance] = None):
         """Initialize transformer with optional element for variable substitution"""
         super().__init__()
         self.element = element

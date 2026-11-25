@@ -41,6 +41,26 @@ PrioritisedLayer = namedtuple("PrioritisedLayer", "priority material thickness")
 PrioritisedProfile = namedtuple("PrioritisedProfile", "priority material profile")
 
 
+@overload
+def get_pset(
+    element: ifcopenshell.entity_instance,
+    name: str,
+    prop: None = None,
+    psets_only: bool = False,
+    qtos_only: bool = False,
+    should_inherit: bool = True,
+    verbose: bool = False,
+) -> Optional[dict[str, Any]]: ...
+@overload
+def get_pset(
+    element: ifcopenshell.entity_instance,
+    name: str,
+    prop: str,
+    psets_only: bool = False,
+    qtos_only: bool = False,
+    should_inherit: bool = True,
+    verbose: bool = False,
+) -> Any: ...
 def get_pset(
     element: ifcopenshell.entity_instance,
     name: str,
@@ -74,7 +94,7 @@ def get_pset(
         element = ifc_file.by_type("IfcWall")[0]
         psets_and_qtos = ifcopenshell.util.element.get_pset(element, "Pset_WallCommon")
     """
-    pset = None
+    pset: Optional[ifcopenshell.entity_instance] = None
     type_pset = None
     ifc_file = element.file
     is_ifc2x3 = ifc_file.schema == "IFC2X3"
@@ -151,7 +171,7 @@ def get_pset(
         return
 
     if not prop:
-        if type_pset:
+        if type_pset is not None:
             occurrence_pset = get_property_definition(pset, verbose=verbose)
             if occurrence_pset:
                 type_pset.update(occurrence_pset)
@@ -1605,7 +1625,7 @@ def _is_set_attribute(schema_identifier: str, ifc_class: str, index: int) -> boo
     return aggregation is not None and aggregation.type_of_aggregation_string() == "set"
 
 
-def replace_attribute(element: ifcopenshell.entity_instance, old: Any, new: Any) -> None:
+def replace_attribute(element: ifcopenshell.entity_instance, old: ifcopenshell.entity_instance, new: Any) -> None:
     for i, attribute_value in enumerate(element):
         if has_element_reference(attribute_value, old):
             new_value = element.walk(lambda v: v == old, lambda v: new, attribute_value)

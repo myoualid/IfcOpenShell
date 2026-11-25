@@ -2,7 +2,7 @@
 
 import { beforeAll, expect, it } from 'vitest';
 import * as ifcopenshell from 'ifcopenshell';
-import { Dict, IdentitySet, contains, remove, same } from '../../src/helpers/lang.js';
+import { Dict, IdentitySet, sameEntity } from '../../src/helpers/lang.js';
 import { createInstance, describeOrSkip } from '../_helper.js';
 
 describeOrSkip('sets and dicts of generated code', () => {
@@ -42,17 +42,14 @@ describeOrSkip('sets and dicts of generated code', () => {
     expect(dict.get(file.byId(wall.id())!)).toBe(2);
   });
 
-  it('finds and removes entities in lists by identity', () => {
+  it('compares entity handles by identity', () => {
     using file = new ifcopenshell.File('IFC4');
     const wall = file.create('IfcWall', { Name: 'Wall' });
     const slab = file.create('IfcSlab', { Name: 'Slab' });
     const handle = file.byId(wall.id())!;
     expect(handle === wall).toBe(false);
-    expect(same(handle, wall)).toBe(true);
-    expect(same(slab, wall)).toBe(false);
-    const list = [slab, wall];
-    expect(contains(list, handle)).toBe(true);
-    remove(list, handle);
-    expect(list.map(e => e.id())).toEqual([slab.id()]);
+    expect(sameEntity(handle, wall)).toBe(true);
+    expect(sameEntity(slab, wall)).toBe(false);
+    expect(sameEntity(null, wall)).toBe(false);
   });
 });
