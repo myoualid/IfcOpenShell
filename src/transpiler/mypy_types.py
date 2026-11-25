@@ -218,9 +218,16 @@ def analyze():
 
         def visit(self, node):
             if isinstance(node, nodes.Expression) and node in result.types:
-                kind = classify(types.get_proper_type(result.types[node]), types)
+                proper = types.get_proper_type(result.types[node])
+                position = f"{node.line}:{node.column}:{node.end_line}:{node.end_column}"
+                kind = classify(proper, types)
                 if kind:
-                    self.kinds[f"{node.line}:{node.column}:{node.end_line}:{node.end_column}"] = kind
+                    self.kinds[position] = kind
+                if isinstance(proper, types.CallableType):
+                    # What a call of the value returns (a sort key passed as a parameter, for example).
+                    returns = classify(types.get_proper_type(proper.ret_type), types)
+                    if returns:
+                        self.kinds[position + ":returns"] = returns
             return True
 
     found = {}
