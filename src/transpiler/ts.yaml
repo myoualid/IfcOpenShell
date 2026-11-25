@@ -574,6 +574,21 @@ rules:
       value: $value
     when: op.__class__.__name__ in numpy_operators and container | kind == "ndarray" and (index.__class__.__name__ == "Slice" and index.step is none or index.__class__.__name__ == "Tuple" and index.elts | selectattr("__class__.__name__", "equalto", "Slice") | list and index.elts | selectattr("__class__.__name__", "equalto", "Slice") | selectattr("step", "ne", none) | list | length == 0)
     output: '{% set M = container | emit %}{% set L = "helpers.linalg" | use("linalg") %}{% macro pos(e, size) %}{% if e.__class__.__name__ == "UnaryOp" and e.operand.value is defined %}{{ size }} - {{ e.operand.value }}{% else %}{{ e | emit }}{% endif %}{% endmacro %}{% macro start(e, size) %}{% if e.lower is none %}0{% else %}{{ pos(e.lower, size) }}{% endif %}{% endmacro %}{% macro cut(e) %}.slice({{ e.lower | emit if e.lower is not none else "0" }}{% if e.upper is not none %}, {{ e.upper | emit }}{% endif %}){% endmacro %}{% if index.__class__.__name__ == "Tuple" and index.elts | length == 2 %}{% set r, c = index.elts %}{% set rs = r.__class__.__name__ == "Slice" %}{% set cs = c.__class__.__name__ == "Slice" %}{% set rows = M ~ ".length" %}{% set columns = M ~ "[0].length" %}{% set F = L ~ "." ~ numpy_operators[op.__class__.__name__] %}{% if rs and cs %}{{ L }}.setSubMatrix({{ M }}, {{ F }}({% if rs and cs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row{{ cut(c) }}){% elif rs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row.at({{ c | emit }})){% else %}{{ M }}.at({{ r | emit }}){{ cut(c) }}{% endif %}, {{ value | emit }}), {{ start(r, rows) }}, {{ start(c, columns) }});{% elif rs %}{{ L }}.setColumn({{ M }}, {{ pos(c, columns) }}, {{ F }}({% if rs and cs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row{{ cut(c) }}){% elif rs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row.at({{ c | emit }})){% else %}{{ M }}.at({{ r | emit }}){{ cut(c) }}{% endif %}, {{ value | emit }}), {{ start(r, rows) }});{% else %}{{ L }}.setRow({{ M }}, {{ pos(r, rows) }}, {{ F }}({% if rs and cs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row{{ cut(c) }}){% elif rs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row.at({{ c | emit }})){% else %}{{ M }}.at({{ r | emit }}){{ cut(c) }}{% endif %}, {{ value | emit }}), {{ start(c, columns) }});{% endif %}{% else %}{{ "assignment to a slice of a vector" | unsupported }}{% endif %}'
+  # super().__init__() in a constructor.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value:
+          node: Call
+          func:
+            node: Name
+            id: super
+          args: []
+        attr: __init__
+      args: $args
+      keywords: []
+    output: 'super({{ args | map("emit") | join(", ") }})'
   # np.isclose of two numbers and np.allclose of two literal tuples of numbers: |a - b| <= atol + rtol * |b|.
   # Other calls of them stay stubs (check_foreign lets the inline_numpy calls reach this rule).
   - input:
@@ -1722,23 +1737,6 @@ rules:
       {% if generator %}  return yielded;
       {% elif name != "__init__" and body[-1].__class__.__name__ not in ["Return", "Raise"] and (returns is none or not (returns.value is defined and returns.value is none)) %}  return null;
       {% endif %}}
-  # super().__init__() in a constructor.
-  - input:
-      node: Expr
-      value:
-        node: Call
-        func:
-          node: Attribute
-          value:
-            node: Call
-            func:
-              node: Name
-              id: super
-            args: []
-          attr: __init__
-        args: $args
-        keywords: []
-    output: 'super({{ args | map("emit") | join(", ") }});'
   - input:
       node: Raise
       exc: null
