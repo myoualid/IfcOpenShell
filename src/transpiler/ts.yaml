@@ -3099,6 +3099,15 @@ inference:
       attr: $attr
     when: attr in ["children", "data"] and "lark" in imported_modules and value | kind == "unknown"
     output: '{{ "array" if attr == "children" else "string" }}'
+  # getattr(entity, name) with a name that is not literal: an attribute value of the entity.
+  - input:
+      node: Call
+      func:
+        node: Name
+        id: getattr
+      args: $args
+    when: '"getattr" not in shadowed and args | length in [2, 3] and args[1].__class__.__name__ != "Constant" and args[0] | kind == "entity" and (args | length == 2 or args[2].__class__.__name__ == "Constant" and args[2].value is none)'
+    output: attribute
   # getattr(entity, "Attribute", default) of an IFC attribute: the kind of that attribute name in the schemas.
   - input:
       node: Call
