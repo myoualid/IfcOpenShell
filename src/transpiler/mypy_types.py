@@ -111,7 +111,9 @@ def classify(proper, types):
     if isinstance(proper, types.LiteralType):
         proper = proper.fallback
     if isinstance(proper, types.TupleType):
-        return "array", False
+        # A named tuple is an object with named fields in TS, not an array.
+        named = proper.partial_fallback.type.fullname != "builtins.tuple"
+        return ("object" if named else "array"), False
     if isinstance(proper, types.TypedDictType):
         return "dict", False
     if isinstance(proper, types.CallableType):
@@ -143,6 +145,10 @@ def classify(proper, types):
         return "ndarray", False
     if name.endswith((".entity_instance", ".entity_instance_mixin")):
         return "entity", False
+    if name == "re.Match":
+        return "match", False  # A RegExpExecArray in TS.
+    if name == "re.Pattern":
+        return "pattern", False  # A RegExp in TS.
     if name in ("ifcopenshell.file.file", "ifcopenshell.ifcopenshell_wrapper.file"):
         return "file", False
     if name.startswith("ifcopenshell.") and not name.startswith("ifcopenshell.ifcopenshell_wrapper."):
