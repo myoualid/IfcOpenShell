@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Any, Literal, Optional, Union, get_args
+from typing import Any, Literal, Optional, Union, cast, get_args
 
 import ifcopenshell.geom
 import ifcopenshell.util.element
@@ -191,7 +191,11 @@ class Usecase:
         else:
             settings = ifcopenshell.geom.settings()
             settings.set("dimensionality", ifcopenshell.ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS)
-            shape = ifcopenshell.geom.create_shape(settings, self.profile)
+            # The geometry of a profile (it is not a product) is a triangulation.
+            shape = cast(
+                ifcopenshell.ifcopenshell_wrapper.triangulation,
+                ifcopenshell.geom.create_shape(settings, self.profile),
+            )
             return self.convert_si_to_unit(ifcopenshell.util.shape.get_x(shape))
         return 0.0
 
@@ -219,6 +223,10 @@ class Usecase:
         else:
             settings = ifcopenshell.geom.settings()
             settings.set("dimensionality", ifcopenshell.ifcopenshell_wrapper.CURVES_SURFACES_AND_SOLIDS)
-            shape = ifcopenshell.geom.create_shape(settings, self.profile)
+            # The geometry of a profile (it is not a product) is a triangulation.
+            shape = cast(
+                ifcopenshell.ifcopenshell_wrapper.triangulation,
+                ifcopenshell.geom.create_shape(settings, self.profile),
+            )
             return self.convert_si_to_unit(ifcopenshell.util.shape.get_y(shape))
         return 0.0
