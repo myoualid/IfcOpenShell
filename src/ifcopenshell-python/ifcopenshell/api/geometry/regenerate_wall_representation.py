@@ -17,10 +17,9 @@
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
 import json
-from collections import namedtuple
 from collections.abc import Sequence
 from math import cos, sin
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import numpy as np
 
@@ -36,7 +35,10 @@ import ifcopenshell.util.unit
 # https://stackoverflow.com/a/9184560/9627415
 # Possible optimisation to linalg.norm?
 
-PrioritisedLayer = namedtuple("PrioritisedLayer", "priority thickness")
+
+class PrioritisedLayer(NamedTuple):
+    priority: int
+    thickness: float
 
 
 def regenerate_wall_representation(
