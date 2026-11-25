@@ -47,9 +47,11 @@ def edit_prop_template(
     """
     enum_values: Optional[list[Any]] = attributes.get("Enumerators", None)
     if enum_values:
-        prop_name = attributes.get("Name", None) or getattr(prop_template, "Name", None) or "Unnamed"
+        name: Optional[str] = attributes.get("Name", None)
+        prop_name = name or getattr(prop_template, "Name", None) or "Unnamed"
+        measure_type: Optional[str] = attributes.get("PrimaryMeasureType", None)
         primary_measure_type = (
-            attributes.get("PrimaryMeasureType", None)
+            measure_type
             or getattr(prop_template, "PrimaryMeasureType", None)
             or "IfcLabel"
         )
