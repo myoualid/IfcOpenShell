@@ -114,6 +114,8 @@ def classify(proper, types):
         return "array", False
     if isinstance(proper, types.TypedDictType):
         return "dict", False
+    if isinstance(proper, types.CallableType):
+        return "object", False  # Functions are always true, in Python and in JS.
     if not isinstance(proper, types.Instance):
         return None
     name = proper.type.fullname

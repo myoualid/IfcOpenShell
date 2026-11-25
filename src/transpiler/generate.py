@@ -39,6 +39,7 @@ NOT_PORTED = {
     "util/space": "2D geometry with shapely, the geometry iterator and processes",
     "util/brick": "Brick schema with rdflib and local files",
     "util/file": "reads files from disk",
+    "api/alignment/create_from_csv": "reads a CSV file from disk",
     "api/geometry/add_representation": "Blender objects (Bonsai)",
     "api/style/add_surface_textures": "Blender materials (Bonsai)",
 }
