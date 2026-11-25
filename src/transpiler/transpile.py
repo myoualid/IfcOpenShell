@@ -495,6 +495,7 @@ class Transpiler:
             defining_module=self.defining_module,
             signature=self.signature,
             bind=self.bind,
+            is_dataclass_name=lambda name: name in self.classes and is_dataclass(self.classes[name]),
             runtime_path=self.runtime_path,
             alias_value=self.alias_value,
             api_run=self.api_run,

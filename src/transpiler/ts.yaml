@@ -1436,7 +1436,8 @@ rules:
       func:
         node: Name
         id: $name
-    when: name in classes and (node.func | signature is none or (node | bind(node.func | signature)).error is none)
+    # A dataclass called with **values reads them with fromKwargs, which maps the Python names.
+    when: name in classes and not (name | is_dataclass_name and node.keywords | selectattr("arg", "none") | list) and (node.func | signature is none or (node | bind(node.func | signature)).error is none)
     output: '{% if node.func | signature is none %}new {{ name }}(){% else %}{% set b = node | bind(node.func | signature) %}new {{ name }}({{ b.positional | map("emit") | join(", ") }}{% if b.options %}{% if b.positional %}, {% endif %}{ {% for option in b.options %}{% if option[0] is none %}...{{ option[1] | emit }}{% else %}{{ option[0] | camel }}: {{ option[1] | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %}){% endif %}'
   - input:
       node: Call
