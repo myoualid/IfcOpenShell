@@ -129,7 +129,6 @@ hand_written_import: |-
 unsupported_functions:
   api.library.assign_reference.assign_reference: "products is annotated as one entity_instance but used as a list"
   api.project.append_asset.append_asset: "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
-  util.unit.iter_element_and_attributes_per_type: "iterating a file gives entities of no proven type"
   api.geometry.add_profile_representation.Usecase.get_x: "create_shape gives an element or a geometry; the Python must cast its result"
   api.geometry.add_profile_representation.Usecase.get_y: "create_shape gives an element or a geometry; the Python must cast its result"
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
