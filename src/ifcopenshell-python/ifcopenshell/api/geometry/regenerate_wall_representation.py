@@ -18,6 +18,7 @@
 
 import json
 from collections import namedtuple
+from collections.abc import Sequence
 from math import cos, sin
 from typing import Optional
 
@@ -568,11 +569,13 @@ class Regenerator:
             return []
         return [PrioritisedLayer(getattr(l, "Priority", 0) or 0, l.LayerThickness) for l in material.MaterialLayers]
 
-    def combine_layers(self, layers, override_priorities):
+    def combine_layers(
+        self, layers: list[PrioritisedLayer], override_priorities: Optional[Sequence[int]]
+    ) -> list[PrioritisedLayer]:
         results = []
         if override_priorities:
             for i, priority in enumerate(override_priorities[: len(layers)]):
-                layers[i][0] = priority
+                layers[i] = PrioritisedLayer(priority, layers[i].thickness)
         if not layers:
             return []
         results = [layers.pop(0)]
