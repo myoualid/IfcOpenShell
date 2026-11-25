@@ -1055,7 +1055,7 @@ rules:
       target: $target
       annotation: $annotation
       value: $value
-    output: '{% if value is not none %}{% if top_level %}export const {% endif %}{{ target | emit }}{% if top_level %}: {{ annotation | type }}{% endif %} = {{ value | emit }};{% endif %}'
+    output: '{% if value is not none %}{% if top_level %}export {{ "let" if target.id is defined and target.id in reassigned else "const" }} {% endif %}{{ target | emit }}{% if top_level %}: {{ annotation | type }}{% endif %} = {{ value | emit }};{% endif %}'
   - input:
       node: NamedExpr
       target: $target
