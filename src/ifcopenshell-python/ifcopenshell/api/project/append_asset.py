@@ -136,12 +136,9 @@ def append_asset(
     """
     usecase = Usecase()
     usecase.file: ifcopenshell.file = file
-    return usecase.execute(
-        library,
-        element,
-        {} if reuse_identities is None else reuse_identities,
-        assume_asset_uniqueness_by_name,
-    )
+    if reuse_identities is None:
+        reuse_identities = {}
+    return usecase.execute(library, element, reuse_identities, assume_asset_uniqueness_by_name)
 
 
 class SafeRemovalContext:
