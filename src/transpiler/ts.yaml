@@ -389,7 +389,7 @@ rules:
       args:
         - $text
       keywords: []
-    when: method in ["match", "fullmatch", "search"] and pattern | runtime_path is none and pattern | resolve is none and pattern | kind in ["unknown", "object", "string", "scalar", "attribute"] and not (pattern.id is defined and pattern.id == "self")
+    when: method in ["match", "fullmatch", "search"] and pattern | runtime_path is none and pattern | resolve is none and pattern | kind in ["unknown", "object", "string", "number", "scalar", "attribute"] and not (pattern.id is defined and pattern.id == "self")
     output: '{{ "helpers.lang" | use("lang") }}.re.{{ method }}({{ pattern | emit }}, {{ text | emit }})'
   # str.title(): each run of letters starts with a capital, the rest is lower case.
   - input:
