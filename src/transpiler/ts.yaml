@@ -370,6 +370,18 @@ rules:
       keywords: []
     when: name in module_globals and name not in functions and name not in classes and name not in shadowed and not method.startswith("_") and node.func.value | kind in ["unknown", "object"]
     output: '{{ name | ident }}.{{ method | camel }}({{ args | map("emit") | join(", ") }})'
+  # pattern.match(text), fullmatch and search: methods of a compiled pattern (str has none of them).
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $pattern
+        attr: $method
+      args:
+        - $text
+      keywords: []
+    when: method in ["match", "fullmatch", "search"] and pattern | runtime_path is none and pattern | resolve is none and pattern | kind in ["unknown", "object"]
+    output: '{{ "helpers.lang" | use("lang") }}.re.{{ method }}({{ pattern | emit }}, {{ text | emit }})'
   # str.title(): each run of letters starts with a capital, the rest is lower case.
   - input:
       node: Call
