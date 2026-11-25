@@ -682,6 +682,7 @@
   "source": "ifcopenshell/api/geometry/add_door_representation.py",
   "stubs": {
    "Usecase.execute": "an operator on a numpy array or a value of unknown type",
+   "add_door_representation": "**values from a dict built at run time (pass the keyword arguments)",
    "create_ifc_box": "No rules rule at line 90: uses module np",
    "create_ifc_door_lining": "No rules rule at line 78: uses module np"
   }
@@ -743,6 +744,7 @@
   "source": "ifcopenshell/api/geometry/add_window_representation.py",
   "stubs": {
    "Usecase.execute": "calls util.shape_builder.V, which returns a numpy array",
+   "add_window_representation": "**values from a dict built at run time (pass the keyword arguments)",
    "create_ifc_window": "an operator on a numpy array or a value of unknown type",
    "create_ifc_window_frame_simple": "No rules rule at line 75: uses module np"
   }
@@ -1018,7 +1020,9 @@
  "api/material/assign_material": {
   "functions": 2,
   "source": "ifcopenshell/api/material/assign_material.py",
-  "stubs": {}
+  "stubs": {
+   "Usecase.execute": "defaultdict (a JS Map has no default values): use dict.setdefault"
+  }
  },
  "api/material/assign_profile": {
   "functions": 2,
@@ -1601,6 +1605,7 @@
   "functions": 2,
   "source": "ifcopenshell/api/sequence/edit_task_time.py",
   "stubs": {
+   "Usecase.calculate_duration": "TemplateSyntaxError: can't assign to 'const'",
    "Usecase.execute": "truthiness of a value of unknown type: attributes.get"
   }
  },
@@ -2172,7 +2177,7 @@
   "functions": 6,
   "source": "ifcopenshell/util/pset.py",
   "stubs": {
-   "PsetQto.is_applicable": "truthiness of a value of unknown type: matched_type"
+   "PsetQto.is_applicable": "UndefinedError: 'dict object' has no attribute 'alias'"
   }
  },
  "util/representation": {
@@ -2204,9 +2209,11 @@
   "functions": 9,
   "source": "ifcopenshell/util/selector.py",
   "stubs": {
+   "FacetTransformer.value": "UndefinedError: 'dict object' has no attribute 'alias'",
    "FormatTransformer.number": "truthiness of a value of unknown type: args[2]",
    "FormatTransformer.round": "No rules rule at line 334: uses module InvalidOperation",
    "FormatTransformer.sort": "sorted() of values of unknown type",
+   "GetElementTransformer.regex_string": "UndefinedError: 'dict object' has no attribute 'alias'",
    "_get_element_value": "No rules rule at line 511: uses module np",
    "filter_elements": "uses filter_elements_grammar, a module value that is not translated: Lark.js needs a literal grammar with the LALR parser",
    "line 43": "Lark.js needs a literal grammar with the LALR parser",
@@ -2218,10 +2225,12 @@
   "source": "ifcopenshell/util/sequence.py",
   "stubs": {
    "count_working_days": "== between values of unknown type: start == finish",
+   "derive_date": "TemplateSyntaxError: can't assign to 'const'",
    "get_recent_working_day": "an augmented operator on a numpy array or a value of unknown type",
    "get_sequence_assignment": "truthiness of a value of unknown type: result",
    "get_soonest_working_day": "an augmented operator on a numpy array or a value of unknown type",
    "get_start_or_finish_date": "truthiness of a value of unknown type: duration.days",
+   "guess_date_range": "TemplateSyntaxError: can't assign to 'const'",
    "is_day_in_work_time": "ordering of values of unknown type",
    "is_work_time_applicable_to_day": "in on a list of values of unknown type",
    "offset_date": "an operator on a numpy array or a value of unknown type"
@@ -2310,7 +2319,7 @@
   "source": "ifcopenshell/util/unit.py",
   "stubs": {
    "format_length": "No rules rule at line 976: uses module Fraction",
-   "is_attr_type": "isinstance of ifcopenshell_wrapper.aggregation_type needs explicit schema casts",
+   "is_attr_type": "declared_type() of a declaration that is not cast: cast it with as_named_type() or as_type_declaration()",
    "iter_element_and_attributes_per_type": "iterating a file gives entities of no proven type"
   }
  }
