@@ -318,6 +318,67 @@ def attribute_kinds():
     return kinds
 
 
+# A format specification: [[fill]align][sign][0][width][,][.precision][type]. A nested replacement field
+# ({} in str.format, {expression} in an f-string) is marked as \x01index\x01.
+FORMAT_SPEC = re.compile(
+    r"(?:(?P<fill>.)?(?P<align>[<>^=]))?(?P<sign>[+ -])?(?P<zero>0)?(?P<width>\d+|\x01\d+\x01)?(?P<comma>,)?"
+    r"(?:\.(?P<precision>\d+|\x01\d+\x01))?(?P<type>[dfF%xXs])?"
+)
+
+
+def format_field(value, spec, nested=()):
+    """TS code that formats the TS expression `value` as Python's format(value, spec) does.
+
+    Only the specifications with one obvious TS spelling are supported; others make the function a stub.
+    """
+    if not spec:
+        return value
+    match = FORMAT_SPEC.fullmatch(spec)
+    groups = match.groupdict() if match else {}
+    if not match or groups["comma"] or groups["sign"] or groups["align"] in ("^", "="):
+        unsupported(f"format specification {spec!r}")
+
+    def part(text):
+        return nested[int(text[1:-1])] if text and text.startswith("\x01") else text
+
+    kind, precision, width = groups["type"] or "", part(groups["precision"]), part(groups["width"])
+    if kind in ("f", "F"):
+        number = lambda v: f"{v}.toFixed({precision or 6})"
+    elif kind == "%":
+        number = lambda v: f'({v} * 100).toFixed({precision or 6}) + "%"'
+    elif kind in ("x", "X"):
+        number = lambda v: f"{v}.toString(16)" + (".toUpperCase()" if kind == "X" else "")
+    elif kind == "d":
+        number = lambda v: f"String({v})"
+    elif kind == "s" and not groups["zero"]:
+        number = None
+    else:
+        unsupported(f"format specification {spec!r}")
+    if number is None:
+        text = f"String({value})" + (f".slice(0, {precision})" if precision else "")
+        if not width:
+            return text
+        fill = json.dumps(groups["fill"] or " ")
+        return f"{text}.{'padStart' if groups['align'] == '>' else 'padEnd'}({width}, {fill})"
+    if precision and kind in ("d", "x", "X"):
+        unsupported(f"format specification {spec!r}")
+    if not width:
+        return number(value)
+    if groups["zero"] and not groups["align"]:
+        # Python puts the zeros after the sign.
+        return (
+            f'((v: number) => (v < 0 ? "-" : "") + {number("Math.abs(v)")}.padStart({width} - (v < 0 ? 1 : 0), "0"))'
+            f"({value})"
+        )
+    fill = json.dumps(groups["fill"] or " ")
+    return f"{number(value)}.{'padEnd' if groups['align'] == '<' else 'padStart'}({width}, {fill})"
+
+
+def template_text(text):
+    """Literal text in a TS template literal."""
+    return text.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+
+
 def unsupported(reason):
     """Make the function that a rule renders a stub, with this reason."""
     raise ValueError(reason)
@@ -361,12 +422,16 @@ class Transpiler:
         self.env = Environment(undefined=StrictUndefined, keep_trailing_newline=True)
         self.cache = {}
         self.env.tests["startswith"] = lambda value, prefix: str(value).startswith(prefix)
+        self.env.tests["ellipsis"] = lambda value: isinstance(value, ast.Constant) and value.value is Ellipsis
         self.env.filters.update(
             emit=self.emit,
             emit_in=self.emit_in,
+            formatted=self.formatted,
+            format_text=self.format_text,
             type=lambda n: self.emit(n, "types"),
             kind=self.kind,
             element_kind=self.element_kind,
+            inferred_return=self.inferred_return,
             nullable=self.nullable,
             condition=lambda n: self.emit(n, context="condition"),
             iterable=lambda n: self.emit(n, context="iterable"),
@@ -719,6 +784,64 @@ class Transpiler:
                     names |= {a.asname or a.name for a in node.names}
         return names - set(self.rules.get("supported_modules", ())) - set(self.runtime_names)
 
+    def formatted(self, node):
+        """TS code of an f-string replacement field: its value, conversion and format specification."""
+        value = self.emit(node.value)
+        if node.conversion == ord("r") or node.conversion == ord("a"):
+            unsupported("!r and !a conversions give Python representations")
+        if node.conversion == ord("s"):
+            value = f"String({value})"
+        if node.format_spec is None:
+            return value
+        spec, nested = "", []
+        for item in node.format_spec.values:
+            if isinstance(item, ast.Constant):
+                spec += item.value
+            else:
+                spec += f"\x01{len(nested)}\x01"
+                nested.append(self.formatted(item))
+        return format_field(value, spec, nested)
+
+    def format_text(self, text, args, keywords):
+        """`text.format(...)` as a TS template literal, with the format specifications of its fields."""
+        import string
+
+        positional = [self.emit(a) for a in args]
+        named = {k.arg: self.emit(k.value) for k in keywords if k.arg}
+        if len(named) != len(keywords) or any(isinstance(a, ast.Starred) for a in args):
+            unsupported("str.format() with unpacked arguments")
+        counter = iter(range(len(positional) + 1))
+
+        def field(name):
+            if name == "":
+                index = next(counter)
+                if index >= len(positional):
+                    unsupported("str.format() with fewer arguments than fields")
+                return positional[index]
+            if name.isdigit() and int(name) < len(positional):
+                return positional[int(name)]
+            if name in named:
+                return named[name]
+            unsupported(f"str.format() field {name!r}")
+
+        out = "`"
+        for literal, name, spec, conversion in string.Formatter().parse(text):
+            out += template_text(literal)
+            if name is None:
+                continue
+            value = field(name)
+            if conversion == "s":
+                value = f"String({value})"
+            elif conversion:
+                unsupported("!r and !a conversions give Python representations")
+            nested = []
+            for _, inner, _, _ in string.Formatter().parse(spec or ""):
+                if inner is not None:
+                    nested.append(field(inner))
+            marked = re.sub(r"\{[^{}]*\}", lambda m, c=iter(range(len(nested))): f"\x01{next(c)}\x01", spec or "")
+            out += "${" + format_field(value, marked, nested) + "}"
+        return out + "`"
+
     def emit_in(self, node, context):
         """Emit a node in a context; with method_stubs, a method that cannot be translated becomes a stub."""
         if context != "member" or not isinstance(node, ast.FunctionDef) or not self.rules.get("method_stubs"):
@@ -869,6 +992,29 @@ class Transpiler:
     def kind(self, node):
         proven = self.proven(node)
         return proven[0] if proven else self.emit(node, "inference")
+
+    def inferred_return(self, callee):
+        """The kind of what a function of this module with no return annotation returns, from the kinds
+        that mypy proves for its return values; unknown when they differ or are not proven."""
+        if not isinstance(callee, ast.Name) or callee.id not in self.functions or callee.id in self.shadowed:
+            return "unknown"
+        function = self.functions[callee.id]
+        if function.returns is not None:
+            return "unknown"
+        kinds = set()
+        for node in ast.walk(function):
+            if isinstance(node, ast.Return) and node.value is not None:
+                if isinstance(node.value, ast.Constant) and node.value.value is None:
+                    continue
+                proven = self.proven(node.value)
+                if isinstance(node.value, ast.Constant):
+                    value = node.value.value
+                    kinds.add(
+                        "string" if isinstance(value, str) else "boolean" if isinstance(value, bool) else "number"
+                    )
+                else:
+                    kinds.add(proven[0] if proven else "unknown")
+        return kinds.pop() if len(kinds) == 1 else "unknown"
 
     def element_kind(self, node):
         """The kind of the elements of a list, tuple, set or comprehension; unknown when they differ."""
@@ -1028,6 +1174,7 @@ class Transpiler:
             if isinstance(n, ast.ImportFrom) and n.module and n.level == 0
         }
         self.unavailable = {}
+        self.text_parameters = {}
         output = []
         for node in tree.body:
             functions = [node] if isinstance(node, ast.FunctionDef) else []
@@ -1118,8 +1265,26 @@ class Transpiler:
                         and test.operand.id == argument.arg
                         for n in [test.operand if isinstance(test, ast.UnaryOp) else test]
                     }
-                    if receivers and not rebound and all(id(n) in receivers | tested for n in uses):
+                    # Passed to a text parameter of a function of this module (found earlier in the module).
+                    passed = {
+                        id(value)
+                        for n in ast.walk(function)
+                        if isinstance(n, ast.Call)
+                        and isinstance(n.func, ast.Name)
+                        and n.func.id in self.text_parameters
+                        for i, value in enumerate(n.args)
+                        if isinstance(value, ast.Name)
+                        and value.id == argument.arg
+                        and i < len(self.functions[n.func.id].args.args)
+                        and self.functions[n.func.id].args.args[i].arg in self.text_parameters[n.func.id]
+                    }
+                    if (
+                        (receivers or passed)
+                        and not rebound
+                        and all(id(n) in receivers | tested | passed for n in uses)
+                    ):
                         self.symbols[argument.arg] = "string"
+                        self.text_parameters.setdefault(function.name, set()).add(argument.arg)
             # A parameter defaulting to True or False is a flag, whatever its annotation says. A parameter
             # with no annotation and a number or text default has the kind of its default.
             for function in functions:

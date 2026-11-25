@@ -104,6 +104,9 @@ def classify(proper, types):
         kinds = {kind and kind[0] for kind in kinds}
         if len(kinds) == 1 and None not in kinds:
             return kinds.pop(), nullable
+        if kinds == {"array", "ndarray"}:
+            # A list or a numpy array (SequenceOfVectors): only len(), iteration and indexing are common.
+            return "sequence", nullable
         return ("scalar", nullable) if kinds <= SCALARS else None
     if isinstance(proper, types.LiteralType):
         proper = proper.fallback
@@ -140,6 +143,9 @@ def classify(proper, types):
         return "entity", False
     if name == "ifcopenshell.file.file":
         return "file", False
+    if not proper.type.fallback_to_any and not any(proper.type.get(method) for method in ("__bool__", "__len__")):
+        # Always true in Python (re.Match, schema declarations, iterators...), as an object is in JS.
+        return "object", False
     return None
 
 

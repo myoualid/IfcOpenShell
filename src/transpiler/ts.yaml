@@ -368,7 +368,7 @@ rules:
         attr: $method
       args: $args
       keywords: []
-    when: name in module_globals and name not in functions and name not in classes and name not in shadowed and not method.startswith("_") and node.func.value | kind == "unknown"
+    when: name in module_globals and name not in functions and name not in classes and name not in shadowed and not method.startswith("_") and node.func.value | kind in ["unknown", "object"]
     output: '{{ name | ident }}.{{ method | camel }}({{ args | map("emit") | join(", ") }})'
   # text * n: String.prototype.repeat.
   - input:
@@ -496,8 +496,8 @@ rules:
         - $op
       comparators:
         - $right
-    when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "entity" or right | kind == "entity" or left | kind == "unknown" and right | kind == "unknown") and not (left.__class__.__name__ == "Constant" or right.__class__.__name__ == "Constant")
-    output: '{% if left | kind == "unknown" and right | kind == "unknown" %}{{ ("== between values of unknown type: " ~ (node | source)[:60]) | unsupported }}{% else %}{{ "!" if op.__class__.__name__ == "NotEq" }}{{ "helpers.lang" | use("lang") }}.sameEntity({{ left | emit }}, {{ right | emit }}){% endif %}'
+    when: op.__class__.__name__ in ["Eq", "NotEq"] and (left | kind == "entity" or right | kind == "entity" or left | kind in ["unknown", "object"] and right | kind in ["unknown", "object"]) and not (left.__class__.__name__ == "Constant" or right.__class__.__name__ == "Constant")
+    output: '{% if left | kind in ["unknown", "object"] and right | kind in ["unknown", "object"] %}{{ ("== between values of unknown type: " ~ (node | source)[:60]) | unsupported }}{% else %}{{ "!" if op.__class__.__name__ == "NotEq" }}{{ "helpers.lang" | use("lang") }}.sameEntity({{ left | emit }}, {{ right | emit }}){% endif %}'
   # Ordering of values of unknown type (dates from ifc2datetime, for example).
   - input:
       node: Compare
@@ -506,7 +506,7 @@ rules:
         - $op
       comparators:
         - $right
-    when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind == "unknown" or right | kind == "unknown") and left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant"
+    when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind in ["unknown", "object"] or right | kind in ["unknown", "object"]) and left | kind not in ["number", "string"] and right | kind not in ["number", "string"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant"
     output: '{{ "ordering of values of unknown type" | unsupported }}'
   # logging: the console. getLogger() gives the console; its methods take the same %s arguments.
   - input:
@@ -571,7 +571,9 @@ rules:
     output: ({% for value in values %}{{ value | condition }}{% if not loop.last %} {{ "||" if op.__class__.__name__ == "Or" else "&&" }} {% endif %}{% endfor %})
   - input: $value
     context: condition
-    when: value.__class__.__name__ in ["Compare", "UnaryOp", "Constant"] or value | kind in ["boolean", "number", "string", "entity", "file", "scalar", "set-nonempty"]
+    # attribute: an IFC forward attribute value read by position (entity[i]): an entity, text, number,
+    # boolean, null, or an aggregate, which IFC gives at least one item (except [0:?] aggregates).
+    when: value.__class__.__name__ in ["Compare", "UnaryOp", "Constant"] or value | kind in ["boolean", "number", "string", "entity", "file", "scalar", "set-nonempty", "attribute", "object"]
     output: '{{ value | emit }}'
   - input: $value
     context: condition
@@ -1414,7 +1416,7 @@ rules:
       args:
         - $values
       keywords: $keywords
-    output: '{% set key = (keywords | selectattr("arg", "equalto", "key") | first) %}{% set reverse = (keywords | selectattr("arg", "equalto", "reverse") | first) %}{% set others = keywords | rejectattr("arg", "in", ["key", "reverse"]) | list %}{% set k = (key.value.body | kind) if key is defined and key.value.__class__.__name__ == "Lambda" else (values | element_kind if key is not defined else "unknown") %}{% set f = ("(" ~ key.value | emit ~ ")") if key is defined else "" %}{% set desc = reverse is defined and reverse.value.value is defined and reverse.value.value is true %}{% set a, b = ("b", "a") if desc else ("a", "b") %}{% set cmp = ("(a: any, b: any) => " ~ f ~ "(" ~ a ~ ") - " ~ f ~ "(" ~ b ~ ")") if k == "number" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); return x < y ? -1 : x > y ? 1 : 0; }") %}{% if others or k not in ["number", "string"] or reverse is defined and not (reverse.value.value is defined and reverse.value.value is boolean) %}{{ "sorted() of values of unknown type" | unsupported }}{% else %}[...{{ values | iterable }}].sort({{ cmp }}){% endif %}'
+    output: '{% set key = (keywords | selectattr("arg", "equalto", "key") | first) %}{% set reverse = (keywords | selectattr("arg", "equalto", "reverse") | first) %}{% set others = keywords | rejectattr("arg", "in", ["key", "reverse"]) | list %}{% set k = (key.value.body | kind) if key is defined and key.value.__class__.__name__ == "Lambda" else (values | element_kind if key is not defined else "unknown") %}{% set returns = (key.value | signature).returns if key is defined and key.value.__class__.__name__ == "Name" and key.value | signature is not none else none %}{% set parts = key.value.body.elts if key is defined and key.value.__class__.__name__ == "Lambda" and key.value.body.__class__.__name__ == "Tuple" else (returns.slice.elts | reject("ellipsis") | list if returns is not none and returns.__class__.__name__ == "Subscript" and returns.value | source in ["tuple", "Tuple"] and returns.slice.__class__.__name__ == "Tuple" else []) %}{% if parts and (parts | map("kind") | reject("in", ["number", "string"]) | list | length == 0 if key.value.__class__.__name__ == "Lambda" else parts | map("emit", "annotation_kinds") | reject("in", ["number", "string"]) | list | length == 0) %}{% set k = "tuple" %}{% endif %}{% set f = ("(" ~ key.value | emit ~ ")") if key is defined else "" %}{% set desc = reverse is defined and reverse.value.value is defined and reverse.value.value is true %}{% set a, b = ("b", "a") if desc else ("a", "b") %}{% set cmp = ("(a: any, b: any) => " ~ f ~ "(" ~ a ~ ") - " ~ f ~ "(" ~ b ~ ")") if k == "number" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); for (let i = 0; i < x.length; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return x.length - y.length; }") if k == "tuple" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); return x < y ? -1 : x > y ? 1 : 0; }") %}{% if others or k not in ["number", "string", "tuple"] or reverse is defined and not (reverse.value.value is defined and reverse.value.value is boolean) %}{{ "sorted() of values of unknown type" | unsupported }}{% else %}[...{{ values | iterable }}].sort({{ cmp }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1423,7 +1425,7 @@ rules:
         attr: sort
       args: []
       keywords: $keywords
-    output: '{% set key = (keywords | selectattr("arg", "equalto", "key") | first) %}{% set reverse = (keywords | selectattr("arg", "equalto", "reverse") | first) %}{% set others = keywords | rejectattr("arg", "in", ["key", "reverse"]) | list %}{% set k = (key.value.body | kind) if key is defined and key.value.__class__.__name__ == "Lambda" else (values | element_kind if key is not defined else "unknown") %}{% set f = ("(" ~ key.value | emit ~ ")") if key is defined else "" %}{% set desc = reverse is defined and reverse.value.value is defined and reverse.value.value is true %}{% set a, b = ("b", "a") if desc else ("a", "b") %}{% set cmp = ("(a: any, b: any) => " ~ f ~ "(" ~ a ~ ") - " ~ f ~ "(" ~ b ~ ")") if k == "number" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); return x < y ? -1 : x > y ? 1 : 0; }") %}{% if others or k not in ["number", "string"] or reverse is defined and not (reverse.value.value is defined and reverse.value.value is boolean) %}{{ "list.sort() of values of unknown type" | unsupported }}{% else %}{{ values | emit }}.sort({{ cmp }}){% endif %}'
+    output: '{% set key = (keywords | selectattr("arg", "equalto", "key") | first) %}{% set reverse = (keywords | selectattr("arg", "equalto", "reverse") | first) %}{% set others = keywords | rejectattr("arg", "in", ["key", "reverse"]) | list %}{% set k = (key.value.body | kind) if key is defined and key.value.__class__.__name__ == "Lambda" else (values | element_kind if key is not defined else "unknown") %}{% set returns = (key.value | signature).returns if key is defined and key.value.__class__.__name__ == "Name" and key.value | signature is not none else none %}{% set parts = key.value.body.elts if key is defined and key.value.__class__.__name__ == "Lambda" and key.value.body.__class__.__name__ == "Tuple" else (returns.slice.elts | reject("ellipsis") | list if returns is not none and returns.__class__.__name__ == "Subscript" and returns.value | source in ["tuple", "Tuple"] and returns.slice.__class__.__name__ == "Tuple" else []) %}{% if parts and (parts | map("kind") | reject("in", ["number", "string"]) | list | length == 0 if key.value.__class__.__name__ == "Lambda" else parts | map("emit", "annotation_kinds") | reject("in", ["number", "string"]) | list | length == 0) %}{% set k = "tuple" %}{% endif %}{% set f = ("(" ~ key.value | emit ~ ")") if key is defined else "" %}{% set desc = reverse is defined and reverse.value.value is defined and reverse.value.value is true %}{% set a, b = ("b", "a") if desc else ("a", "b") %}{% set cmp = ("(a: any, b: any) => " ~ f ~ "(" ~ a ~ ") - " ~ f ~ "(" ~ b ~ ")") if k == "number" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); for (let i = 0; i < x.length; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return x.length - y.length; }") if k == "tuple" else ("(a: any, b: any) => { const x = " ~ f ~ "(" ~ a ~ "), y = " ~ f ~ "(" ~ b ~ "); return x < y ? -1 : x > y ? 1 : 0; }") %}{% if others or k not in ["number", "string", "tuple"] or reverse is defined and not (reverse.value.value is defined and reverse.value.value is boolean) %}{{ "list.sort() of values of unknown type" | unsupported }}{% else %}{{ values | emit }}.sort({{ cmp }}){% endif %}'
   - input:
       node: Call
       func:
@@ -1600,7 +1602,7 @@ rules:
       args: $args
       keywords: $keywords
     when: text is string and not (text.count("{}") == args | length and "{" not in text.replace("{}", "") and not keywords)
-    output: '{{ "str.format() with format specifications" | unsupported }}'
+    output: '{{ text | format_text(args, keywords) }}'
   - input:
       node: Call
       func:
@@ -1713,6 +1715,19 @@ rules:
         - $names
         - $values
     output: '{{ "helpers.lang" | use("lang") }}.positionalOptions({{ names.elts | map(attribute="value") | map("camel") | list | literal }}, {{ values | emit }})'
+  # dict.fromkeys(keys[, value]): a Dict (insertion order, entity keys by identity), or an object for text keys.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value:
+          node: Name
+          id: dict
+        attr: fromkeys
+      args: $args
+      keywords: []
+    when: '"dict" not in shadowed and args | length in [1, 2] and args[0] | element_kind in ["entity", "number", "string"]'
+    output: '{% set fill = args[1] | emit if args | length == 2 else "null" %}{% if args[0] | element_kind == "string" %}Object.fromEntries(Array.from<string>({{ args[0] | iterable }}, (k) => [k, {{ fill }}])){% else %}new {{ "helpers.lang" | use("lang") }}.Dict(Array.from<any>({{ args[0] | iterable }}, (k: any) => [k, {{ fill }}] as const)){% endif %}'
   - input:
       node: Call
       func:
@@ -1951,7 +1966,7 @@ rules:
     # JS has one number type, so a float such as 85.0 arrives as 85. A float check guarding code that reads the
     # checked value (marked reads_checked) accepts any number; one that only picks between int and float
     # behaviour, such as IfcReal or IfcInteger, keeps testing for a non-integer.
-    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined or (value.attr is defined and value.attr == "wrappedValue") %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function" && !({{ value | emit }} instanceof ifcopenshell.EntityInstance)){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name in ["datetime", "date"] %}{{ value | emit }} instanceof Date{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ ("isinstance of ifcopenshell_wrapper." ~ name ~ " needs explicit schema casts") | unsupported }}{% else %}{{ undefined_isinstance_type }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
+    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined or (value.attr is defined and value.attr == "wrappedValue") %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function" && !({{ value | emit }} instanceof ifcopenshell.EntityInstance)){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name in ["datetime", "date"] %}{{ value | emit }} instanceof Date{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ ("isinstance of ifcopenshell_wrapper." ~ name ~ " needs explicit schema casts") | unsupported }}{% else %}{{ ("isinstance of " ~ (kind | source) ~ ", a type with no TS check") | unsupported }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
   - input:
       node: Call
       func:
@@ -1960,7 +1975,7 @@ rules:
       args:
         - $value
       keywords: []
-    output: '{% set k = value | kind %}{% if k in ["array", "string"] %}{{ value | emit }}.length{% elif k in ["set", "map"] %}{{ value | emit }}.size{% elif k == "dict" %}Object.keys({{ value | emit }}).length{% else %}{{ ("len() of a value of unknown type: " ~ (value | source)[:60]) | unsupported }}{% endif %}'
+    output: '{% set k = value | kind %}{% if k in ["array", "string", "sequence"] %}{{ value | emit }}.length{% elif k in ["set", "map"] %}{{ value | emit }}.size{% elif k == "dict" %}Object.keys({{ value | emit }}).length{% elif k == "entity" %}{{ value | emit }}.attributes().length{% else %}{{ ("len() of a value of unknown type: " ~ (value | source)[:60]) | unsupported }}{% endif %}'
   - input:
       node: Call
       func:
@@ -2142,7 +2157,7 @@ rules:
   - input:
       node: JoinedStr
       values: $values
-    output: '`{% for value in values %}{% if value.__class__.__name__ == "Constant" %}{{ value.value | replace("\\", "\\\\") | replace("`", "\\`") | replace("${", "\\${") }}{% else %}${ {{- value.value | emit -}} }{% endif %}{% endfor %}`'
+    output: '`{% for value in values %}{% if value.__class__.__name__ == "Constant" %}{{ value.value | replace("\\", "\\\\") | replace("`", "\\`") | replace("${", "\\${") }}{% else %}${ {{- value | formatted -}} }{% endif %}{% endfor %}`'
   - input:
       node: Set
       elts: $elements
@@ -2186,7 +2201,7 @@ rules:
         attr: pop
       args: $args
       keywords: []
-    output: '{% if value | kind == "dict" %}((v: any) => (delete {{ value | emit }}[{{ args[0] | emit }}], v))({{ value | emit }}[{{ args[0] | emit }}]{% if args | length > 1 %} ?? {{ args[1] | emit }}{% endif %}){% elif not args and value | kind == "array" %}{{ value | emit }}.pop(){% elif not args %}{{ "pop() of a value of unknown type" | unsupported }}{% elif args[0].value is defined and args[0].value == 0 %}{{ value | emit }}.shift(){% else %}{{ value | emit }}.splice({{ args[0] | emit }}, 1)[0]{% endif %}'
+    output: '{% if value | kind == "dict" %}((v: any) => (delete {{ value | emit }}[{{ args[0] | emit }}], v))({{ value | emit }}[{{ args[0] | emit }}]{% if args | length > 1 %} ?? {{ args[1] | emit }}{% endif %}){% elif not args and value | kind == "array" %}{{ value | emit }}.pop(){% elif not args and value | kind == "set" %}((s: Set<any>) => { const [v] = s; s.delete(v); return v; })({{ value | emit }}){% elif not args %}{{ "pop() of a value of unknown type" | unsupported }}{% elif args[0].value is defined and args[0].value == 0 %}{{ value | emit }}.shift(){% else %}{{ value | emit }}.splice({{ args[0] | emit }}, 1)[0]{% endif %}'
   - input:
       node: Call
       func:
@@ -2379,7 +2394,7 @@ rules:
       keywords: []
     when: name in calls
     # tuple(x) has the length of x, which TypeScript does not know, so it is not a fixed-length tuple type.
-    output: '{% if name == "tuple" %}({{ calls[name] }}({{ args | map("emit") | join(", ") }}) as any){% else %}{{ calls[name] }}({{ args | map("emit") | join(", ") }}){% endif %}'
+    output: '{% set items = args | map("iterable") | join(", ") if name in ["list", "tuple"] else args | map("emit") | join(", ") %}{% if name == "tuple" %}({{ calls[name] }}({{ items }}) as any){% else %}{{ calls[name] }}({{ items }}){% endif %}'
   - input:
       node: Call
       func: $callee
@@ -2499,13 +2514,13 @@ rules:
       node: BoolOp
       op: $op
       values: $values
-    when: values | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file", "scalar"]) | list | length == 0 or values[-1].__class__.__name__ == "Constant" and values[:-1] | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file", "scalar"]) | list | length == 0
+    when: values | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file", "scalar", "attribute", "object"]) | list | length == 0 or values[-1].__class__.__name__ == "Constant" and values[:-1] | map("kind") | reject("in", ["string", "number", "boolean", "entity", "file", "scalar", "attribute", "object"]) | list | length == 0
     output: ({% for value in values %}{{ value | emit }}{% if not loop.last %} {{ "||" if op.__class__.__name__ == "Or" else "&&" }} {% endif %}{% endfor %})
   - input:
       node: BoolOp
       op: $op
       values: $values
-    output: '{% set negate = "!" if op.__class__.__name__ == "And" else "" %}{% macro truth(k, x) %}{% if k == "array" %}{{ x }}.length > 0{% elif k in ["set", "map"] %}{{ x }}.size > 0{% elif k == "dict" %}Object.keys({{ x }}).length > 0{% else %}{{ x }}{% endif %}{% endmacro %}{% macro chain(items) %}{% if items | length == 1 %}{{ items[0] | emit }}{% elif items[0].__class__.__name__ in ["Name", "Attribute"] %}({{ negate }}({{ items[0] | condition }}) ? {{ items[0] | emit }} : {{ chain(items[1:]) }}){% elif items[0] | kind in ["array", "set", "map", "dict", "string", "number", "boolean", "entity"] %}((t: any) => {{ negate }}({{ truth(items[0] | kind, "t") }}) ? t : {{ chain(items[1:]) }})({{ items[0] | emit }}){% else %}{{ ("and/or on a value of unknown type: " ~ (items[0] | source)[:60]) | unsupported }}{% endif %}{% endmacro %}{{ chain(values) }}'
+    output: '{% set negate = "!" if op.__class__.__name__ == "And" else "" %}{% macro truth(k, x) %}{% if k == "array" %}{{ x }}.length > 0{% elif k in ["set", "map"] %}{{ x }}.size > 0{% elif k == "dict" %}Object.keys({{ x }}).length > 0{% else %}{{ x }}{% endif %}{% endmacro %}{% macro chain(items) %}{% if items | length == 1 %}{{ items[0] | emit }}{% elif items[0].__class__.__name__ in ["Name", "Attribute"] %}({{ negate }}({{ items[0] | condition }}) ? {{ items[0] | emit }} : {{ chain(items[1:]) }}){% elif negate == "" and items | length == 2 and items[1].__class__.__name__ == "Constant" and items[1].value is not none and items[0] | kind in ["unknown", "scalar", "attribute", "object"] %}({{ items[0] | emit }} || {{ items[1] | emit }}){% elif items[0] | kind in ["array", "set", "map", "dict", "string", "number", "boolean", "entity", "scalar", "attribute", "object"] %}((t: any) => {{ negate }}({{ truth(items[0] | kind, "t") }}) ? t : {{ chain(items[1:]) }})({{ items[0] | emit }}){% else %}{{ ("and/or on a value of unknown type: " ~ (items[0] | source)[:60]) | unsupported }}{% endif %}{% endmacro %}{{ chain(values) }}'
   - input:
       node: UnaryOp
       op:
@@ -2704,6 +2719,16 @@ parameter_types:
     # parameters accept any iterable, as callers pass lists.
     output: '{{ "any" if node.widened is defined else "string" if annotation is not none and (annotation.id is defined and annotation.id in aliases or annotation | emit("annotation_kinds") == "string" and annotation | source != "str") else ("Iterable<" ~ (annotation.slice | type) ~ ">") if annotation.__class__.__name__ == "Subscript" and annotation.value | source == "set" else annotation | type }}'
 annotation_kinds:
+  - input:
+      node: Subscript
+      value:
+        node: Name
+        id: Union
+      slice:
+        node: Tuple
+        elts: $items
+    when: items | map("source") | select("in", ["np.ndarray", "npt.NDArray", "numpy.ndarray"]) | list | length + items | map("emit", "annotation_kinds") | select("equalto", "array") | list | length == items | length and items | map("emit", "annotation_kinds") | select("equalto", "array") | list
+    output: sequence
   - input: $value
     when: value | alias_value is not none
     output: '{{ value | alias_value | emit("annotation_kinds") }}'
@@ -2782,6 +2807,18 @@ annotation_kinds:
   - input: $value
     output: unknown
 inference:
+  # dict.fromkeys(keys): a Dict for entity or number keys, an object for text keys.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value:
+          node: Name
+          id: dict
+        attr: fromkeys
+      args: $args
+    when: args and args[0] | element_kind in ["entity", "number", "string"]
+    output: '{{ "dict" if args[0] | element_kind == "string" else "map" }}'
   - input:
       node: Call
       func: $callee
@@ -2944,7 +2981,7 @@ inference:
   - input:
       node: Call
       func: $callee
-    when: callee | signature is not none
+    when: callee | signature is not none and (callee | signature).returns is not none
     output: '{{ (callee | signature).returns | emit("annotation_kinds") }}'
   - input:
       node: Call
@@ -2953,6 +2990,19 @@ inference:
         id: $name
     when: name in ["tuple", "list", "range", "str"]
     output: '{{ "array" if name in ["tuple", "list", "range"] else "string" }}'
+  # entity[i]: a forward attribute value read by position.
+  - input:
+      node: Subscript
+      value: $value
+      slice: $index
+    when: value | kind == "entity" and (index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0 or index.__class__.__name__ != "Constant" and index | kind == "number")
+    output: attribute
+  # A call of a function of this module with no return annotation: the kind of its return values.
+  - input:
+      node: Call
+      func: $callee
+    when: callee | inferred_return != "unknown"
+    output: '{{ callee | inferred_return }}'
   # Paths are text (see pathlib.Path in the rules).
   - input:
       node: Call
@@ -2987,13 +3037,13 @@ inference:
         node: Name
         id: getattr
       args: $args
-    when: args | length >= 2 and args[1].value is defined and args[1].value is string and args[1].value[:1].isupper() and args[1].value in attribute_kinds and args[0] | kind in ["entity", "unknown"]
+    when: args | length >= 2 and args[1].value is defined and args[1].value is string and args[1].value[:1].isupper() and args[1].value in attribute_kinds and args[0] | kind in ["entity", "unknown", "scalar", "attribute"]
     output: '{{ attribute_kinds[args[1].value] }}'
   # An IFC attribute of an entity of unknown class: the kind of that attribute name in the schemas.
   - input:
       node: Attribute
       attr: $attr
-    when: attr[:1].isupper() and attr in attribute_kinds and node.value | kind in ["entity", "unknown"]
+    when: attr[:1].isupper() and attr in attribute_kinds and node.value | kind in ["entity", "unknown", "scalar", "attribute"]
     output: '{{ attribute_kinds[attr] }}'
   - input: $value
     output: unknown
