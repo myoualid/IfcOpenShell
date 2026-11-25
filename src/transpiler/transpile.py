@@ -401,6 +401,8 @@ class Transpiler:
         self.functions = {}
         self.classes = {}
         self.current_class = None
+        self.current_top = None  # The top-level function or class being translated.
+        self.assigning = set()  # Locals whose assigned kinds are being computed.
         self.symbols = {}
         self.aliases = {}
         self.imports = {}
@@ -996,7 +998,42 @@ class Transpiler:
             return proven[0]
         # "object" only says that the value is always true: the rules may know more (a path, a Lark tree).
         inferred = self.emit(node, "inference")
+        if inferred == "unknown" and isinstance(node, ast.Name):
+            inferred = self.assigned_kind(node.id)
         return "object" if proven and inferred == "unknown" else inferred
+
+    def assigned_kind(self, name):
+        """The kind of a local that is only bound by plain assignments, when all their values have one kind."""
+        if name in self.scope or name in self.assigning or self.current_top is None:
+            return "unknown"
+        values = []
+        for n in ast.walk(self.current_top):
+            if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets):
+                if len(n.targets) != 1:
+                    return "unknown"
+                values.append(n.value)
+            elif isinstance(n, ast.NamedExpr) and n.target.id == name:
+                values.append(n.value)
+            elif isinstance(n, (ast.AugAssign, ast.AnnAssign, ast.For, ast.comprehension, ast.withitem)):
+                target = getattr(n, "target", None) or getattr(n, "optional_vars", None)
+                if any(isinstance(t, ast.Name) and t.id == name for t in ast.walk(target or ast.Pass())):
+                    return "unknown"
+            elif isinstance(n, ast.arg) and n.arg == name:
+                return "unknown"
+        if not values:
+            return "unknown"
+        self.assigning.add(name)
+        try:
+            kinds = {self.kind(v) for v in values}
+        finally:
+            self.assigning.discard(name)
+        scalar_like = {"entity", "string", "number", "boolean", "attribute", "scalar"}
+        if not kinds <= scalar_like:
+            return "unknown"
+        if len(kinds) == 1:
+            return kinds.pop()
+        # Mixed kinds whose truthiness is the same in Python and JS.
+        return "attribute" if "attribute" in kinds else "scalar"
 
     def inferred_return(self, callee):
         """The kind of what a function of this module with no return annotation returns, from the kinds
@@ -1182,6 +1219,7 @@ class Transpiler:
         self.text_parameters = {}
         output = []
         for node in tree.body:
+            self.current_top = node
             functions = [node] if isinstance(node, ast.FunctionDef) else []
             if isinstance(node, ast.ClassDef):
                 functions = [n for n in node.body if isinstance(n, ast.FunctionDef)]
