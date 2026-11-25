@@ -322,11 +322,7 @@
  "api/boundary/assign_connection_geometry": {
   "functions": 2,
   "source": "ifcopenshell/api/boundary/assign_connection_geometry.py",
-  "stubs": {
-   "Usecase.create_point": "an operator on a numpy array or a value of unknown type",
-   "Usecase.create_polyline": "np.allclose of values other than numbers or literal tuples of numbers",
-   "assign_connection_geometry": "calls util.shape_builder.V, which returns a numpy array"
-  }
+  "stubs": {}
  },
  "api/boundary/copy_boundary": {
   "functions": 1,
@@ -661,11 +657,7 @@
  "api/geometry/add_mesh_representation": {
   "functions": 2,
   "source": "ifcopenshell/api/geometry/add_mesh_representation.py",
-  "stubs": {
-   "Usecase.create_faceted_brep": "len() of a value of unknown type: self.vertices",
-   "Usecase.create_polygonal_face_set": "len() of a value of unknown type: self.vertices",
-   "add_mesh_representation": "No rules rule at line 80: uses module np"
-  }
+  "stubs": {}
  },
  "api/geometry/add_profile_representation": {
   "functions": 2,
@@ -820,9 +812,7 @@
  "api/grid/create_axis_curve": {
   "functions": 1,
   "source": "ifcopenshell/api/grid/create_axis_curve.py",
-  "stubs": {
-   "create_axis_curve": "No rules rule at line 81: uses module np"
-  }
+  "stubs": {}
  },
  "api/grid/create_grid_axis": {
   "functions": 1,
@@ -1209,18 +1199,12 @@
  "api/profile/add_arbitrary_profile": {
   "functions": 2,
   "source": "ifcopenshell/api/profile/add_arbitrary_profile.py",
-  "stubs": {
-   "Usecase.convert_si_to_unit": "an operator on a numpy array or a value of unknown type",
-   "add_arbitrary_profile": "calls util.shape_builder.V, which returns a numpy array"
-  }
+  "stubs": {}
  },
  "api/profile/add_arbitrary_profile_with_voids": {
   "functions": 2,
   "source": "ifcopenshell/api/profile/add_arbitrary_profile_with_voids.py",
-  "stubs": {
-   "Usecase.convert_si_to_unit": "an operator on a numpy array or a value of unknown type",
-   "add_arbitrary_profile_with_voids": "calls util.shape_builder.V, which returns a numpy array"
-  }
+  "stubs": {}
  },
  "api/profile/add_parameterized_profile": {
   "functions": 1,
@@ -2091,7 +2075,7 @@
   "functions": 7,
   "source": "ifcopenshell/util/placement.py",
   "stubs": {
-   "get_grid_axis_coordinates": "No rules rule at line 219: uses module np"
+   "get_grid_axis_coordinates": "the WASM build does not bind to_polygon, evaluate or the loop edges of taxonomy items"
   }
  },
  "util/profiler": {
@@ -2136,8 +2120,8 @@
    "FormatTransformer.number": "format specification ','",
    "FormatTransformer.round": "No rules rule at line 348: uses module InvalidOperation",
    "GetElementTransformer.regex_string": "re.compile (no rule for this use of the module)",
-   "_get_element_value": "No rules rule at line 525: uses module np",
-   "set_element_value": "No rules rule at line 760: uses module np"
+   "_get_element_value": "walks values of any type; its placement keys index numpy matrices",
+   "set_element_value": "walks values of any type; its placement keys index numpy matrices"
   }
  },
  "util/sequence": {
