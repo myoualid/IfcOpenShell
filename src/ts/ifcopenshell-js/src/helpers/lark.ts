@@ -17,7 +17,7 @@ function isTree(value: unknown): value is LarkTree {
 }
 
 function isToken(value: unknown): value is { type: string; value: string } {
-  return typeof value === 'object' && value !== null && 'type' in value && typeof (value as { value: unknown }).value === 'string';
+  return typeof value === 'object' && value !== null && 'type' in value && 'value' in value && typeof value.value === 'string';
 }
 
 /**
@@ -27,10 +27,11 @@ function isToken(value: unknown): value is { type: string; value: string } {
  * method stays a tree of its transformed children.
  */
 export class Transformer {
-  transform(tree: LarkTree): any {
-    const children = tree.children.map(child => (isTree(child) ? this.transform(child) : isToken(child) ? this.token(child) : child));
+  /** The transformed tree; the caller's type, as the methods of the subclass decide what it is. */
+  transform<T = unknown>(tree: LarkTree): T {
+    const children = tree.children.map(child => (isTree(child) ? this.transform<unknown>(child) : isToken(child) ? this.token(child) : child));
     const method = (this as Record<string, unknown>)[camel(tree.data)];
-    return typeof method === 'function' ? method.call(this, children) : { data: tree.data, children };
+    return (typeof method === 'function' ? method.call(this, children) : { data: tree.data, children }) as T;
   }
 
   private token(token: { type: string; value: string }): unknown {

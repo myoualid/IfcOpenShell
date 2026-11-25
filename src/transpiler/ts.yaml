@@ -1011,7 +1011,7 @@ rules:
         - $chars
       keywords: []
     when: method in ["strip", "lstrip", "rstrip"]
-    output: '{{ "helpers.lang" | use("lang") }}.strip({{ value | emit }}, {{ chars | emit }}, {{ {"strip": "both", "lstrip": "start", "rstrip": "end"}[method] | literal }})'
+    output: '{% if not (chars.__class__.__name__ == "Constant" and chars.value is string and chars.value) %}{{ (method ~ "() with characters that are not literal text") | unsupported }}{% endif %}{% set set_ = "[" ~ (chars.value | regex_class) ~ "]+" %}{{ value | emit }}.replace(/{{ ("^" ~ set_ ~ "|" ~ set_ ~ "$") if method == "strip" else ("^" ~ set_) if method == "lstrip" else (set_ ~ "$") }}/g, "")'
   # Methods of entity declarations on a declaration that is not cast yet: cast it explicitly.
   - input:
       node: Call

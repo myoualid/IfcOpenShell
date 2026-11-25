@@ -522,6 +522,8 @@ class Transpiler:
             regex_groups=regex_groups,
             js_replacement=js_replacement,
             flag_names=flag_names,
+            # Characters of a regex character class, escaped where they have a meaning there.
+            regex_class=lambda text: "".join("\\" + c if c in "\\]^-/" else c for c in text),
             format_text=self.format_text,
             type=lambda n: self.emit(n, "types"),
             kind=self.kind,
