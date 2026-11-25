@@ -17,7 +17,7 @@
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import partial
 from typing import Any, Literal, get_args
 
@@ -482,7 +482,7 @@ class Usecase:
                 attribute_class = None
                 if "." in attribute:
                     attribute, attribute_class = attribute.split(".")
-                value = getattr(element, attribute, [])
+                value: Sequence[ifcopenshell.entity_instance] = getattr(element, attribute, [])
                 if attribute_class:
                     for subvalue in value:
                         if subvalue.is_a(attribute_class):

@@ -15,6 +15,8 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
+from typing import Optional
+
 import ifcopenshell
 
 
@@ -142,7 +144,8 @@ class Usecase:
 
                 # item may had previous styled item
                 prev_styled_item = next((i for i in item.StyledByItem), None)
-                style_assignment = None  # try to find some style assignment to reuse
+                # try to find some style assignment to reuse
+                style_assignment: Optional[ifcopenshell.entity_instance] = None
 
                 if prev_styled_item is None:
                     if use_style_assignment:

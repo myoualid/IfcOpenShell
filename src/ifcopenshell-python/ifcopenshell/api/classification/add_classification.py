@@ -108,10 +108,10 @@ class Usecase:
             result.EditionDate = self.file.create_entity(
                 "IfcCalendarDate", **ifcopenshell.util.date.datetime2ifc(edition_date, "IfcCalendarDate")
             )
+        elif edition_date:
+            result.EditionDate = ifcopenshell.util.date.datetime2ifc(edition_date, "IfcDate")
         else:
-            if edition_date:
-                edition_date = ifcopenshell.util.date.datetime2ifc(edition_date, "IfcDate")
-            result.EditionDate = edition_date
+            result.EditionDate = None
 
         self.relate_to_project(result)
 

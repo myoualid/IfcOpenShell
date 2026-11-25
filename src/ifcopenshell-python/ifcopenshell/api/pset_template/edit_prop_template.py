@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
-from typing import Any
+from typing import Any, Optional
 
 import ifcopenshell
 
@@ -45,19 +45,20 @@ def edit_prop_template(
         ifcopenshell.api.pset_template.edit_prop_template(model,
             prop_template=prop, attributes={"Name": "DemoA", "PrimaryMeasureType": "IfcLengthMeasure"})
     """
-    if enum_values := attributes.get("Enumerators", None):
+    enum_values: Optional[list[Any]] = attributes.get("Enumerators", None)
+    if enum_values:
         prop_name = attributes.get("Name", None) or getattr(prop_template, "Name", None) or "Unnamed"
         primary_measure_type = (
             attributes.get("PrimaryMeasureType", None)
             or getattr(prop_template, "PrimaryMeasureType", None)
             or "IfcLabel"
         )
-        enum_values = [file.create_entity(primary_measure_type, v) for v in enum_values]
+        enum_entities = [file.create_entity(primary_measure_type, v) for v in enum_values]
         if enumerators := prop_template.Enumerators:
             enumerators.Name = prop_name
-            enumerators.EnumerationValues = enum_values
+            enumerators.EnumerationValues = enum_entities
         else:
-            prop_template.Enumerators = file.create_entity("IfcPropertyEnumeration", prop_name, enum_values)
+            prop_template.Enumerators = file.create_entity("IfcPropertyEnumeration", prop_name, enum_entities)
 
     if "Enumerators" in attributes:
         del attributes["Enumerators"]

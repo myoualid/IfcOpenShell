@@ -16,7 +16,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Any
+import datetime
+from typing import Any, Union
 
 import ifcopenshell
 import ifcopenshell.api.sequence
@@ -69,7 +70,11 @@ def edit_resource_time(
 class Usecase:
     file: ifcopenshell.file
 
-    def execute(self, resource_time: ifcopenshell.entity_instance, attributes: dict[str, Any]) -> None:
+    def execute(
+        self,
+        resource_time: ifcopenshell.entity_instance,
+        attributes: dict[str, Union[str, float, datetime.datetime, datetime.timedelta, None]],
+    ) -> None:
         resource = self.get_resource(resource_time)
 
         # If the user specifies both an end date and a duration, the duration takes priority

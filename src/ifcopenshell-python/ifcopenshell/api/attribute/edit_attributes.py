@@ -17,7 +17,7 @@
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
 from types import EllipsisType
-from typing import Any, Union
+from typing import Any, Optional, Union, cast
 
 import ifcopenshell.api.owner
 import ifcopenshell.util.element
@@ -78,7 +78,7 @@ def edit_attributes(file: ifcopenshell.file, product: ifcopenshell.entity_instan
                 product.PredefinedType = None
             elif object_type is None and predefined_type == "USERDEFINED":
                 product.PredefinedType = "NOTDEFINED"
-            elif object_type and predefined_type != "USERDEFINED":
+            elif cast(Optional[str], object_type) and predefined_type != "USERDEFINED":
                 product.PredefinedType = "USERDEFINED"
 
     if hasattr(product, "OwnerHistory"):
