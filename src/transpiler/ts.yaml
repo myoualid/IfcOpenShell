@@ -121,12 +121,10 @@ calls:
   str: String
   tuple: Array.from<any>
   list: Array.from<any>
-# Classes and functions ported by hand into a runtime module (src/helpers), as they use Python
-# libraries without rules (Lark grammars): the generated module imports and re-exports them.
 hand_written: {}
 hand_written_import: |-
-  import { {{ name }} } from "{{ "../" * (this_module.split(".") | length - 1) }}{{ target | replace(".", "/") }}.js";
-  export { {{ name }} };
+  import { {{ name | camel }} } from "{{ "../" * (this_module.split(".") | length - 1) }}{{ target | replace(".", "/") }}.js";
+  export { {{ name | camel }} };
 # Functions whose types the rules cannot prove, so they stay stubs, with the reason.
 unsupported_functions:
   api.library.assign_reference.assign_reference: "products is annotated as one entity_instance but used as a list"
@@ -356,7 +354,18 @@ types:
     output: any
 # Functions that return numpy arrays and are not written by hand: code that calls them is numpy code.
 numpy_functions: [util.shape_builder.V]
+# numpy calls that a rule writes inline for numbers (see the np.isclose rule).
+inline_numpy: [np.isclose, np.allclose, numpy.isclose, numpy.allclose]
 rules:
+  # np.isclose of two numbers and np.allclose of two literal tuples of numbers: |a - b| <= atol + rtol * |b|.
+  # Other calls of them stay stubs (check_foreign lets the inline_numpy calls reach this rule).
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: $keywords
+    when: callee | source in inline_numpy
+    output: '{% set name = (callee | source).split(".")[-1] %}{% set a, b = (args + [none, none])[:2] %}{% set ok = args | length == 2 and keywords | rejectattr("arg", "in", ["atol", "rtol"]) | list | length == 0 and keywords | map(attribute="value") | rejectattr("__class__.__name__", "equalto", "Constant") | list | length == 0 and (name == "isclose" and a | kind == "number" and b | kind == "number" or name == "allclose" and a.elts is defined and b.elts is defined and a.elts | length == b.elts | length and (a.elts + b.elts) | map("kind") | reject("equalto", "number") | list | length == 0) %}{% if not ok %}{{ ("np." ~ name ~ " of values other than numbers or literal tuples of numbers") | unsupported }}{% endif %}{% set atol = (keywords | selectattr("arg", "equalto", "atol") | first).value.value if keywords | selectattr("arg", "equalto", "atol") | list else 1e-08 %}{% set rtol = (keywords | selectattr("arg", "equalto", "rtol") | first).value.value if keywords | selectattr("arg", "equalto", "rtol") | list else 1e-05 %}{% macro close(x, y) %}Math.abs(({{ x | emit }}) - ({{ y | emit }})) <= {{ atol }} + {{ rtol }} * Math.abs({{ y | emit }}){% endmacro %}({% if a.elts is defined %}{% for x in a.elts %}{{ close(x, b.elts[loop.index0]) }}{% if not loop.last %} && {% endif %}{% endfor %}{% else %}{{ close(a, b) }}{% endif %})'
   # A method of a module-level value of this module (a parser object, for example).
   - input:
       node: Call
@@ -380,7 +389,7 @@ rules:
       args:
         - $text
       keywords: []
-    when: method in ["match", "fullmatch", "search"] and pattern | runtime_path is none and pattern | resolve is none and pattern | kind in ["unknown", "object"]
+    when: method in ["match", "fullmatch", "search"] and pattern | runtime_path is none and pattern | resolve is none and pattern | kind in ["unknown", "object", "string", "scalar", "attribute"] and not (pattern.id is defined and pattern.id == "self")
     output: '{{ "helpers.lang" | use("lang") }}.re.{{ method }}({{ pattern | emit }}, {{ text | emit }})'
   # str.title(): each run of letters starts with a capital, the rest is lower case.
   - input:
@@ -2853,6 +2862,20 @@ annotation_kinds:
   - input: $value
     output: unknown
 inference:
+  # file._is_referenced_only_in(element, ids): a native method that gives a boolean.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: _is_referenced_only_in
+    when: value | kind == "file"
+    output: boolean
+  - input:
+      node: Call
+      func: $callee
+    when: callee | source in inline_numpy
+    output: boolean
   # dict.fromkeys(keys): a Dict for entity or number keys, an object for text keys.
   - input:
       node: Call
