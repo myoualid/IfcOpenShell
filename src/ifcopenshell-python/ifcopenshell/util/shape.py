@@ -18,13 +18,10 @@
 
 from __future__ import annotations
 
-from math import cos, radians
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
 import numpy as np
 import numpy.typing as npt
-import shapely
-import shapely.ops
 
 import ifcopenshell.util.element
 import ifcopenshell.util.placement
@@ -458,17 +455,7 @@ def get_area_vf(vertices: npt.NDArray[np.float64], faces: npt.NDArray[np.int32])
     :return: The surface area.
     """
     # Calculate the triangle normal vectors
-    v1 = vertices[faces[:, 1]] - vertices[faces[:, 0]]
-    v2 = vertices[faces[:, 2]] - vertices[faces[:, 0]]
-    triangle_normals = np.cross(v1, v2)
-
-    # Normalize the normal vectors to get their length (i.e., triangle area)
-    triangle_areas = np.linalg.norm(triangle_normals, axis=1) / 2
-
-    # Sum up the areas to get the total area of the mesh
-    mesh_area = np.sum(triangle_areas)
-
-    return mesh_area.item()
+    return ifcopenshell.ifcopenshell_wrapper.mesh_area(np.ravel(vertices).tolist(), np.ravel(faces).tolist())
 
 
 def get_area(geometry: W.triangulation) -> float:
@@ -510,27 +497,7 @@ def get_side_area(
     """
     if direction is None:
         direction = {"X": (1.0, 0.0, 0.0), "Y": (0.0, 1.0, 0.0), "Z": (0.0, 0.0, 1.0)}[axis]
-
-    vertices = get_vertices(geometry)
-    faces = get_faces(geometry)
-
-    # Calculate the triangle normal vectors
-    v1 = vertices[faces[:, 1]] - vertices[faces[:, 0]]
-    v2 = vertices[faces[:, 2]] - vertices[faces[:, 0]]
-    triangle_normals = np.cross(v1, v2)
-
-    # Normalize the normal vectors
-    triangle_normals = triangle_normals / np.linalg.norm(triangle_normals, axis=1)[:, np.newaxis]
-    direction = np.array(direction) / np.linalg.norm(direction)
-
-    # Find the faces with a normal vector pointing in the desired +Y normal direction
-    # normal_tol < 0 is pointing away, = 0 is perpendicular, and > 0 is pointing towards.
-    normal_tol = 0.01  # For angle 90 it's close to perpendicular, but with a fuzz for numerical tolerance
-    acceptable_dot = cos(radians(angle)) + normal_tol
-    dot_products = np.dot(triangle_normals, direction)
-    filtered_face_indices = np.where(dot_products > acceptable_dot)[0]
-    filtered_faces = faces[filtered_face_indices]
-    return get_area_vf(vertices, filtered_faces)
+    return geometry.side_area(*(float(d) for d in direction), float(angle))
 
 
 def get_max_side_area(geometry: W.triangulation) -> float:
@@ -574,61 +541,7 @@ def get_footprint_area(
     """
     if direction is None:
         direction = {"X": (1.0, 0.0, 0.0), "Y": (0.0, 1.0, 0.0), "Z": (0.0, 0.0, 1.0)}[axis]
-
-    # The geometry library computes the same footprint in C++ (Boost.Geometry), when it has it.
-    if hasattr(geometry, "footprint_area"):
-        return geometry.footprint_area(*(float(d) for d in direction))
-
-    vertices = get_vertices(geometry)
-    faces = get_faces(geometry)
-
-    # Calculate the triangle normal vectors
-    v1 = vertices[faces[:, 1]] - vertices[faces[:, 0]]
-    v2 = vertices[faces[:, 2]] - vertices[faces[:, 0]]
-    triangle_normals = np.cross(v1, v2)
-
-    # Normalize the normal vectors
-    triangle_normals = triangle_normals / np.linalg.norm(triangle_normals, axis=1)[:, np.newaxis]
-    direction = np.array(direction) / np.linalg.norm(direction)
-
-    # Find the faces with a normal vector pointing in the desired direction using dot product
-    # normal_tol < 0 is pointing away, = 0 is perpendicular, and > 0 is pointing towards.
-    normal_tol = 0.01  # Close to perpendicular, but with a fuzz for numerical tolerance
-    dot_products = np.dot(triangle_normals, direction)
-    filtered_face_indices = np.where(dot_products > normal_tol)[0]
-    filtered_faces = faces[filtered_face_indices]
-
-    # Flatten vertices along the direction
-    vertices = vertices.copy()  # Buffers are read-only.
-    for idx in range(len(vertices)):
-        vertices[idx] = vertices[idx] - np.dot(vertices[idx], direction) * direction
-
-    # Now flatten 3D vertices into 2D polygons which can be unioned to find a footprint.
-
-    # Create an orthonormal basis using the direction
-    d = np.array(direction) / np.linalg.norm(direction)
-
-    # Find a vector not parallel to d
-    a = np.array(d)
-    if not np.isclose(a[2], 1.0, atol=0.01):  # If d is not along the Z-axis
-        a[2] += 0.01  # Small perturbation to make it not parallel
-    else:
-        a = np.array([1, 0, 0])
-
-    # First basis vector
-    b = np.cross(d, a)
-    b /= np.linalg.norm(b)
-
-    # Second basis vector
-    c = np.cross(d, b)
-
-    # Project the flattened vertices onto the basis to get 2D coordinates
-    vertices_2d = np.array([[np.dot(v, b), np.dot(v, c)] for v in vertices])
-
-    polygons = [shapely.Polygon(vertices_2d[face]) for face in filtered_faces]
-    unioned_polygon = shapely.ops.unary_union(polygons)
-
-    return unioned_polygon.area
+    return geometry.footprint_area(*(float(d) for d in direction))
 
 
 def get_outer_surface_area(geometry: W.triangulation) -> float:
@@ -640,21 +553,7 @@ def get_outer_surface_area(geometry: W.triangulation) -> float:
     :param geometry: Geometry output calculated by IfcOpenShell
     :return: The surface area.
     """
-    vertices = get_vertices(geometry)
-    faces = get_faces(geometry)
-
-    # Calculate the triangle normal vectors
-    v1 = vertices[faces[:, 1]] - vertices[faces[:, 0]]
-    v2 = vertices[faces[:, 2]] - vertices[faces[:, 0]]
-    triangle_normals = np.cross(v1, v2)
-
-    # Normalize the normal vectors
-    triangle_normals = triangle_normals / np.linalg.norm(triangle_normals, axis=1)[:, np.newaxis]
-
-    # Find the faces with a normal vector that isn't +Z or -Z
-    filtered_face_indices = np.where(abs(triangle_normals[:, 2]) < tol)[0]
-    filtered_faces = faces[filtered_face_indices]
-    return get_area_vf(vertices, filtered_faces)
+    return geometry.outer_surface_area(tol)
 
 
 def get_footprint_perimeter(geometry: W.triangulation) -> float:
@@ -666,40 +565,7 @@ def get_footprint_perimeter(geometry: W.triangulation) -> float:
     :param geometry: Geometry output calculated by IfcOpenShell
     :return: The perimeter length
     """
-    vertices = get_vertices(geometry)
-    faces = get_faces(geometry)
-
-    # Calculate the triangle normal vectors
-    v1 = vertices[faces[:, 1]] - vertices[faces[:, 0]]
-    v2 = vertices[faces[:, 2]] - vertices[faces[:, 0]]
-    triangle_normals = np.cross(v1, v2)
-
-    # Normalize the normal vectors
-    triangle_normals = triangle_normals / np.linalg.norm(triangle_normals, axis=1)[:, np.newaxis]
-
-    # Find the faces with a normal vector pointing in the negative Z direction
-    negative_z_face_indices = np.where(triangle_normals[:, 2] < -tol)[0]
-    negative_z_faces = faces[negative_z_face_indices]
-
-    # Initialize the set of counted edges and the perimeter
-    all_edges = set()
-    shared_edges = set()
-    perimeter = 0
-
-    # Loop through each face
-    for face in negative_z_faces:
-        # Loop through each edge of the face
-        for i in range(3):
-            # Get the indices of the two vertices that define the edge
-            edge = (face[i], face[(i + 1) % 3])
-            # Keep track of shared edges. Perimeter edges are unshared.
-            if (edge[1], edge[0]) in all_edges or (edge[0], edge[1]) in all_edges:
-                shared_edges.add((edge[0], edge[1]))
-                shared_edges.add((edge[1], edge[0]))
-            else:
-                all_edges.add(edge)
-
-    return np.sum([np.linalg.norm(vertices[e[0]] - vertices[e[1]]) for e in (all_edges - shared_edges)]).item()
+    return geometry.footprint_perimeter(tol)
 
 
 def get_profiles(element: ifcopenshell.entity_instance) -> list[ifcopenshell.entity_instance]:
@@ -766,9 +632,7 @@ def get_total_edge_length(geometry: W.triangulation) -> float:
     :param geometry: Geometry output calculated by IfcOpenShell
     :return: The total length of all edges in the geometry.
     """
-    vertices = get_vertices(geometry)
-    vertices = vertices[get_edges(geometry)]
-    return np.linalg.norm(vertices[:, 1] - vertices[:, 0], axis=1).sum().item()
+    return geometry.total_edge_length()
 
 
 def _extend_line(start: np.ndarray, end: np.ndarray, distance: float) -> tuple[np.ndarray, np.ndarray]:
@@ -809,54 +673,14 @@ def bisect_mesh_plane_vf(
     """
     if len(faces) == 0:
         return []
-    # The geometry library cuts the mesh in C++, when it has it.
     wrapper = ifcopenshell.ifcopenshell_wrapper
-    if hasattr(wrapper, "bisect_mesh_plane"):
-        flat = wrapper.bisect_mesh_plane(
-            np.ravel(verts).tolist(), np.ravel(faces).tolist(), float(plane_z), precision, float(extend)
-        )
-        points = [flat[i : i + 4] for i in range(0, len(flat), 4)]
-        if extend > 0:
-            return [([x0, y0], [x1, y1]) for x0, y0, x1, y1 in points]
-        return [[(x0, y0), (x1, y1)] for x0, y0, x1, y1 in points]
-    v0 = verts[faces[:, 0]]
-    v1 = verts[faces[:, 1]]
-    v2 = verts[faces[:, 2]]
-    d0 = v0[:, 2] - plane_z
-    d1 = v1[:, 2] - plane_z
-    d2 = v2[:, 2] - plane_z
-    straddle = ~((np.minimum(np.minimum(d0, d1), d2) > 0) | (np.maximum(np.maximum(d0, d1), d2) < 0))
-    if not np.any(straddle):
-        return []
-    idx = np.where(straddle)[0]
-    d0s, d1s, d2s = d0[idx], d1[idx], d2[idx]
-    v0s, v1s, v2s = v0[idx], v1[idx], v2[idx]
-
-    def _edge_intersections(va, vb, da, db):
-        mask = da * db < 0
-        diff = da - db
-        diff = np.where(diff == 0, 1.0, diff)
-        t = np.where(mask, da / diff, 0.0)
-        pts = va + t[:, np.newaxis] * (vb - va)
-        return pts, mask
-
-    p01, m01 = _edge_intersections(v0s, v1s, d0s, d1s)
-    p12, m12 = _edge_intersections(v1s, v2s, d1s, d2s)
-    p20, m20 = _edge_intersections(v2s, v0s, d2s, d0s)
-
-    segments = []
-    for i in range(len(idx)):
-        pts_xy = []
-        for pt, mask in ((p01[i], m01[i]), (p12[i], m12[i]), (p20[i], m20[i])):
-            if mask:
-                pts_xy.append((round(float(pt[0]), precision), round(float(pt[1]), precision)))
-        if len(pts_xy) == 2 and pts_xy[0] != pts_xy[1]:
-            if extend > 0:
-                s, e = _extend_line(np.array(pts_xy[0]), np.array(pts_xy[1]), extend)
-                segments.append((s.tolist(), e.tolist()))
-            else:
-                segments.append(pts_xy)
-    return segments
+    flat = wrapper.bisect_mesh_plane(
+        np.ravel(verts).tolist(), np.ravel(faces).tolist(), float(plane_z), precision, float(extend)
+    )
+    points = [flat[i : i + 4] for i in range(0, len(flat), 4)]
+    if extend > 0:
+        return [([x0, y0], [x1, y1]) for x0, y0, x1, y1 in points]
+    return [[(x0, y0), (x1, y1)] for x0, y0, x1, y1 in points]
 
 
 def dissolve_faces(
