@@ -29,8 +29,19 @@ MANIFEST = HERE / "transpile.json"
 PRECOMPUTED = HERE / "precomputed.json"
 RESULTS = HERE / "parity" / "results.json"
 TRACKING = HERE / "TRACKING.md"
-# Documentation and developer scripts, not ported; other modules import them, so their functions throw.
-SKIP = {"doc", "ifc4x3dev_scrape_data_for_docs", "generate_pset_templates", "profiler"}
+# Modules that are not ported, and why: their functions throw, so other modules still import them.
+NOT_PORTED = {
+    "util/doc": "documentation script",
+    "util/generate_pset_templates": "developer script",
+    "util/ifc4x3dev_scrape_data_for_docs": "developer script",
+    "util/profiler": "developer script",
+    "util/boundary": "2D geometry with shapely and the geometry iterator",
+    "util/space": "2D geometry with shapely, the geometry iterator and processes",
+    "util/brick": "Brick schema with rdflib and local files",
+    "util/file": "reads files from disk",
+    "api/geometry/add_representation": "Blender objects (Bonsai)",
+    "api/style/add_surface_textures": "Blender materials (Bonsai)",
+}
 HEADER = "// This file was generated with the assistance of an AI coding tool.\n// SPDX-License-Identifier: LGPL-3.0-or-later\n"
 
 
@@ -107,21 +118,23 @@ def parity_results():
 
 def tracking(manifest):
     """Write TRACKING.md: per module what remains to do first, what is done last."""
-    groups = collections.defaultdict(lambda: {"done": 0, "total": 0, "missing": [], "ported": True})
+    groups = collections.defaultdict(lambda: {"done": 0, "total": 0, "missing": []})
     blockers = collections.Counter()
+    unported = []
     for key, entry in manifest.items():
+        if entry.get("error", "").startswith("not ported"):
+            unported.append(f"{key} ({entry['error'].split(': ', 1)[1]})")
+            continue
         group = groups[key if key.startswith("util/") else "/".join(key.split("/")[:2])]
         missing = {"(whole module)": entry["error"]} if "error" in entry else entry.get("stubs", {})
         group["total"] += entry["functions"]
         stubbed = {k.split(".")[0] for k in missing if not k.startswith("line ")}  # "line N": a module value
         group["done"] += 0 if "error" in entry else entry["functions"] - len(stubbed)
-        group["ported"] &= entry.get("error") != "not ported"
-        if group["ported"]:
-            group["missing"] += [(f"{Path(key).name}: {name}", reason) for name, reason in missing.items()]
-            blockers.update(re.sub(r"^No \w+ rule at line \d+: ", "", reason)[:80] for reason in missing.values())
+        group["missing"] += [(f"{Path(key).name}: {name}", reason) for name, reason in missing.items()]
+        blockers.update(re.sub(r"^No \w+ rule at line \d+: ", "", reason)[:80] for reason in missing.values())
 
     results = parity_results()
-    todo, untested, done, unported = [], [], [], []
+    todo, untested, done = [], [], []
     for name, group in sorted(groups.items()):
         result = results[name]
         group |= {
@@ -132,9 +145,7 @@ def tracking(manifest):
             "failed": result["failed"],
             "failures": sum(c for calls in result["failed"].values() for c in calls.values()),
         }
-        if not group["ported"]:
-            unported.append(group)
-        elif group["missing"] or group["failures"]:
+        if group["missing"] or group["failures"]:
             todo.append(group)
         elif not group["passed"]:
             untested.append(group)
@@ -183,7 +194,7 @@ def tracking(manifest):
     for group in untested:
         reason = group["skipped"].most_common(1)[0][0] if group["skipped"] else "no recorded calls"
         lines.append(f"| {group['name']} | {group['translated']} | {reason[:120]} |")
-    lines += ["", "## Not ported", "", ", ".join(g["name"] for g in unported)]
+    lines += ["", "## Not ported", "", "Not counted above.", ""] + [f"- {item}" for item in unported]
     lines += ["", "## Done", "", "Translated, with no failing call.", ""]
     lines += ["| Module | Translated | Calls passed | Calls skipped |", "|---|---|---|---|"]
     lines += [f"| {g['name']} | {g['translated']} | {g['passed']} | {sum(g['skipped'].values())} |" for g in done]
@@ -226,8 +237,8 @@ def main():
             "source": f"ifcopenshell/{source_path.relative_to(PACKAGE).as_posix()}",
             "functions": sum(isinstance(n, (ast.FunctionDef, ast.ClassDef)) for n in ast.parse(source).body),
         }
-        if name.startswith("util.") and source_path.stem in SKIP:
-            entry["error"] = "not ported"
+        if relative.with_suffix("").as_posix() in NOT_PORTED:
+            entry["error"] = f"not ported: {NOT_PORTED[relative.with_suffix('').as_posix()]}"
             code = stub_module(source, entry["error"])
         else:
             try:
@@ -264,7 +275,7 @@ def main():
         k.split("/")[1]
         for k in manifest
         if k.startswith("util/")
-        and manifest[k].get("error") != "not ported"
+        and not manifest[k].get("error", "").startswith("not ported")
         and "export " in (OUTPUT / f"{k}.ts").read_text(encoding="utf-8")
     )
     lines = ['export * from "../helpers/index.js";'] + [f'export * as {m} from "./{m}.js";' for m in modules]
@@ -273,6 +284,8 @@ def main():
     MANIFEST.write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     for scope in ("util", "api"):
         entries = [e for k, e in manifest.items() if k.startswith(f"{scope}/")]
+        unported = sum(e.get("error", "").startswith("not ported") for e in entries)
+        entries = [e for e in entries if not e.get("error", "").startswith("not ported")]
         functions = sum(e["functions"] for e in entries)
         # A class with a stubbed method (key "Class.method") counts as one stub, as a stubbed class does.
         stubs = sum(
@@ -285,7 +298,7 @@ def main():
         failed = sum("error" in e for e in entries)
         print(
             f"ifcopenshell.{scope}: {len(entries) - failed}/{len(entries)} files, {functions - stubs}/{functions} functions translated"
-            f" ({methods} methods stubbed in otherwise translated classes)"
+            f" ({methods} methods stubbed in otherwise translated classes; {unported} files not ported)"
         )
     if args.report:
         tracking(manifest)
