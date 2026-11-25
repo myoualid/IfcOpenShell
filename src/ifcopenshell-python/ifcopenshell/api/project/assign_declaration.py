@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Union
+from typing import Optional, Union
 
 import ifcopenshell
 import ifcopenshell.api.owner
@@ -86,7 +86,7 @@ def assign_declaration(
         library.write("/path/to/my-library.ifc")
     """
 
-    all_declares = relating_context.Declares
+    all_declares: tuple[ifcopenshell.entity_instance, ...] = relating_context.Declares
     definitions_set = set(definitions)
 
     previous_declares_rels: set[ifcopenshell.entity_instance] = set()
@@ -99,7 +99,7 @@ def assign_declaration(
         if has_context is None:
             continue
 
-        object_rel = next(iter(has_context), None)
+        object_rel: Optional[ifcopenshell.entity_instance] = next(iter(has_context), None)
         if object_rel is None:
             objects_without_contexts.append(definition)
             continue
