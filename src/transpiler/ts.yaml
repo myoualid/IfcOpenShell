@@ -183,6 +183,20 @@ precomputed_function: |
 
   /** Precomputed from Python by src/transpiler/generate.py for {{ data.keys() | join(", ") }}. */
   export function {{ name | camel }}({{ parameter }}: string): any {
+  ifcopenshell_wrapper.map_shape: mapShape
+  ifcopenshell.ifcopenshell_wrapper.map_shape: mapShape
+  ifcopenshell_wrapper.function_item_evaluator: functionItemEvaluator
+  ifcopenshell.ifcopenshell_wrapper.function_item_evaluator: functionItemEvaluator
+  ifcopenshell_wrapper.helmert_curve_point: helmertCurvePoint
+  ifcopenshell.ifcopenshell_wrapper.helmert_curve_point: helmertCurvePoint
+# Constants of ifcopenshell_wrapper that are values of geometry settings, in the ifcopenshell-js geom module.
+geom_constants:
+  CURVES: Dimensionality.CURVES
+  SURFACES_AND_SOLIDS: Dimensionality.SURFACES_AND_SOLIDS
+  CURVES_SURFACES_AND_SOLIDS: Dimensionality.CURVES_SURFACES_AND_SOLIDS
+  TRIANGULATED: IteratorOutput.TRIANGULATED
+  NATIVE: IteratorOutput.NATIVE
+  SERIALIZED: IteratorOutput.SERIALIZED
     if (!({{ parameter }} in {{ name | camel }}Data)) throw new Error(`{{ name }}: no precomputed result for ${ {{- parameter -}} }`);
     return structuredClone({{ name | camel }}Data[{{ parameter }}]);
   }
@@ -820,6 +834,11 @@ rules:
   - input: $value
     when: value.__class__.__name__ in ["Name", "Attribute"] and value | runtime_path is not none
     output: '{% set path = value | runtime_path %}{% if path.module == "math" %}{{ math_functions[path.parts[0]] if path.parts[0] in math_functions else math_constants[path.parts[0]] }}{% else %}{% set spec = runtime_modules[path.module] %}{% if spec.module is none %}{{ ((value | source) ~ " (no rule for this use of the module)") | unsupported }}{% endif %}{{ spec.module | use(spec.alias) }}{% if spec.prefix is defined %}.{{ spec.prefix }}{% endif %}{% for part in path.parts %}.{{ part | camel }}{% endfor %}{% endif %}'
+  - input:
+      node: Attribute
+      attr: $name
+    when: name in geom_constants and ((node | source).startswith("ifcopenshell.ifcopenshell_wrapper.") or (node | source).startswith("ifcopenshell_wrapper."))
+    output: '{{ "geom.index" | use("geom") }}.{{ geom_constants[name] }}'
   # Methods of runtime objects (arrays, dates) keep their Python meaning, in camelCase.
   - input:
       node: Call
