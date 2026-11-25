@@ -130,7 +130,6 @@ unsupported_functions:
   util.placement.get_grid_axis_coordinates: "the WASM build does not bind to_polygon, evaluate or the loop edges of taxonomy items"
   util.selector._get_element_value: "walks values of any type; its placement keys index numpy matrices"
   util.selector.set_element_value: "walks values of any type; its placement keys index numpy matrices"
-  api.project.append_asset.append_asset: "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
   api.alignment.util.generate_vertices: "create_shape gives an element or a geometry; the Python must cast its result"
   api.geometry.add_profile_representation.Usecase.execute: "Clipping.parse gives an entity or a Clipping, where the Python annotates its clippings as Clipping"
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
