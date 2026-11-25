@@ -991,7 +991,11 @@ class Transpiler:
 
     def kind(self, node):
         proven = self.proven(node)
-        return proven[0] if proven else self.emit(node, "inference")
+        if proven and proven[0] != "object":
+            return proven[0]
+        # "object" only says that the value is always true: the rules may know more (a path, a Lark tree).
+        inferred = self.emit(node, "inference")
+        return "object" if proven and inferred == "unknown" else inferred
 
     def inferred_return(self, callee):
         """The kind of what a function of this module with no return annotation returns, from the kinds

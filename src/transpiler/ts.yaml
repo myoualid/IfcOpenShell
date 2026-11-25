@@ -1761,7 +1761,7 @@ rules:
       args: $args
       keywords: []
     when: '"dict" not in shadowed and args | length in [1, 2] and args[0] | element_kind in ["entity", "number", "string"]'
-    output: '{% set fill = args[1] | emit if args | length == 2 else "null" %}{% if args[0] | element_kind == "string" %}Object.fromEntries(Array.from<string>({{ args[0] | iterable }}, (k) => [k, {{ fill }}])){% else %}new {{ "helpers.lang" | use("lang") }}.Dict(Array.from<any>({{ args[0] | iterable }}, (k: any) => [k, {{ fill }}] as const)){% endif %}'
+    output: '{% set fill = args[1] | emit if args | length == 2 else "null" %}{% if args[0] | element_kind == "string" %}Object.fromEntries([...{{ args[0] | iterable }}].map((k: string) => [k, {{ fill }}])){% else %}new {{ "helpers.lang" | use("lang") }}.Dict([...{{ args[0] | iterable }}].map((k: any) => [k, {{ fill }}] as const)){% endif %}'
   - input:
       node: Call
       func:
