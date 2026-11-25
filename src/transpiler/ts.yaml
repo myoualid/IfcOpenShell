@@ -229,7 +229,7 @@ types:
     output: '{% set name = (value | runtime_path).parts[-1] %}{{ ("helpers.numpy" | use("np")) ~ ".NDArray" if name in ["ndarray", "NDArray", "array"] else "boolean" if name == "bool_" else "number" }}'
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module in runtime_kinds
-    output: '{% set path = value | runtime_path %}{{ runtime_modules[path.module].module | use(runtime_modules[path.module].alias) }}{% for part in path.parts %}.{{ part }}{% endfor %}'
+    output: '{% set path = value | runtime_path %}{% if runtime_modules[path.module].module is none %}{{ ("the type " ~ (value | source) ~ " (no TS type)") | unsupported }}{% else %}{{ runtime_modules[path.module].module | use(runtime_modules[path.module].alias) }}{% for part in path.parts %}.{{ part }}{% endfor %}{% endif %}'
   - input:
       node: Attribute
       value:
@@ -819,7 +819,7 @@ rules:
     output: '{{ callee | emit }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}{{ "**values in a call (pass the keyword arguments)" | unsupported }}{% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input: $value
     when: value.__class__.__name__ in ["Name", "Attribute"] and value | runtime_path is not none
-    output: '{% set path = value | runtime_path %}{% if path.module == "math" %}{{ math_functions[path.parts[0]] if path.parts[0] in math_functions else math_constants[path.parts[0]] }}{% else %}{% set spec = runtime_modules[path.module] %}{{ spec.module | use(spec.alias) }}{% if spec.prefix is defined %}.{{ spec.prefix }}{% endif %}{% for part in path.parts %}.{{ part | camel }}{% endfor %}{% endif %}'
+    output: '{% set path = value | runtime_path %}{% if path.module == "math" %}{{ math_functions[path.parts[0]] if path.parts[0] in math_functions else math_constants[path.parts[0]] }}{% else %}{% set spec = runtime_modules[path.module] %}{% if spec.module is none %}{{ ((value | source) ~ " (no rule for this use of the module)") | unsupported }}{% endif %}{{ spec.module | use(spec.alias) }}{% if spec.prefix is defined %}.{{ spec.prefix }}{% endif %}{% for part in path.parts %}.{{ part | camel }}{% endfor %}{% endif %}'
   # Methods of runtime objects (arrays, dates) keep their Python meaning, in camelCase.
   - input:
       node: Call
