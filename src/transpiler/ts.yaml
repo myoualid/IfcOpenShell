@@ -370,6 +370,40 @@ rules:
       keywords: []
     when: name in module_globals and name not in functions and name not in classes and name not in shadowed and not method.startswith("_") and node.func.value | kind in ["unknown", "object"]
     output: '{{ name | ident }}.{{ method | camel }}({{ args | map("emit") | join(", ") }})'
+  # str.title(): each run of letters starts with a capital, the rest is lower case.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: title
+      args: []
+      keywords: []
+    when: value | kind == "string"
+    output: '{{ value | emit }}.toLowerCase().replace(/(^|[^a-z])([a-z])/g, (_m: string, before: string, letter: string) => before + letter.toUpperCase())'
+  # filter(function, items): an array, which iterates as Python's filter object does.
+  - input:
+      node: Call
+      func:
+        node: Name
+        id: filter
+      args:
+        - $function
+        - $items
+      keywords: []
+    when: '"filter" not in shadowed and not (function.__class__.__name__ == "Constant" and function.value is none)'
+    output: 'Array.from<any>({{ items | iterable }}).filter({{ function | emit }})'
+  # An exception class with no body of its own: an Error subclass with the class name as its name.
+  - input:
+      node: ClassDef
+      name: $name
+      bases:
+        - $base
+      keywords: []
+      body: $body
+      decorator_list: []
+    when: base | source in ["Exception", "ValueError", "RuntimeError", "TypeError", "KeyError"] and body | rejectattr("__class__.__name__", "in", ["Pass", "Expr"]) | list | length == 0
+    output: '{% if top_level %}export {% endif %}class {{ name }} extends Error { override name = {{ name | literal }}; }'
   # text * n: String.prototype.repeat.
   - input:
       node: BinOp
@@ -1966,7 +2000,7 @@ rules:
     # JS has one number type, so a float such as 85.0 arrives as 85. A float check guarding code that reads the
     # checked value (marked reads_checked) accepts any number; one that only picks between int and float
     # behaviour, such as IfcReal or IfcInteger, keeps testing for a non-integer.
-    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined or (value.attr is defined and value.attr == "wrappedValue") %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function" && !({{ value | emit }} instanceof ifcopenshell.EntityInstance)){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name in ["datetime", "date"] %}{{ value | emit }} instanceof Date{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ ("isinstance of ifcopenshell_wrapper." ~ name ~ " needs explicit schema casts") | unsupported }}{% else %}{{ ("isinstance of " ~ (kind | source) ~ ", a type with no TS check") | unsupported }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
+    output: '({% for kind in (kinds.elts if kinds.elts is defined else [kinds]) %}{% set name = kind.attr if kind.attr is defined else kind.id %}{% if kind | source in ["re.Pattern", "typing.Pattern"] %}{{ value | emit }} instanceof RegExp{% elif kind | runtime_path is not none %}Object({{ value | emit }}) instanceof {{ kind | emit }}{% elif name == "str" %}typeof {{ value | emit }} === "string"{% elif name == "int" %}(typeof {{ value | emit }} === "number" && Number.isInteger({{ value | emit }})){% elif name == "float" %}{% if node.reads_checked is defined or (value.attr is defined and value.attr == "wrappedValue") %}typeof {{ value | emit }} === "number"{% else %}(typeof {{ value | emit }} === "number" && !Number.isInteger({{ value | emit }})){% endif %}{% elif name == "bool" %}typeof {{ value | emit }} === "boolean"{% elif name == "Iterable" %}({{ value | emit }} != null && typeof Object({{ value | emit }})[Symbol.iterator] === "function" && !({{ value | emit }} instanceof ifcopenshell.EntityInstance)){% elif name == "Sequence" %}(Array.isArray({{ value | emit }}) || typeof {{ value | emit }} === "string"){% elif name == "bytes" %}{{ value | emit }} instanceof Uint8Array{% elif name in ["list", "tuple"] %}Array.isArray({{ value | emit }}){% elif name == "set" %}{{ value | emit }} instanceof Set{% elif name == "dict" %}({{ value | emit }} !== null && Object.getPrototypeOf({{ value | emit }}) === Object.prototype){% elif name == "entity_instance" %}{{ value | emit }} instanceof ifcopenshell.EntityInstance{% elif name == "file" %}{{ value | emit }} instanceof ifcopenshell.File{% elif name in ["datetime", "date"] %}{{ value | emit }} instanceof Date{% elif kind.__class__.__name__ == "Name" and kind.id in classes or kind | is_class %}{{ value | emit }} instanceof {{ kind | emit }}{% elif name in wrapper_classes %}{{ ("isinstance of ifcopenshell_wrapper." ~ name ~ " needs explicit schema casts") | unsupported }}{% else %}{{ ("isinstance of " ~ (kind | source) ~ ", a type with no TS check") | unsupported }}{% endif %}{% if not loop.last %} || {% endif %}{% endfor %})'
   - input:
       node: Call
       func:
