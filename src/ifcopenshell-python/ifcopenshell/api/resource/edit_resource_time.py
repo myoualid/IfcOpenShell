@@ -73,9 +73,9 @@ class Usecase:
         resource = self.get_resource(resource_time)
 
         # If the user specifies both an end date and a duration, the duration takes priority
-        if attributes.get("ScheduleWork", None) and "ScheduleFinish" in attributes.keys():
+        if attributes.get("ScheduleWork", None) is not None and "ScheduleFinish" in attributes.keys():
             del attributes["ScheduleFinish"]
-        if attributes.get("ActualWork", None) and "ActualFinish" in attributes.keys():
+        if attributes.get("ActualWork", None) is not None and "ActualFinish" in attributes.keys():
             del attributes["ActualFinish"]
 
         for name, value in attributes.items():

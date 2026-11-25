@@ -224,21 +224,21 @@ def get_helmert_transformation_parameters(ifc_file: ifcopenshell.file) -> Option
     """
     if ifc_file.schema == "IFC2X3":
         project = ifc_file.by_type("IfcProject")[0]
-        conversion = ifcopenshell.util.element.get_pset(project, "ePSet_MapConversion")
-        if not conversion:
+        pset = ifcopenshell.util.element.get_pset(project, "ePSet_MapConversion")
+        if not pset:
             return
-        e = conversion.get("Eastings", None) or 0
-        n = conversion.get("Northings", None) or 0
-        h = conversion.get("OrthogonalHeight", None) or 0
-        xaa = conversion.get("XAxisAbscissa", None) or 0
-        xao = conversion.get("XAxisOrdinate", None) or 0
-        scale = conversion.get("Scale", None) or 1
+        e = float(pset.get("Eastings", None) or 0)
+        n = float(pset.get("Northings", None) or 0)
+        h = float(pset.get("OrthogonalHeight", None) or 0)
+        xaa = float(pset.get("XAxisAbscissa", None) or 0)
+        xao = float(pset.get("XAxisOrdinate", None) or 0)
+        scale = float(pset.get("Scale", None) or 1)
         factor_x = factor_y = factor_z = 1
     else:
-        conversion = ifc_file.by_type("IfcCoordinateOperation")
-        if not conversion:
+        operations = ifc_file.by_type("IfcCoordinateOperation")
+        if not operations:
             return
-        conversion = conversion[0]
+        conversion = operations[0]
 
         if conversion.is_a("IfcMapConversion"):
             e = conversion.Eastings or 0

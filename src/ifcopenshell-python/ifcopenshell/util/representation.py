@@ -400,7 +400,7 @@ def get_prioritised_contexts(ifc_file: ifcopenshell.file) -> list[ifcopenshell.e
         "NOTDEFINED",
     ]
 
-    def sort_context(context):
+    def sort_context(context: ifcopenshell.entity_instance) -> tuple[float, ...]:
         priority = []
 
         if context.ContextType in type_priority:

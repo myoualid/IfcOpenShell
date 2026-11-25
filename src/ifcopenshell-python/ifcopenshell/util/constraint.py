@@ -18,7 +18,7 @@
 #
 #
 
-from typing import Union
+from typing import Optional, Union
 
 import ifcopenshell
 
@@ -65,8 +65,8 @@ def get_metrics(constraint: ifcopenshell.entity_instance) -> list[ifcopenshell.e
     return metrics
 
 
-def get_metric_reference(metric: ifcopenshell.entity_instance, is_deep=True):
-    def get_reference_Attribute(ref, path):
+def get_metric_reference(metric: ifcopenshell.entity_instance, is_deep: bool = True) -> Optional[str]:
+    def get_reference_Attribute(ref: Optional[ifcopenshell.entity_instance], path: str) -> Optional[str]:
         if ref:
             if is_deep:
                 if not path:
@@ -83,7 +83,7 @@ def get_metric_reference(metric: ifcopenshell.entity_instance, is_deep=True):
 
 
 def get_metric_constraints(
-    resource: ifcopenshell.entity_instance, attribute
+    resource: ifcopenshell.entity_instance, attribute: str
 ) -> Union[list[ifcopenshell.entity_instance], None]:
     metrics = []
     for constraint in get_constraints(resource) or []:

@@ -100,7 +100,7 @@ def assign_object(
     """
     settings = {"related_objects": related_objects, "relating_object": relating_object}
 
-    if not settings["related_objects"]:
+    if not related_objects:
         return
 
     ifc2x3 = file.schema == "IFC2X3"
