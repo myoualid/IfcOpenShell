@@ -118,3 +118,50 @@ double ifcopenshell::geom::mesh_metrics::footprint_area(const std::vector<double
 	}
 	return bg::area(union_all(std::move(parts)));
 }
+
+std::vector<double> ifcopenshell::geom::mesh_metrics::bisect_mesh_plane(const std::vector<double>& verts, const std::vector<int>& faces, double z, int precision, double extend) {
+	if (verts.size() % 3 || faces.size() % 3) {
+		throw std::invalid_argument("verts and faces must have three values for each vertex and triangle");
+	}
+	const double scale = std::pow(10., precision);
+	// Half to even, as Python round().
+	auto round_to = [scale](double v) { return std::nearbyint(v * scale) / scale; };
+
+	std::vector<double> segments;
+	for (size_t f = 0; f + 2 < faces.size(); f += 3) {
+		const int corners[3] = {faces[f], faces[f + 1], faces[f + 2]};
+		double heights[3];
+		for (int i = 0; i < 3; ++i) {
+			heights[i] = verts[3 * corners[i] + 2] - z;
+		}
+		// Edges 0-1, 1-2 and 2-0 in this order; an edge crosses when its ends are strictly on both sides.
+		std::array<double, 4> points;
+		int count = 0;
+		for (int i = 0; i < 3; ++i) {
+			const int j = (i + 1) % 3;
+			const double da = heights[i], db = heights[j];
+			if (!(da * db < 0.)) {
+				continue;
+			}
+			const double t = da / (da - db);
+			const double* a = &verts[3 * corners[i]];
+			const double* b = &verts[3 * corners[j]];
+			if (count < 2) {
+				points[2 * count] = round_to(a[0] + t * (b[0] - a[0]));
+				points[2 * count + 1] = round_to(a[1] + t * (b[1] - a[1]));
+			}
+			++count;
+		}
+		if (count != 2 || (points[0] == points[2] && points[1] == points[3])) {
+			continue;
+		}
+		if (extend > 0.) {
+			const double dx = points[2] - points[0], dy = points[3] - points[1];
+			const double length = std::sqrt(dx * dx + dy * dy);
+			const double ox = extend * dx / length, oy = extend * dy / length;
+			points = {points[0] - ox, points[1] - oy, points[2] + ox, points[3] + oy};
+		}
+		segments.insert(segments.end(), points.begin(), points.end());
+	}
+	return segments;
+}

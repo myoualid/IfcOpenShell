@@ -21,6 +21,7 @@
 #include "tree.h"
 #include "taxonomy.h"
 #include "function_item_evaluator.h"
+#include "mesh_metrics.h"
 #include "geometry_serializer_plugin.h"
 #include "document_serializer_plugin.h"
 #include "geometry_serializer.h"
@@ -309,6 +310,7 @@ IFCAPI_DISCOVER_POLICY(transformation, ccomponents, matrix, "data()->ccomponents
 
 // Free functions outside the spec namespace that are selected for the C ABI.
 IFCAPI_DISCOVER_FUNCTION(ifcopenshell::geom, helmert_curve_point)
+IFCAPI_DISCOVER_FUNCTION(ifcopenshell::geom::mesh_metrics, bisect_mesh_plane)
 IFCAPI_DISCOVER_FUNCTION(ifcgeom::bindings, create_tree)
 IFCAPI_DISCOVER_FUNCTION(ifcgeom::bindings, create_tree_from_file)
 IFCAPI_DISCOVER_FUNCTION(ifcgeom::bindings, create_tree_from_file_with_settings)

@@ -5,11 +5,13 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <stdexcept>
 #include <vector>
 
 namespace {
 
+using ifcopenshell::geom::mesh_metrics::bisect_mesh_plane;
 using ifcopenshell::geom::mesh_metrics::footprint_area;
 
 // A 2 x 3 x 4 box with separate vertices for each face, as the kernels triangulate it.
@@ -62,4 +64,42 @@ TEST_CASE("footprint_area counts overlapping triangles once", "[mesh_metrics]") 
 TEST_CASE("footprint_area rejects incomplete vertices and faces", "[mesh_metrics]") {
 	CHECK_THROWS_AS(footprint_area({0., 0.}, {}), std::invalid_argument);
 	CHECK_THROWS_AS(footprint_area({0., 0., 0.}, {0, 0}), std::invalid_argument);
+}
+
+namespace {
+
+double total_length(const std::vector<double>& segments) {
+	double length = 0.;
+	for (size_t i = 0; i + 3 < segments.size(); i += 4) {
+		length += std::hypot(segments[i + 2] - segments[i], segments[i + 3] - segments[i + 1]);
+	}
+	return length;
+}
+
+} // namespace
+
+TEST_CASE("bisect_mesh_plane cuts the triangles that cross the plane", "[mesh_metrics]") {
+	std::vector<double> verts;
+	std::vector<int> faces;
+	box(verts, faces);
+	// Each side of the box is two triangles, so the cut is 8 segments along the 2 x 3 outline.
+	const auto segments = bisect_mesh_plane(verts, faces, 2.);
+	CHECK(segments.size() == 8 * 4);
+	CHECK(total_length(segments) == Catch::Approx(10.));
+	// Each segment is longer by the extension at both ends.
+	CHECK(total_length(bisect_mesh_plane(verts, faces, 2., 3, 0.05)) == Catch::Approx(10.8));
+	CHECK(bisect_mesh_plane(verts, faces, 10.).empty());
+	CHECK(bisect_mesh_plane(verts, faces, -10.).empty());
+	CHECK(bisect_mesh_plane(verts, {}, 0.).empty());
+}
+
+TEST_CASE("bisect_mesh_plane rounds the points and keeps the order of the edges", "[mesh_metrics]") {
+	// The plane crosses the edges 0-1 and 2-0 at a third of their lengths.
+	const std::vector<double> verts = {0, 0, -1, 1, 0, 2, 0, 1, 2};
+	CHECK(bisect_mesh_plane(verts, {0, 1, 2}, 0.) == std::vector<double>{0.333, 0., 0., 0.333});
+	const auto precise = bisect_mesh_plane(verts, {0, 1, 2}, 0., 6);
+	CHECK(precise[0] == 0.333333);
+	// A triangle that only touches the plane at a vertex gives no segment.
+	CHECK(bisect_mesh_plane({0, 0, 0, 1, 0, 1, 0, 1, 1}, {0, 1, 2}, 0.).empty());
+	CHECK_THROWS_AS(bisect_mesh_plane({0., 0.}, {}, 0.), std::invalid_argument);
 }
