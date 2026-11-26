@@ -49,7 +49,7 @@ jobs:
           path: ifcopenshell_build
           ref: wasm-native
           lfs: true
-          token: ${{ secrets.BUILD_REPO_TOKEN }}
+          token: ${{ secrets.BUILD_REPO_TOKEN || github.token }}
           persist-credentials: true
 
       - name: Read pinned emsdk version
