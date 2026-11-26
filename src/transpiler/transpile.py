@@ -193,6 +193,45 @@ def mark_checked_reads(tree):
                 call.reads_checked = True
 
 
+def annotated_numbers(tree):
+    """ids of the expressions that a float or int annotation types: in `x: float = d["k"] / 2`, d["k"] is a
+    number even where its own type is not known (a value of a dict[str, Any]); so is each later read of x."""
+    found = set()
+
+    def operands(node):
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
+            operands(node.left)
+            operands(node.right)
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            operands(node.operand)
+        else:
+            found.add(id(node))
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.value, (ast.BinOp, ast.UnaryOp))
+            and ast.unparse(node.annotation) in ("float", "int")
+        ):
+            operands(node.value)
+    # A local declared `x: float` stays a number where mypy gives Any (after `x = d["k"]` with d a dict[str, Any]).
+    for function in ast.walk(tree):
+        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            declared = {
+                n.target.id
+                for n in ast.walk(function)
+                if isinstance(n, ast.AnnAssign)
+                and isinstance(n.target, ast.Name)
+                and ast.unparse(n.annotation) in ("float", "int")
+            }
+            found |= {
+                id(n)
+                for n in ast.walk(function)
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id in declared
+            }
+    return found
+
+
 def flatten_type_checking(body):
     """Module statements with `if TYPE_CHECKING:` blocks (imports and type aliases) inlined; their else branches dropped."""
     return [
@@ -425,6 +464,7 @@ def unsupported(reason):
 class Transpiler:
     def __init__(self, rules, index=None, precomputed=None, types=None):
         self.types = types or {}
+        self.annotated_numbers = set()
         self.rules = yaml.safe_load(Path(rules).read_text(encoding="utf-8"))
         # The kind of each IFC attribute name, when all its declarations in the schemas have one kind.
         self.rules["attribute_kinds"] = attribute_kinds()
@@ -1083,6 +1123,8 @@ class Transpiler:
         inferred = self.emit(node, "inference")
         if inferred == "unknown" and isinstance(node, ast.Name):
             inferred = self.assigned_kind(node.id)
+        if inferred == "unknown" and id(node) in self.annotated_numbers:
+            return "number"
         return "object" if proven and inferred == "unknown" else inferred
 
     CASTS = ("as_named_type", "as_type_declaration", "as_simple_type")
@@ -1263,6 +1305,7 @@ class Transpiler:
         mark_checked_reads(tree)
         tree.body = flatten_type_checking(tree.body)
         self.functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+        self.annotated_numbers = annotated_numbers(tree)
         named_tuples = {
             n.name
             for n in tree.body
