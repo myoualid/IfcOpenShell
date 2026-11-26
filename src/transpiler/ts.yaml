@@ -1040,6 +1040,19 @@ rules:
       value: $value
     when: op.__class__.__name__ in numpy_operators and (container | kind == "ndarray") and index.__class__.__name__ != "Tuple"
     output: '{% set item = (container | emit) ~ "[" ~ (index | emit) ~ "]" %}{{ item }} = {{ "helpers.linalg" | use("linalg") }}.{{ numpy_operators[op.__class__.__name__] }}({{ item }}, {{ value | emit }});'
+  # m[i, j] += x on a matrix: the item of a row.
+  - input:
+      node: AugAssign
+      target:
+        node: Subscript
+        value: $container
+        slice:
+          node: Tuple
+          elts: $elts
+      op: $op
+      value: $value
+    when: container | kind == "ndarray" and elts | length == 2 and elts | selectattr("__class__.__name__", "equalto", "Slice") | list | length == 0 and op.__class__.__name__ in ["Add", "Sub", "Mult", "Div"] and value | kind == "number"
+    output: '{{ container | emit }}[{{ elts[0] | emit }}][{{ elts[1] | emit }}] {{ {"Add": "+", "Sub": "-", "Mult": "*", "Div": "/"}[op.__class__.__name__] }}= {{ value | emit }};'
   - input:
       node: AugAssign
       target:
@@ -3205,6 +3218,14 @@ inference:
       right: $right
     when: op.__class__.__name__ in dunder_operators and (left | kind in ["ndarray", "pyobject"] or right | kind in ["ndarray", "pyobject"])
     output: '{{ "ndarray" if "ndarray" in [left | kind, right | kind] else "pyobject" }}'
+  # Arithmetic of two numbers (mypy gives no type at the position of an operand in parentheses).
+  - input:
+      node: BinOp
+      left: $left
+      op: $op
+      right: $right
+    when: op.__class__.__name__ in ["Add", "Sub", "Mult", "Div", "Pow", "Mod", "FloorDiv"] and left | kind == "number" and right | kind == "number"
+    output: number
   - input:
       node: UnaryOp
       op:
