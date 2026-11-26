@@ -2983,11 +2983,12 @@ rules:
       values: $values
     when: node | kind == "map"
     output: 'new Map<any, any>([{% for key in keys %}[{{ key | emit }}, {{ values[loop.index0] | emit }}]{% if not loop.last %}, {% endif %}{% endfor %}])'
+  # A tuple of numbers as a value keeps its length in the type ({"X": (1.0, 0.0, 0.0)}).
   - input:
       node: Dict
       keys: $keys
       values: $values
-    output: '({ {% for key in keys %}{% if key.value is defined and key.value is string %}{{ key.value | literal }}{% else %}[{{ key | emit }}]{% endif %}: {{ values[loop.index0] | emit }}{% if not loop.last %}, {% endif %}{% endfor %} })'
+    output: '({ {% for key in keys %}{% if key.value is defined and key.value is string %}{{ key.value | literal }}{% else %}[{{ key | emit }}]{% endif %}: {% set v = values[loop.index0] %}{{ v | emit }}{% if v.__class__.__name__ == "Tuple" and v.elts and v.elts | map("kind") | reject("equalto", "number") | list | length == 0 %} as [{{ (["number"] * (v.elts | length)) | join(", ") }}]{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} })'
   - input:
       node: Tuple
       elts: $elements
