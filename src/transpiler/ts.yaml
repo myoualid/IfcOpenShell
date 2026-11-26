@@ -3188,7 +3188,7 @@ inference:
       node: Call
       func: $callee
     when: callee | runtime_path is not none
-    output: '{% set path = callee | runtime_path %}{% set name = path.parts[-1] if path.parts else "" %}{% if path.module == "math" %}number{% elif path.module == "numpy" %}{{ "boolean" if name in ["allclose", "array_equal", "isclose", "any", "all"] else "unknown" if name == "dot" else "number" if name in ["norm", "det", "sum", "mean", "min", "max", "argmax", "argmin", "pi"] else (node.args[0] | kind if node.args and node.args[0] | kind in ["number", "ndarray"] else "unknown") if name in numpy_scalars else "ndarray" }}{% elif path.module == "itertools" %}array{% else %}{{ runtime_kinds.get(path.module, "unknown") }}{% endif %}'
+    output: '{% set path = callee | runtime_path %}{% set name = path.parts[-1] if path.parts else "" %}{% if path.module == "math" %}number{% elif path.module == "numpy" %}{{ "boolean" if name in ["allclose", "array_equal", "isclose", "any", "all"] else ("number" if node.args | length == 2 and node.args | map("element_kind") | reject("equalto", "number") | list | length == 0 else "unknown") if name == "dot" else "number" if name in ["norm", "det", "sum", "mean", "min", "max", "argmax", "argmin", "pi"] else (node.args[0] | kind if node.args and node.args[0] | kind in ["number", "ndarray"] else "unknown") if name in numpy_scalars else "ndarray" }}{% elif path.module == "itertools" %}array{% else %}{{ runtime_kinds.get(path.module, "unknown") }}{% endif %}'
   - input: $value
     when: value.__class__.__name__ in ["Name", "Attribute"] and value | runtime_path is not none
     output: '{% set path = value | runtime_path %}{{ "number" if path.module == "math" or path.module == "numpy" and (path.parts or [""])[-1] in ["pi", "e", "inf", "nan"] else "unknown" }}'
@@ -3370,6 +3370,13 @@ inference:
       slice: $index
     when: value | kind == "entity" and (index.__class__.__name__ == "Constant" and index.value is integer and index.value >= 0 or index.__class__.__name__ != "Constant" and index | kind == "number")
     output: attribute
+  # An item of a vector or a list of vectors (v[0], points[i]): the kind of its elements.
+  - input:
+      node: Subscript
+      value: $value
+      slice: $index
+    when: value | kind in ["sequence", "array"] and index.__class__.__name__ != "Slice" and (index.__class__.__name__ == "Constant" and index.value is integer or index | kind == "number") and value | element_kind not in ["unknown", "object"]
+    output: '{{ value | element_kind }}'
   # A call of a function of this module with no return annotation: the kind of its return values.
   - input:
       node: Call

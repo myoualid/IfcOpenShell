@@ -102,6 +102,12 @@ def element_type(proper):
     if isinstance(proper, types.TupleType) and proper.partial_fallback.type.fullname == "builtins.tuple" and proper.items:
         items = [types.get_proper_type(item) for item in proper.items]
         return items[0] if all(item == items[0] for item in items) else None
+    if isinstance(proper, types.UnionType):
+        # A vector type (Sequence[float] | Vector | np.ndarray): the elements of its sequences, when they agree.
+        # The other members (numpy arrays, Blender vectors) hold the same elements by the contract of the type.
+        found = [element_type(types.get_proper_type(item)) for item in proper.items]
+        found = [item for item in found if item is not None]
+        return found[0] if found and all(item == found[0] for item in found) else None
     return None
 
 
