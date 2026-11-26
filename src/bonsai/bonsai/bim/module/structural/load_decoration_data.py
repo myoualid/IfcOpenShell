@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Bonsai.  If not, see <http://www.gnu.org/licenses/>.
 
+import math
 from collections.abc import Iterable
 from math import sin
 from typing import Literal, TypedDict, Union
@@ -25,6 +26,7 @@ import bpy
 import ifcopenshell
 import ifcopenshell.util.placement
 import ifcopenshell.util.representation
+import ifcopenshell.util.structural
 import ifcopenshell.util.unit
 import ifcopenshell.util.unit as ifcunit
 import numpy as np
@@ -79,6 +81,76 @@ ProcessedLoad = TypedDict(
 )
 
 
+def box_crosses_segments(
+    left: float, low: float, width: float, height: float, segments: Iterable[tuple[Iterable, Iterable]]
+) -> bool:
+    """Whether a label's box, from (left, low) and of a width and height in 2D, touches any of the lines given as
+    pairs of end points, so that labels can keep off arrows and arcs as well as each other"""
+    right, high = left + width, low + height
+    for (x1, y1), (x2, y2) in segments:
+        if max(x1, x2) < left or min(x1, x2) > right or max(y1, y2) < low or min(y1, y2) > high:
+            continue  # Nowhere near, which most lines are; quick to rule out, as this runs on every redraw.
+        # Clip the line to the box (Liang-Barsky): any part left means it crosses the box.
+        t0, t1 = 0.0, 1.0
+        dx, dy = x2 - x1, y2 - y1
+        for p, q in ((-dx, x1 - left), (dx, right - x1), (-dy, y1 - low), (dy, high - y1)):
+            if p == 0:
+                if q < 0:
+                    break  # Parallel to this edge and outside it.
+                continue
+            t = q / p
+            if p < 0:
+                t0 = max(t0, t)
+            else:
+                t1 = min(t1, t)
+            if t0 > t1:
+                break
+        else:
+            return True
+    return False
+
+
+class ScreenGrid:
+    """Label boxes and lines on screen, kept by the cells of a grid they touch, so that a label being placed is
+    tested only against those near it, as this runs on every redraw with as many labels as loads shown"""
+
+    def __init__(self, cell: float = 64.0) -> None:
+        self.cell = cell
+        self.boxes: dict[tuple[int, int], list[tuple[float, float, float, float]]] = {}
+        self.segments: dict[tuple[int, int], list[tuple[Iterable, Iterable]]] = {}
+
+    def get_cells(self, left: float, low: float, right: float, high: float) -> Iterable[tuple[int, int]]:
+        c = self.cell
+        for i in range(math.floor(left / c), math.floor(right / c) + 1):
+            for j in range(math.floor(low / c), math.floor(high / c) + 1):
+                yield i, j
+
+    def add_box(self, left: float, low: float, width: float, height: float) -> None:
+        for cell in self.get_cells(left, low, left + width, low + height):
+            self.boxes.setdefault(cell, []).append((left, low, width, height))
+
+    def add_segment(self, start: Iterable, end: Iterable) -> None:
+        (x1, y1), (x2, y2) = start, end
+        for cell in self.get_cells(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)):
+            self.segments.setdefault(cell, []).append((start, end))
+
+    def overlaps_box(self, left: float, low: float, width: float, height: float, margin: float = 0.0) -> bool:
+        """Whether a box comes within margin of a box added"""
+        for cell in self.get_cells(left - margin, low - margin, left + width + margin, low + height + margin):
+            for bl, bb, bw, bh in self.boxes.get(cell, ()):
+                if left < bl + bw + margin and bl < left + width + margin and low < bb + bh + margin:
+                    if bb < low + height + margin:
+                        return True
+        return False
+
+    def crosses_segment(self, left: float, low: float, width: float, height: float) -> bool:
+        """Whether a box touches any line added"""
+        return any(
+            box_crosses_segments(left, low, width, height, self.segments.get(cell, ()))
+            for cell in self.get_cells(left, low, left + width, low + height)
+        )
+
+
 class ShaderInfo:
     # Values of a load being edited, by load id, shown in place of its own until the edit is confirmed or cancelled.
     preview: dict[int, dict[str, Union[float, None]]] = {}
@@ -113,8 +185,9 @@ class ShaderInfo:
         self.get_linear_loads()
         self.get_point_loads()
         self.get_planar_loads()
+        self.get_temperature_loads()
         self.tag_new_entries(None)
-        if len(self.info):
+        if len(self.info) or len(self.text_info):
             self.is_empty = False
 
     def get_force_units(self) -> None:
@@ -124,7 +197,15 @@ class ShaderInfo:
         ifc_file = tool.Ifc.get()
         project_units = {
             t: ifcunit.get_project_unit(ifc_file, t)
-            for t in ("FORCEUNIT", "LENGTHUNIT", "TORQUEUNIT", "LINEARFORCEUNIT", "LINEARMOMENTUNIT", "PLANARFORCEUNIT")
+            for t in (
+                "FORCEUNIT",
+                "LENGTHUNIT",
+                "TORQUEUNIT",
+                "LINEARFORCEUNIT",
+                "LINEARMOMENTUNIT",
+                "PLANARFORCEUNIT",
+                "THERMODYNAMICTEMPERATUREUNIT",
+            )
         }
         linear_force_units = [u for u in [project_units["LINEARFORCEUNIT"]] if u]
         linear_moment_units = [u for u in [project_units["LINEARMOMENTUNIT"]] if u]
@@ -167,6 +248,8 @@ class ShaderInfo:
             if e.Unit.UnitType == "AREAUNIT":
                 second = ifcunit.get_unit_symbol(e.Unit)
         self.planar_force_unit = first + "/" + second
+        temp_unit = project_units["THERMODYNAMICTEMPERATUREUNIT"]
+        self.temperature_unit = ifcunit.get_unit_symbol(temp_unit) if temp_unit else "K"
 
     def get_structural_elements_and_activities(self) -> None:
         """fills self.point_members, self.curve_members and self.surface_members dictionaries"""
@@ -374,13 +457,22 @@ class ShaderInfo:
             values += transform @ temp
         return values
 
+    def get_object_rotation(self, element: ifcopenshell.entity_instance) -> np.ndarray:
+        """The rotation of a structural item's object in Blender's axes.
+
+        An item's topology, Axis, face plane and ConditionCoordinateSystem are in its own coordinates, which its
+        placement turns: its local axes turn with it."""
+        obj = tool.Ifc.get_object(element)
+        if not isinstance(obj, bpy.types.Object):
+            return np.eye(3)
+        return np.array(obj.matrix_world.to_quaternion().to_matrix())
+
     def get_surface_member_rotation(self, surface_member: ifcopenshell.entity_instance) -> np.ndarray:
         """returns the rotation matrix of a structural surface member"""
         representation = ifcopenshell.util.representation.get_representation(surface_member, "Model")
         repr_item = representation.Items[0]
         placement = ifcopenshell.util.placement.get_placement(repr_item.FaceSurface.Position)
-        rotation = placement[0:3, 0:3]
-        return rotation
+        return self.get_object_rotation(surface_member) @ placement[0:3, 0:3]
 
     def get_point_connection_rotation(self, point_connection: ifcopenshell.entity_instance) -> np.ndarray:
         """returns the rotation matrix of a structural point connection"""
@@ -388,8 +480,7 @@ class ShaderInfo:
             placement = ifcopenshell.util.placement.get_placement(point_connection.ConditionCoordinateSystem)
         else:
             placement = np.eye(4)
-        rotation = placement[0:3, 0:3]
-        return rotation
+        return self.get_object_rotation(point_connection) @ placement[0:3, 0:3]
 
     def get_curve_member_rotation(self, curve_member: ifcopenshell.entity_instance) -> np.ndarray | None:
         """returns the rotation matrix of a structural curve member"""
@@ -434,7 +525,7 @@ class ShaderInfo:
                 y_unit = np.cross(np.asarray(z, dtype=float), x_unit)
                 y_unit /= np.linalg.norm(y_unit)
                 z_unit = np.cross(x_unit, y_unit)
-                return np.column_stack((x_unit, y_unit, z_unit))
+                return self.get_object_rotation(curve_member) @ np.column_stack((x_unit, y_unit, z_unit))
         member_name = (
             getattr(curve_member, "Name", None) or getattr(curve_member, "GlobalId", None) or f"#{curve_member.id()}"
         )
@@ -447,7 +538,10 @@ class ShaderInfo:
     def get_activity_transform_matrix(
         self, activity: ifcopenshell.entity_instance, element_rotation_matrix: np.ndarray
     ) -> np.ndarray:
-        "provides the transformation matrix to convert between reference frames"
+        """The matrix turning an activity's load values into the reference frame shown, in Blender's axes.
+
+        Global values are given in the axes of the activity's analysis model, which need not be the project's: RFEM
+        points Z down. They are turned into the project's axes first, for point, line and area loads alike."""
         global_or_local = activity.GlobalOrLocal
         props = tool.Structural.get_structural_props()
         reference_frame = props.reference_frame
@@ -456,6 +550,8 @@ class ShaderInfo:
             transform_matrix = np.linalg.inv(element_rotation_matrix)
         elif reference_frame == "GLOBAL_COORDS" and global_or_local != reference_frame:
             transform_matrix = element_rotation_matrix
+        if global_or_local != "LOCAL_COORDS":
+            transform_matrix = transform_matrix @ ifcopenshell.util.structural.get_global_axes(activity)
         return transform_matrix
 
     def get_point_loads(self) -> None:
@@ -718,7 +814,13 @@ class ShaderInfo:
                     ],
                 },
                 "indices": [(0, 1, 2), (0, 3, 4)],
-                "uniforms": [["color", color], ["spacing", spacing]],
+                # The shader sizes the shaft and the head from spacing, so the thickness scales them together.
+                "uniforms": [
+                    ["color", color],
+                    ["spacing", float(spacing * tool.Structural.get_structural_props().arrow_thickness)],
+                ],
+                # On screen, labels keep off it.
+                "segment": (tail, tip),
             }
         )
         if activity:
@@ -749,6 +851,8 @@ class ShaderInfo:
                 "indices": indices,
                 # A spacing far longer than the line draws it solid.
                 "uniforms": [["color", color], ["spacing", size * 0.03 if dashed else size * 1000]],
+                # On screen, labels keep off a solid line, as an angle's arc; dashed guides they may cross.
+                "segment": None if dashed else (start, end),
             }
         )
 
@@ -801,8 +905,6 @@ class ShaderInfo:
             load = activity.AppliedLoad
             preview = self.preview.get(load.id()) if load else None
             values = {attr: preview.get(attr) if preview is not None else getattr(load, attr, 0) for attr in attr_list}
-            if load and activity.GlobalOrLocal != "LOCAL_COORDS":
-                values = tool.Structural.to_blender_axes(load, values)  # Given in its model's axes.
             temp = np.zeros(6)
             for i, attr in enumerate(attr_list):
                 temp[i] += (values[attr] or 0) * factor
@@ -874,7 +976,40 @@ class ShaderInfo:
             member_length = Vector(end_co - start_co).length
             processed_loads = self.process_total_linear_loads(activity_list, rotation, member_length)
             linear_loads = processed_loads["linear loads"]
-            maxforce = max(maxforce, processed_loads["max linear load"])
+            keys = ["fx", "fy", "fz", "mx", "my", "mz"]
+            if linear_loads is None or props.force_display == "COMPONENTS":
+                maxforce = max(maxforce, processed_loads["max linear load"])
+            else:
+                # Each applied load is drawn on its own, along its resultant, as are point forces. Their sum, by
+                # components, is shown on request only: components overlap along a member. The scale is of what
+                # is drawn, not of that sum, so that a load keeps its length as others on the member turn.
+                keys = keys[3:]
+                maxforce = max([maxforce] + [self.get_largest_load(linear_loads[key]) for key in keys])
+                for i, item in enumerate(activity_list):
+                    own = self.process_total_linear_loads([item], rotation, member_length)
+                    if (own_loads := own["linear loads"]) is None:
+                        continue
+                    if not (resolved := self.resolve_linear_forces(own_loads)):
+                        # Its direction changes along the member: by components.
+                        for base in ("fx", "fy", "fz"):
+                            key = f"{base}:{i}"
+                            linear_loads[key] = own_loads[base]
+                            maxforce = max(maxforce, self.get_largest_load(own_loads[base]))
+                            direction_dict[key], match_dict[key] = direction_dict[base], match_dict[base]
+                            keys.append(key)
+                        continue
+                    direction, resultant, largest = resolved
+                    # The direction is in the reference frame shown: in Blender's axes, the member's own if local.
+                    direction = Vector(rotation @ direction if is_local else direction).normalized()
+                    if direction.dot(x_axis) < 0 and abs(direction.dot(x_axis)) > 0.99:
+                        direction, resultant = -direction, self.negate_load(resultant)
+                    axial = abs(direction.dot(x_axis)) > 0.99
+                    key = f"f:{i}"
+                    linear_loads[key] = resultant
+                    direction_dict[key] = y_axis + z_axis if axial else direction
+                    match_dict[key] = axial
+                    maxforce = max(maxforce, largest)
+                    keys.append(key)
             point_loads = processed_loads["discrete loads"]
 
             if len(point_loads) > 0:
@@ -887,7 +1022,6 @@ class ShaderInfo:
                         self.get_point_moment_args(values[3:], pos_vector, rotation)
             if linear_loads is None:
                 continue
-            keys = ["fx", "fy", "fz", "mx", "my", "mz"]
 
             for key in keys:
                 polyline = linear_loads[key]["polyline"]
@@ -896,7 +1030,9 @@ class ShaderInfo:
                 constant = linear_loads[key]["constant"]
                 direction = direction_dict[key]
                 color_axis = (0, 0, 1, 1)
-                if "x" in key:
+                if key.startswith("f:"):
+                    color_axis = (1, 1, 1, 1)  # As the resultant of point forces.
+                elif "x" in key:
                     color_axis = (1, 0, 0, 1)
                 if "y" in key:
                     color_axis = (0, 1, 0, 1)
@@ -990,6 +1126,154 @@ class ShaderInfo:
                         uniform[1] = maxforce
                         break
 
+    def get_temperature_loads(self) -> None:
+        props = tool.Structural.get_structural_props()
+        decimals = getattr(props, "force_decimals", 2)
+        unit = getattr(self, "temperature_unit", "K")
+
+        def _sum_temperature(activity_list):
+            dt_const, dt_y, dt_z = 0.0, 0.0, 0.0
+            found = False
+            for activity, factor in activity_list:
+                load = getattr(activity, "AppliedLoad", None)
+                if not load or not load.is_a("IfcStructuralLoadTemperature"):
+                    continue
+                found = True
+                dt_const += (getattr(load, "DeltaTConstant", None) or 0.0) * factor
+                dt_y += (getattr(load, "DeltaTY", None) or 0.0) * factor
+                dt_z += (getattr(load, "DeltaTZ", None) or 0.0) * factor
+            return found, dt_const, dt_y, dt_z
+
+        def _format_temp_label(dt_const: float, dt_y: float, dt_z: float) -> str:
+            parts = []
+            if dt_const or (not dt_y and not dt_z):
+                parts.append(f"ΔT={dt_const:+.{decimals}f} {unit}")
+            if dt_y:
+                parts.append(f"ΔTy={dt_y:+.{decimals}f} {unit}")
+            if dt_z:
+                parts.append(f"ΔTz={dt_z:+.{decimals}f} {unit}")
+            return ", ".join(parts)
+
+        def _temp_color(dt_const: float) -> tuple[float, float, float, float]:
+            if dt_const < 0:
+                return (0.1, 0.6, 1.0, 1.0)
+            return (1.0, 0.4, 0.1, 1.0)
+
+        for value in self.curve_members.values():
+            member = value["member"]
+            self.tag_new_entries(tool.Ifc.get_object(member))
+            found, dt_const, dt_y, dt_z = _sum_temperature(value["activities"])
+            if not found or not any((dt_const, dt_y, dt_z)):
+                continue
+            blender_object = tool.Ifc.get_object_by_identifier(getattr(member, "GlobalId", None))
+            if not blender_object or not blender_object.data or len(blender_object.data.vertices) < 2:
+                continue
+            start_co = blender_object.matrix_world @ blender_object.data.vertices[0].co
+            end_co = blender_object.matrix_world @ blender_object.data.vertices[1].co
+            member_length = (end_co - start_co).length
+            rotation = self.get_curve_member_rotation(member)
+            z_dir = Vector(rotation[:, 2]).normalized() if rotation is not None else Vector((0.0, 0.0, 1.0))
+            offset = z_dir * 0.15
+            color = _temp_color(dt_const)
+            self.add_dashed_line(
+                np.array(start_co + offset),
+                np.array(end_co + offset),
+                max(member_length, 1.0),
+                color,
+                dashed=True,
+            )
+            midpoint = (start_co + end_co) / 2.0 + offset
+            self.text_info.append(
+                {
+                    "position": midpoint,
+                    "text": _format_temp_label(dt_const, dt_y, dt_z),
+                    "color": color,
+                }
+            )
+
+        for value in self.surface_members.values():
+            member = value["member"]
+            self.tag_new_entries(tool.Ifc.get_object(member))
+            found, dt_const, dt_y, dt_z = _sum_temperature(value["activities"])
+            if not found or not any((dt_const, dt_y, dt_z)):
+                continue
+            blender_object = tool.Ifc.get_object_by_identifier(getattr(member, "GlobalId", None))
+            if not blender_object or not blender_object.data or not len(blender_object.data.vertices):
+                continue
+            verts = [blender_object.matrix_world @ v.co for v in blender_object.data.vertices]
+            centroid = sum(verts, Vector((0.0, 0.0, 0.0))) / len(verts)
+            self.text_info.append(
+                {
+                    "position": centroid,
+                    "text": _format_temp_label(dt_const, dt_y, dt_z),
+                    "color": _temp_color(dt_const),
+                }
+            )
+
+        for value in self.point_members.values():
+            member = value["member"]
+            self.tag_new_entries(tool.Ifc.get_object(member))
+            found, dt_const, dt_y, dt_z = _sum_temperature(value["activities"])
+            if not found or not any((dt_const, dt_y, dt_z)):
+                continue
+            blender_object = tool.Ifc.get_object_by_identifier(getattr(member, "GlobalId", None))
+            if not blender_object:
+                continue
+            self.text_info.append(
+                {
+                    "position": blender_object.matrix_world.translation.copy(),
+                    "text": _format_temp_label(dt_const, dt_y, dt_z),
+                    "color": _temp_color(dt_const),
+                }
+            )
+
+    def resolve_linear_forces(
+        self, linear_loads: dict[str, LoadByDirection]
+    ) -> Union[tuple[np.ndarray, LoadByDirection, float], None]:
+        """The force components of a line load as one load along their resultant, if they keep one direction along
+        the member, as a uniform load always does.
+
+        :return: The resultant's unit direction in the reference frame of the components, the load along it, and its
+            largest magnitude; or None if there is no force or its direction varies along the member.
+        """
+        forces = [linear_loads[key] for key in ("fx", "fy", "fz")]
+        terms = {
+            term: np.array([force[term] for force in forces], dtype=float)
+            for term in ("constant", "quadratic", "sinus")
+        }
+        points = next((force["polyline"] for force in forces if force["polyline"]), [])
+        polylines = [force["polyline"] or [[pos, 0.0] for pos, _ in points] for force in forces]
+        if any(len(polyline) != len(points) for polyline in polylines):
+            return None
+        vectors = [np.array([polyline[i][1] for polyline in polylines]) for i in range(len(points))]
+        candidates = [v for v in list(terms.values()) + vectors if np.linalg.norm(v) > 1e-9]
+        if not candidates:
+            return None
+        direction = candidates[0] / np.linalg.norm(candidates[0])
+        if any(np.linalg.norm(np.cross(v, direction)) > 1e-6 * np.linalg.norm(v) for v in candidates):
+            return None
+        resultant: LoadByDirection = {
+            "constant": float(terms["constant"] @ direction),
+            "quadratic": float(terms["quadratic"] @ direction),
+            "sinus": float(terms["sinus"] @ direction),
+            "polyline": [[pos, float(v @ direction)] for (pos, _), v in zip(points, vectors)],
+        }
+        return direction, resultant, self.get_largest_load(resultant)
+
+    def get_largest_load(self, load: LoadByDirection) -> float:
+        """The largest magnitude of a line load along one direction, as the drawing's scale takes it"""
+        total = load["constant"] + load["quadratic"] + load["sinus"]
+        return max([abs(total + value) for _, value in load["polyline"]] or [abs(total)])
+
+    def negate_load(self, load: LoadByDirection) -> LoadByDirection:
+        """The same load in the opposite direction"""
+        return {
+            "constant": -load["constant"],
+            "quadratic": -load["quadratic"],
+            "sinus": -load["sinus"],
+            "polyline": [[pos, -value] for pos, value in load["polyline"]],
+        }
+
     def process_total_linear_loads(
         self,
         activity_list: list[tuple[ifcopenshell.entity_instance, float]],
@@ -1035,7 +1319,6 @@ class ShaderInfo:
         if len(final_list) > 0:
             array = np.array(final_list)  # 7xn -> ["pos","fx","fy","fz","mx","my","mz"]
             keys = ["fx", "fy", "fz", "mx", "my", "mz"]
-            polyline = []
             distributed_loads = {
                 "fx": {"constant": 0, "quadratic": 0, "sinus": 0, "polyline": []},
                 "fy": {"constant": 0, "quadratic": 0, "sinus": 0, "polyline": []},
@@ -1049,6 +1332,7 @@ class ShaderInfo:
                 if any([sinus[component], quad[component], const[component]]) or any(
                     item for item in array[:, component + 1]
                 ):
+                    polyline = []
                     for currentitem in final_list:
                         polyline.append([currentitem[0], currentitem[component + 1]])
                         max_load = max(
@@ -1233,6 +1517,7 @@ class ShaderInfo:
                     for j, attr in enumerate(attr_list):
                         value = 0 if getattr(val, attr, 0) is None else getattr(val, attr, 0)
                         result_list[j] += value * factor
+                    result_list = (transform_6by6 @ np.array(result_list)).tolist()
                     config_list.append({"pos": locations[i][0] * unit_scale, "values": result_list})
                 point_load_configurations.append(config_list)
 

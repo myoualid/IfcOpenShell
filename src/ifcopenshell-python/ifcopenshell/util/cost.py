@@ -357,7 +357,8 @@ def get_cost_rate(
 
 class CostValueUnserialiser:
     def parse(self, formula: str):
-        l = lark.Lark("""start: formula
+        l = lark.Lark(
+            """start: formula
                     formula: operand (operator operand)*
                     operand: value | category "(" formula ")"
                     value: NUMBER?
@@ -394,11 +395,13 @@ class CostValueUnserialiser:
                     NEWLINE: (CR? LF)+
 
                     %ignore WS // Disregard spaces in text
-                 """)
+                 """,
+            parser="lalr",
+        )
         start = l.parse(formula)
         return self.get_formula(start.children[0])
 
-    def get_formula(self, formula):
+    def get_formula(self, formula: lark.Tree) -> dict[str, Any]:
         if len(formula.children) == 1:
             return self.get_operand(formula.children[0])
         results = {"Components": []}
@@ -409,7 +412,7 @@ class CostValueUnserialiser:
                 results["ArithmeticOperator"] = self.get_operator(child)
         return results
 
-    def get_operand(self, operand):
+    def get_operand(self, operand: lark.Tree) -> dict[str, Any]:
         child = operand.children[0]
         if child.data == "value":
             value = self.get_value(child)
@@ -422,18 +425,19 @@ class CostValueUnserialiser:
                     category = "*"
                 data["Category"] = category
             formula = self.get_formula(operand.children[1])
-            if formula.get("Components"):
+            # Components has two operands or more when it is there.
+            if "Components" in formula:
                 data["Components"] = formula["Components"]
                 data["ArithmeticOperator"] = formula["ArithmeticOperator"]
             else:
                 data["AppliedValue"] = formula["AppliedValue"]
             return data
 
-    def get_value(self, value):
+    def get_value(self, value: lark.Tree) -> Optional[str]:
         if value.children:
             return value.children[0].value
 
-    def get_category(self, category):
+    def get_category(self, category: lark.Tree) -> Optional[str]:
         if category.children:
             return category.children[0].value
 

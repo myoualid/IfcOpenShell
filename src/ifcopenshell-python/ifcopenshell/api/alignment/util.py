@@ -115,7 +115,7 @@ def print_alignment(alignment, indent=0):
             print_alignment(child, indent + 2)
 
 
-def print_alignment_deep(alignment, indent=0):
+def print_alignment_deep(alignment: entity_instance, indent: int = 0):
     """
     Debugging function to print alignment decomposition, including layout segments
     """

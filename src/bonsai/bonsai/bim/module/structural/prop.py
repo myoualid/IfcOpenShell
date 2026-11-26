@@ -63,6 +63,33 @@ def get_buildings(self: "BIMStructuralProperties", context: bpy.types.Context) -
     return StructuralAnalysisModelsData.data["unserved_buildings"].get(model_id, [])
 
 
+STRUCTURAL_ITEM_CLASSES = (
+    ("IfcStructuralCurveMember", "Curve Member", "A beam, column or brace, drawn as an edge"),
+    ("IfcStructuralSurfaceMember", "Surface Member", "A slab, wall or shell, drawn as a face"),
+    ("IfcStructuralPointConnection", "Point Connection", "A support or joint at a vertex"),
+    ("IfcStructuralCurveConnection", "Curve Connection", "A line support or joint along an edge"),
+    ("IfcStructuralSurfaceConnection", "Surface Connection", "A support over a face"),
+)
+
+structural_item_predefined_types_enum: list[tuple[str, str, str]] = []
+
+
+def get_structural_item_predefined_types(
+    self: "BIMStructuralProperties", context: bpy.types.Context
+) -> list[tuple[str, str, str]]:
+    global structural_item_predefined_types_enum
+    # Blender needs the strings of a dynamic enum kept alive, so the list is kept at module level.
+    structural_item_predefined_types_enum = [
+        (t, t, "") for t in tool.Structural.get_structural_item_predefined_types(self.structural_item_class)
+    ]
+    return structural_item_predefined_types_enum
+
+
+def update_structural_item_class(self: "BIMStructuralProperties", context: bpy.types.Context) -> None:
+    if enum := get_structural_item_predefined_types(self, context):
+        self.structural_item_predefined_type = enum[0][0]
+
+
 def update_activity_type(self: "BIMStructuralProperties", context: bpy.types.Context) -> None:
     LoadGroupDecorationData.is_loaded = False
 
@@ -126,13 +153,8 @@ def updateAxisAngle(self: "BIMObjectStructuralProperties", context: bpy.types.Co
         return
     obj = context.active_object
     assert obj and isinstance(obj.data, bpy.types.Mesh)
-    empty = self.axis_empty
-    x_axis = obj.data.vertices[1].co - obj.data.vertices[0].co
-    empty.location = obj.data.vertices[0].co
-    empty.rotation_mode = "QUATERNION"
-    empty.rotation_quaternion = x_axis.to_track_quat("X", "Z")
-    empty.rotation_mode = "XYZ"
-    empty.rotation_euler[0] = radians(self.axis_angle)
+    # Rolled about the item's own edge from its default axes, wherever the item is placed.
+    self.axis_empty.matrix_world = tool.Structural.get_item_axes(obj, self.axis_angle)
 
 
 def updateConnectionCS(self: "BIMObjectStructuralProperties", context: bpy.types.Context) -> None:
@@ -207,6 +229,17 @@ class BIMStructuralProperties(PropertyGroup):
     active_structural_analysis_model_index: IntProperty(name="Active Structural Analysis Model Index")
     active_structural_analysis_model_id: IntProperty(name="Active Structural Analysis Model Id")
     current_structural_analysis_model_id: IntProperty(name="Current Structural Analysis Model Id")
+    structural_item_class: EnumProperty(
+        items=STRUCTURAL_ITEM_CLASSES,
+        name="Structural Item Class",
+        description="The class of structural item the Structural Tool adds",
+        update=update_structural_item_class,
+    )
+    structural_item_predefined_type: EnumProperty(
+        items=get_structural_item_predefined_types,
+        name="Structural Item Predefined Type",
+        description="The predefined type of the structural item the Structural Tool adds",
+    )
     building: EnumProperty(items=get_buildings, name="Building")
     load_case_attributes: CollectionProperty(name="Load Case Attributes", type=Attribute)
     load_case_has_self_weight: BoolProperty(name="Include Self-Weight", default=False)
@@ -316,6 +349,24 @@ class BIMStructuralProperties(PropertyGroup):
         max=8,
         update=update_loads_display,
     )
+    arrow_thickness: FloatProperty(
+        name="Arrow Thickness",
+        description="Scale point force arrows' shafts and heads together",
+        default=1.0,
+        min=0.25,
+        max=5.0,
+        step=10,
+        update=update_loads_display,
+    )
+    label_size: FloatProperty(
+        name="Label Size",
+        description="Scale the labels of shown loads",
+        default=1.0,
+        min=0.5,
+        max=4.0,
+        step=10,
+        update=update_loads_display,
+    )
     show_force_angles: BoolProperty(
         name="Angles",
         description="Mark the angle of each point force from a horizontal reference axis",
@@ -393,6 +444,8 @@ class BIMStructuralProperties(PropertyGroup):
         angle_reference: str
         force_decimals: int
         angle_decimals: int
+        arrow_thickness: float
+        label_size: float
 
 
 class BIMObjectStructuralProperties(PropertyGroup):

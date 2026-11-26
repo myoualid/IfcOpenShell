@@ -21,7 +21,7 @@ from collections.abc import Callable
 from ifcopenshell import entity_instance
 
 
-def _sort_nest(nest: entity_instance, key: Callable) -> entity_instance:
+def _sort_nest(nest: entity_instance, key: Callable[[entity_instance], float]) -> entity_instance:
     """Sorts the RelatedObjects of an IfcRelNests in place, by an arbitrary key function."""
     nest.RelatedObjects = sorted(nest.RelatedObjects, key=key)
     return nest

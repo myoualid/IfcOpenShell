@@ -25,7 +25,7 @@ import ifcopenshell.util.element
 
 
 def assign_reference(
-    file: ifcopenshell.file, products: ifcopenshell.entity_instance, reference: ifcopenshell.entity_instance
+    file: ifcopenshell.file, products: list[ifcopenshell.entity_instance], reference: ifcopenshell.entity_instance
 ) -> Union[ifcopenshell.entity_instance, None]:
     """Associates a list products with a library reference
 

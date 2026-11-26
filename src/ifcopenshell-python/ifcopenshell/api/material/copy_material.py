@@ -86,7 +86,7 @@ def _copy_material_with_inverses(
                     continue
                 props_attribute = "ExtendedProperties"
 
-            props = getattr(inverse, props_attribute)
+            props: tuple[ifcopenshell.entity_instance, ...] = getattr(inverse, props_attribute)
             if not props:
                 continue
 

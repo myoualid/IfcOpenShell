@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Any
+from typing import Any, Optional
 
 import ifcopenshell
 import ifcopenshell.api.cost
@@ -63,12 +63,13 @@ class Usecase:
         self.edit_cost_value(data)
 
     def edit_cost_value(self, data: dict[str, Any], parent: ifcopenshell.entity_instance | None = None) -> None:
-        ifc = data.get("ifc", None)
+        ifc: Optional[ifcopenshell.entity_instance] = data.get("ifc", None)
         if not ifc:
             ifc = ifcopenshell.api.cost.add_cost_value(self.file, parent=parent)
         if "AppliedValue" in data:
-            if data["AppliedValue"]:
-                ifc.AppliedValue = self.file.createIfcMonetaryMeasure(data["AppliedValue"])
+            applied_value: Optional[float] = data["AppliedValue"]
+            if applied_value:
+                ifc.AppliedValue = self.file.createIfcMonetaryMeasure(applied_value)
             else:
                 ifc.AppliedValue = None
         ifc.Category = data["Category"] if "Category" in data else None

@@ -83,9 +83,9 @@ def edit_georeferencing(
             })
     """
     if file.schema == "IFC2X3":
-        if not (project := file.by_type("IfcProject")):
+        if not (projects := file.by_type("IfcProject")):
             return
-        project = project[0]
+        project = projects[0]
         if projected_crs:
             if crs := ifcopenshell.util.element.get_pset(project, "ePSet_ProjectedCRS"):
                 crs = file.by_id(crs["id"])
