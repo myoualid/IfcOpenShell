@@ -41,8 +41,8 @@ def a2p(o: Iterable[float], z: Iterable[float], x: Iterable[float]) -> MatrixTyp
     :param x: The +X vector / axis of the matrix
     :return: A 4x4 numpy matrix
     """
-    x = x / np.linalg.norm(x)
-    z = z / np.linalg.norm(z)
+    x = np.asarray(x) / np.linalg.norm(x)
+    z = np.asarray(z) / np.linalg.norm(z)
     y = np.cross(z, x)
     y = y / np.linalg.norm(y)
     x = np.cross(y, z)  # Project X onto the plane normal to Z, as IfcBuildAxes does
