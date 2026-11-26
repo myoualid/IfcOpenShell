@@ -1321,6 +1321,24 @@ inline double taxonomy_function_item_end(const ifcopenshell::geom::taxonomy::ite
     return fn->end();
 }
 
+// The 4x4 matrix of a matrix4 item, row by row, as the Python wrapper gives its components. map_shape
+// gives such an item for a placement. No parentheses here: the spec scanner reads this file as text.
+inline std::vector<double> taxonomy_matrix4_components(const ifcopenshell::geom::taxonomy::item::ptr& item_cpp) {
+    auto matrix = ifcopenshell::geom::taxonomy::dcast<ifcopenshell::geom::taxonomy::matrix4>(item_cpp);
+    if (!matrix) {
+        throw std::runtime_error("Input is not a taxonomy matrix4");
+    }
+    const auto& components = matrix->ccomponents();
+    std::vector<double> rows;
+    rows.reserve(16);
+    for (int row = 0; row < 4; ++row) {
+        for (int column = 0; column < 4; ++column) {
+            rows.push_back(components(row, column));
+        }
+    }
+    return rows;
+}
+
 inline std::vector<express::base> select_element(
     ifcopenshell::geom::tree* self,
     express::base* instance,
