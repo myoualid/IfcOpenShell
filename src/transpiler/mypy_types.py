@@ -163,6 +163,10 @@ def classify(proper, types):
         if key.type.fullname in ("builtins.int",) or key.type.fullname.endswith(".entity_instance"):
             return "map", False
         return None
+    if name in ("numpy.bool", "numpy.bool_"):
+        return "boolean", False
+    if name in ("numpy.floating", "numpy.integer", "numpy.signedinteger", "numpy.unsignedinteger", "numpy.number"):
+        return "number", False
     if name.startswith("numpy."):
         return "ndarray", False
     if name.endswith((".entity_instance", ".entity_instance_mixin")):
@@ -240,6 +244,9 @@ def analyze():
                     returns = classify(types.get_proper_type(proper.ret_type), types)
                     if returns:
                         self.kinds[position + ":returns"] = returns
+                if isinstance(proper, types.Instance) and proper.type.fullname.startswith("ifcopenshell.ifcopenshell_wrapper."):
+                    # The class of a native value, for the rules that map its methods to ifcopenshell-js.
+                    self.kinds[position + ":class"] = [proper.type.name, False]
                 if (elements := element_type(proper)) is not None and (kind := classify(elements, types)):
                     # The elements of a list, tuple or set (for sorted(), min(), all() and `in`).
                     self.kinds[position + ":elements"] = kind

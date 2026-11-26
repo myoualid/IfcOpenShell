@@ -465,6 +465,7 @@ class Transpiler:
         self.env.tests["ellipsis"] = lambda value: isinstance(value, ast.Constant) and value.value is Ellipsis
         self.env.filters.update(
             emit=self.emit,
+            wrapper_class=self.wrapper_class,
             emit_in=self.emit_in,
             formatted=self.formatted,
             is_cast_declaration=self.is_cast_declaration,
@@ -929,6 +930,14 @@ class Transpiler:
         annotations = [n.annotation for n in ast.walk(node) if isinstance(n, (ast.arg, ast.AnnAssign)) and n.annotation]
         annotations += [n.returns for n in ast.walk(node) if isinstance(n, ast.FunctionDef) and n.returns]
         type_positions |= {id(n) for annotation in annotations for n in ast.walk(annotation)}
+        # Calls that a rule writes inline, without the module (np.isclose of numbers, for example).
+        type_positions |= {
+            id(call.func.value)
+            for call in ast.walk(node)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and ast.unparse(call.func) in self.rules.get("inline_numpy", ())
+        }
         for name in ast.walk(node):
             if id(name) in type_positions:
                 continue
@@ -1039,6 +1048,13 @@ class Transpiler:
             return None
         position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}"
         return self.types.get(self.module, {}).get(position)
+
+    def wrapper_class(self, node):
+        """The ifcopenshell_wrapper class of an expression (triangulation, for example), from mypy_types, or None."""
+        if not self.rules.get("proven_types") or getattr(node, "lineno", None) is None:
+            return None
+        position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}:class"
+        return (self.types.get(self.module, {}).get(position) or [None])[0]
 
     def returns_kind(self, node):
         """The kind of what a call of a callable value returns, from mypy_types; "unknown" if it is not proven."""

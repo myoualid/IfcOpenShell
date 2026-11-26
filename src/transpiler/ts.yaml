@@ -133,6 +133,8 @@ unsupported_functions:
   api.library.assign_reference.assign_reference: "products is annotated as one entity_instance but used as a list"
   api.project.append_asset.append_asset: "an empty dict literal is passed where a dict[int, entity_instance] (Map) is annotated"
   api.geometry.add_profile_representation.Usecase.get_x: "create_shape gives an element or a geometry; the Python must cast its result"
+  api.alignment.util.generate_vertices: "create_shape gives an element or a geometry; the Python must cast its result"
+  api.geometry.add_profile_representation.Usecase.execute: "Clipping.parse gives an entity or a Clipping, where the Python annotates its clippings as Clipping"
   api.geometry.add_profile_representation.Usecase.get_y: "create_shape gives an element or a geometry; the Python must cast its result"
 # Modules whose functions Python users replace at runtime; each gets an `overrides` object.
 overridable: [api.owner.settings]
@@ -154,12 +156,33 @@ reserved: [new, class, function, var, default, delete, this, switch, case, const
 runtime_modules:
   math: {module: null}
   re: {module: null}
+  # Vectors (number[]) and matrices (rows); not numpy: no dtypes, no broadcasting between shapes.
+  # members: the numpy names that helpers/linalg has, with its names; a function that uses another
+  # numpy name stays a stub (numpy_math lists the names that are Math functions of numbers).
+  numpy: {module: helpers.linalg, alias: linalg, members: {array: array, asarray: array, copy: copy, add: add, subtract: subtract, multiply: multiply, divide: divide, negative: negative, dot: dot, matmul: matmul, cross: cross, linalg.norm: norm, linalg.inv: inverse, transpose: transpose, eye: identity, identity: identity, zeros: zeros, allclose: allclose, isclose: isclose}}
+# numpy names that are Math functions and constants when their arguments are numbers.
+numpy_math: {pi: Math.PI, e: Math.E, inf: Infinity, nan: NaN, sqrt: Math.sqrt, sin: Math.sin, cos: Math.cos, tan: Math.tan, arcsin: Math.asin, arccos: Math.acos, arctan: Math.atan, arctan2: Math.atan2, abs: Math.abs, sign: Math.sign, floor: Math.floor, ceil: Math.ceil, isnan: Number.isNaN, radians: '((v: number) => v * Math.PI / 180)', degrees: '((v: number) => v * 180 / Math.PI)'}
 # Functions of the ifcopenshell-js geom module, which rules call since `import ifcopenshell.geom` binds no local name.
 geom_functions:
   ifcopenshell.geom.create_shape: createShape
+  ifcopenshell.geom.map_shape: mapShape
+  ifcopenshell_wrapper.map_shape: mapShape
+  ifcopenshell.ifcopenshell_wrapper.map_shape: mapShape
+  ifcopenshell_wrapper.function_item_evaluator: functionItemEvaluator
+  ifcopenshell.ifcopenshell_wrapper.function_item_evaluator: functionItemEvaluator
+  ifcopenshell_wrapper.helmert_curve_point: helmertCurvePoint
+  ifcopenshell.ifcopenshell_wrapper.helmert_curve_point: helmertCurvePoint
+# Constants of ifcopenshell_wrapper that are values of geometry settings, in the ifcopenshell-js geom module.
+geom_constants:
+  CURVES: Dimensionality.CURVES
+  SURFACES_AND_SOLIDS: Dimensionality.SURFACES_AND_SOLIDS
+  CURVES_SURFACES_AND_SOLIDS: Dimensionality.CURVES_SURFACES_AND_SOLIDS
+  TRIANGULATED: IteratorOutput.TRIANGULATED
+  NATIVE: IteratorOutput.NATIVE
+  SERIALIZED: IteratorOutput.SERIALIZED
 # Runtime modules whose objects overload Python operators; in modules importing them,
 # operators and subscripts on values of unknown type dispatch at runtime.
-overloading_modules: []
+overloading_modules: [numpy]
 # Kind of values returned by runtime module functions; see `inference`.
 runtime_kinds: {}
 # numpy functions that return Python scalars or booleans rather than arrays.
@@ -187,20 +210,6 @@ precomputed_function: |
 
   /** Precomputed from Python by src/transpiler/generate.py for {{ data.keys() | join(", ") }}. */
   export function {{ name | camel }}({{ parameter }}: string): any {
-  ifcopenshell_wrapper.map_shape: mapShape
-  ifcopenshell.ifcopenshell_wrapper.map_shape: mapShape
-  ifcopenshell_wrapper.function_item_evaluator: functionItemEvaluator
-  ifcopenshell.ifcopenshell_wrapper.function_item_evaluator: functionItemEvaluator
-  ifcopenshell_wrapper.helmert_curve_point: helmertCurvePoint
-  ifcopenshell.ifcopenshell_wrapper.helmert_curve_point: helmertCurvePoint
-# Constants of ifcopenshell_wrapper that are values of geometry settings, in the ifcopenshell-js geom module.
-geom_constants:
-  CURVES: Dimensionality.CURVES
-  SURFACES_AND_SOLIDS: Dimensionality.SURFACES_AND_SOLIDS
-  CURVES_SURFACES_AND_SOLIDS: Dimensionality.CURVES_SURFACES_AND_SOLIDS
-  TRIANGULATED: IteratorOutput.TRIANGULATED
-  NATIVE: IteratorOutput.NATIVE
-  SERIALIZED: IteratorOutput.SERIALIZED
     if (!({{ parameter }} in {{ name | camel }}Data)) throw new Error(`{{ name }}: no precomputed result for ${ {{- parameter -}} }`);
     return structuredClone({{ name | camel }}Data[{{ parameter }}]);
   }
@@ -244,7 +253,7 @@ types:
     output: '{{ value | alias_value | type }}'
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module == "numpy"
-    output: '{% set name = (value | runtime_path).parts[-1] %}{{ ("helpers.numpy" | use("np")) ~ ".NDArray" if name in ["ndarray", "NDArray", "array"] else "boolean" if name == "bool_" else "number" }}'
+    output: '{% set name = ((value | runtime_path).parts or [""])[-1] %}{{ ("helpers.linalg" | use("linalg")) ~ ".NDArray" if name in ["ndarray", "NDArray", "array"] else "boolean" if name == "bool_" else "number" }}'
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module in runtime_kinds
     output: '{% set path = value | runtime_path %}{% if runtime_modules[path.module].module is none %}{{ ("the type " ~ (value | source) ~ " (no TS type)") | unsupported }}{% else %}{{ runtime_modules[path.module].module | use(runtime_modules[path.module].alias) }}{% for part in path.parts %}.{{ part }}{% endfor %}{% endif %}'
@@ -371,10 +380,108 @@ types:
     when: kind in ['Any', 'Iterator', 'Generator', 'Callable']
     output: any
 # Functions that return numpy arrays and are not written by hand: code that calls them is numpy code.
-numpy_functions: [util.shape_builder.V]
+numpy_functions: []
+# Operators on numpy arrays, as functions of helpers/linalg.
+numpy_operators: {Add: add, Sub: subtract, Mult: multiply, Div: divide, MatMult: matmul}
 # numpy calls that a rule writes inline for numbers (see the np.isclose rule).
 inline_numpy: [np.isclose, np.allclose, numpy.isclose, numpy.allclose]
 rules:
+  # Geometry of a triangulation: the methods of the ifcopenshell-js triangulation (verts -> verts(),
+  # verts_buffer -> vertsBuffer()).
+  - input:
+      node: Attribute
+      value: $value
+      attr: $attr
+    when: attr in ["verts", "faces", "edges", "normals", "material_ids", "item_ids", "edges_item_ids", "verts_buffer", "faces_buffer", "edges_buffer", "normals_buffer", "material_ids_buffer", "item_ids_buffer", "edges_item_ids_buffer"] and value | wrapper_class == "triangulation" and node.ctx.__class__.__name__ == "Load"
+    output: '{{ value | emit }}.{{ attr | camel }}()'
+  # The parameter range of a function item that map_shape gives, and the evaluation of its evaluator.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $attr
+      args: []
+    when: attr in ["start", "end"] and value | kind == "taxonomy"
+    output: '{{ "geom.index" | use("geom") }}.functionItemRange({{ value | emit }})[{{ 0 if attr == "start" else 1 }}]'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: evaluate
+      args:
+        - $u
+    when: value | kind == "evaluator"
+    output: '{{ "geom.index" | use("geom") }}.evaluateAt({{ value | emit }}, {{ u | emit }})'
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: evaluation_points
+      args: []
+    when: value | kind == "evaluator"
+    output: '{{ value | emit }}.evaluationPoints()'
+  # .shape, .ndim and .size of a numpy array, and .T of a value that the types do not show as one.
+  - input:
+      node: Attribute
+      value: $value
+      attr: $attr
+    when: attr in ["shape", "ndim", "size", "T"] and (value | kind == "ndarray" and attr != "T" or overloading and value | kind in ["unknown", "object", "array", "sequence"])
+    output: '{{ ("the numpy attribute ." ~ attr) | unsupported }}'
+  # An index that is a list of indices or of booleans selects several items of a numpy array.
+  - input:
+      node: Subscript
+      value: $value
+      slice: $index
+    when: value | kind not in ["dict", "map"] and (index.__class__.__name__ == "List" or index.__class__.__name__ not in ["Constant", "Slice", "Tuple", "UnaryOp", "BinOp"] and index | kind in ["array", "ndarray", "sequence"])
+    output: '{{ "an index that is a list of indices (numpy)" | unsupported }}'
+  # The components of the matrix that map_shape gives for a placement (the rows of a 4x4 matrix).
+  - input:
+      node: Attribute
+      value: $value
+      attr: components
+    when: value.__class__.__name__ == "Call" and value.func | source in geom_functions and geom_functions[value.func | source] == "mapShape"
+    output: '{{ "geom.index" | use("geom") }}.matrixComponents({{ value | emit }})'
+  # Methods of numpy arrays that helpers/linalg has.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
+      args: $args
+      keywords: []
+    when: method in ["dot", "copy", "tolist", "item"] and value | kind == "ndarray" and (method == "dot") == (args | length == 1)
+    output: '{% if method == "item" %}{{ value | emit }}{% else %}{{ "helpers.linalg" | use("linalg") }}.{{ "dot" if method == "dot" else "copy" }}({{ ([value] + args) | map("emit") | join(", ") }}){% endif %}'
+  - input:
+      node: Attribute
+      value: $value
+      attr: $attr
+    when: attr == "T" and value | kind == "ndarray"
+    output: '{{ "helpers.linalg" | use("linalg") }}.transpose({{ value | emit }})'
+  # Stores into a part of a matrix (m[:3, 3] = v, m[3, :3] = v, m[:3, :3] = r, m[:3, 3] *= s): setColumn, setRow
+  # and setSubMatrix of helpers/linalg. A store into a slice of a vector stays a stub.
+  - input:
+      node: Assign
+      targets:
+        - node: Subscript
+          value: $container
+          slice: $index
+      value: $value
+    when: container | kind == "ndarray" and (index.__class__.__name__ == "Slice" and index.step is none or index.__class__.__name__ == "Tuple" and index.elts | selectattr("__class__.__name__", "equalto", "Slice") | list and index.elts | selectattr("__class__.__name__", "equalto", "Slice") | selectattr("step", "ne", none) | list | length == 0)
+    output: '{% set M = container | emit %}{% set L = "helpers.linalg" | use("linalg") %}{% macro pos(e, size) %}{% if e.__class__.__name__ == "UnaryOp" and e.operand.value is defined %}{{ size }} - {{ e.operand.value }}{% else %}{{ e | emit }}{% endif %}{% endmacro %}{% macro start(e, size) %}{% if e.lower is none %}0{% else %}{{ pos(e.lower, size) }}{% endif %}{% endmacro %}{% macro cut(e) %}.slice({{ e.lower | emit if e.lower is not none else "0" }}{% if e.upper is not none %}, {{ e.upper | emit }}{% endif %}){% endmacro %}{% if index.__class__.__name__ == "Tuple" and index.elts | length == 2 %}{% set r, c = index.elts %}{% set rs = r.__class__.__name__ == "Slice" %}{% set cs = c.__class__.__name__ == "Slice" %}{% set rows = M ~ ".length" %}{% set columns = M ~ "[0].length" %}{% if value | kind == "number" %}{{ "a number assigned to a slice of a matrix" | unsupported }}{% endif %}{% if rs and cs %}{{ L }}.setSubMatrix({{ M }}, {{ value | emit }}, {{ start(r, rows) }}, {{ start(c, columns) }});{% elif rs %}{{ L }}.setColumn({{ M }}, {{ pos(c, columns) }}, {{ value | emit }}, {{ start(r, rows) }});{% else %}{{ L }}.setRow({{ M }}, {{ pos(r, rows) }}, {{ value | emit }}, {{ start(c, columns) }});{% endif %}{% else %}{{ "assignment to a slice of a vector" | unsupported }}{% endif %}'
+  - input:
+      node: AugAssign
+      target:
+        node: Subscript
+        value: $container
+        slice: $index
+      op: $op
+      value: $value
+    when: op.__class__.__name__ in numpy_operators and container | kind == "ndarray" and (index.__class__.__name__ == "Slice" and index.step is none or index.__class__.__name__ == "Tuple" and index.elts | selectattr("__class__.__name__", "equalto", "Slice") | list and index.elts | selectattr("__class__.__name__", "equalto", "Slice") | selectattr("step", "ne", none) | list | length == 0)
+    output: '{% set M = container | emit %}{% set L = "helpers.linalg" | use("linalg") %}{% macro pos(e, size) %}{% if e.__class__.__name__ == "UnaryOp" and e.operand.value is defined %}{{ size }} - {{ e.operand.value }}{% else %}{{ e | emit }}{% endif %}{% endmacro %}{% macro start(e, size) %}{% if e.lower is none %}0{% else %}{{ pos(e.lower, size) }}{% endif %}{% endmacro %}{% macro cut(e) %}.slice({{ e.lower | emit if e.lower is not none else "0" }}{% if e.upper is not none %}, {{ e.upper | emit }}{% endif %}){% endmacro %}{% if index.__class__.__name__ == "Tuple" and index.elts | length == 2 %}{% set r, c = index.elts %}{% set rs = r.__class__.__name__ == "Slice" %}{% set cs = c.__class__.__name__ == "Slice" %}{% set rows = M ~ ".length" %}{% set columns = M ~ "[0].length" %}{% set F = L ~ "." ~ numpy_operators[op.__class__.__name__] %}{% if rs and cs %}{{ L }}.setSubMatrix({{ M }}, {{ F }}({% if rs and cs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row{{ cut(c) }}){% elif rs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row.at({{ c | emit }})){% else %}{{ M }}.at({{ r | emit }}){{ cut(c) }}{% endif %}, {{ value | emit }}), {{ start(r, rows) }}, {{ start(c, columns) }});{% elif rs %}{{ L }}.setColumn({{ M }}, {{ pos(c, columns) }}, {{ F }}({% if rs and cs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row{{ cut(c) }}){% elif rs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row.at({{ c | emit }})){% else %}{{ M }}.at({{ r | emit }}){{ cut(c) }}{% endif %}, {{ value | emit }}), {{ start(r, rows) }});{% else %}{{ L }}.setRow({{ M }}, {{ pos(r, rows) }}, {{ F }}({% if rs and cs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row{{ cut(c) }}){% elif rs %}{{ M }}{{ cut(r) }}.map((row: number[]) => row.at({{ c | emit }})){% else %}{{ M }}.at({{ r | emit }}){{ cut(c) }}{% endif %}, {{ value | emit }}), {{ start(c, columns) }});{% endif %}{% else %}{{ "assignment to a slice of a vector" | unsupported }}{% endif %}'
   # np.isclose of two numbers and np.allclose of two literal tuples of numbers: |a - b| <= atol + rtol * |b|.
   # Other calls of them stay stubs (check_foreign lets the inline_numpy calls reach this rule).
   - input:
@@ -383,7 +490,40 @@ rules:
       args: $args
       keywords: $keywords
     when: callee | source in inline_numpy
-    output: '{% set name = (callee | source).split(".")[-1] %}{% set a, b = (args + [none, none])[:2] %}{% set ok = args | length == 2 and keywords | rejectattr("arg", "in", ["atol", "rtol"]) | list | length == 0 and keywords | map(attribute="value") | rejectattr("__class__.__name__", "equalto", "Constant") | list | length == 0 and (name == "isclose" and a | kind == "number" and b | kind == "number" or name == "allclose" and a.elts is defined and b.elts is defined and a.elts | length == b.elts | length and (a.elts + b.elts) | map("kind") | reject("equalto", "number") | list | length == 0) %}{% if not ok %}{{ ("np." ~ name ~ " of values other than numbers or literal tuples of numbers") | unsupported }}{% endif %}{% set atol = (keywords | selectattr("arg", "equalto", "atol") | first).value.value if keywords | selectattr("arg", "equalto", "atol") | list else 1e-08 %}{% set rtol = (keywords | selectattr("arg", "equalto", "rtol") | first).value.value if keywords | selectattr("arg", "equalto", "rtol") | list else 1e-05 %}{% macro close(x, y) %}Math.abs(({{ x | emit }}) - ({{ y | emit }})) <= {{ atol }} + {{ rtol }} * Math.abs({{ y | emit }}){% endmacro %}({% if a.elts is defined %}{% for x in a.elts %}{{ close(x, b.elts[loop.index0]) }}{% if not loop.last %} && {% endif %}{% endfor %}{% else %}{{ close(a, b) }}{% endif %})'
+    output: '{% set name = (callee | source).split(".")[-1] %}{% set a, b = (args + [none, none])[:2] %}{% set ok = args | length == 2 and keywords | rejectattr("arg", "in", ["atol", "rtol"]) | list | length == 0 and keywords | map(attribute="value") | rejectattr("__class__.__name__", "equalto", "Constant") | list | length == 0 and (name == "isclose" and a | kind == "number" and b | kind == "number" or name == "allclose" and a.elts is defined and b.elts is defined and a.elts | length == b.elts | length and (a.elts + b.elts) | map("kind") | reject("equalto", "number") | list | length == 0) %}{% if not ok %}{{ "helpers.linalg" | use("linalg") }}.{{ name }}({{ args | map("emit") | join(", ") }}{% if keywords %}, { {% for k in keywords %}{{ k.arg }}: {{ k.value | emit }}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %}){% else %}{% set atol = (keywords | selectattr("arg", "equalto", "atol") | first).value.value if keywords | selectattr("arg", "equalto", "atol") | list else 1e-08 %}{% set rtol = (keywords | selectattr("arg", "equalto", "rtol") | first).value.value if keywords | selectattr("arg", "equalto", "rtol") | list else 1e-05 %}{% macro close(x, y) %}Math.abs(({{ x | emit }}) - ({{ y | emit }})) <= {{ atol }} + {{ rtol }} * Math.abs({{ y | emit }}){% endmacro %}({% if a.elts is defined %}{% for x in a.elts %}{{ close(x, b.elts[loop.index0]) }}{% if not loop.last %} && {% endif %}{% endfor %}{% else %}{{ close(a, b) }}{% endif %}){% endif %}'
+  # np.cos(x) and the other Math functions take numbers; of an array they stay stubs.
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+    when: callee | runtime_path is not none and (callee | runtime_path).module == "numpy" and (callee | runtime_path).parts | join(".") in numpy_math and args | map("kind") | reject("equalto", "number") | list
+    output: '{{ ((callee | source) ~ " of an array or a value of unknown type") | unsupported }}'
+  # numpy calls with keyword arguments (axis=, for example) stay stubs; dtype= only gives the number type.
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: $keywords
+    when: callee | runtime_path is not none and (callee | runtime_path).module == "numpy" and keywords | rejectattr("arg", "equalto", "dtype") | list
+    output: '{{ ((callee | source) ~ " with the keyword " ~ (keywords | rejectattr("arg", "equalto", "dtype") | first).arg) | unsupported }}'
+  - input:
+      node: Call
+      func: $callee
+      args: $args
+      keywords: $keywords
+    when: callee | runtime_path is not none and (callee | runtime_path).module == "numpy" and keywords
+    output: '{{ callee | emit }}({{ args | map("emit") | join(", ") }})'
+  # The other methods of numpy arrays stay stubs.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value: $value
+        attr: $method
+      args: $args
+      keywords: $keywords
+    when: value | kind == "ndarray" and (method not in ["dot", "copy", "tolist", "item"] or keywords or (method == "dot") != (args | length == 1))
+    output: '{{ ("the numpy method ." ~ method) | unsupported }}'
   # A method of a module-level value of this module (a parser object, for example).
   - input:
       node: Call
@@ -468,7 +608,16 @@ rules:
       func: $callee
     when: callee | resolve in numpy_functions
     output: '{{ ("calls " ~ (callee | resolve) ~ ", which returns a numpy array") | unsupported }}'
-  # m[i, j] and m[:, j] index numpy arrays; they need the hand-written TypedArray code (see hand_written).
+  # m[i, j], m[:3, 3] and m[:3, :3] of a numpy array: the rows, then the items of each row. Other tuple
+  # indices (steps, np.newaxis, arrays of indices) and dict keys that are tuples stay stubs.
+  - input:
+      node: Subscript
+      value: $value
+      slice:
+        node: Tuple
+        elts: $elts
+    when: value | kind not in ["dict", "map"] and elts | length == 2 and elts | selectattr("__class__.__name__", "equalto", "Slice") | selectattr("step", "ne", none) | list | length == 0 and elts | map("source") | select("in", ["np.newaxis", "None"]) | list | length == 0
+    output: '{% macro index(v, items) %}{% if not items %}{{ v }}{% elif items[0].__class__.__name__ == "Slice" %}{{ v }}.slice({{ items[0].lower | emit if items[0].lower is not none else "0" }}{% if items[0].upper is not none %}, {{ items[0].upper | emit }}{% endif %}){% if items[1:] %}.map((row: any) => {{ index("row", items[1:]) }}){% endif %}{% elif items[0].__class__.__name__ == "UnaryOp" and items[0].operand.value is defined %}{{ index(v ~ ".at(" ~ (items[0] | emit) ~ ")", items[1:]) }}{% else %}{{ index(v ~ "[" ~ (items[0] | emit) ~ "]", items[1:]) }}{% endif %}{% endmacro %}{% if node.ctx.__class__.__name__ != "Load" and elts | selectattr("__class__.__name__", "equalto", "Slice") | list %}{{ "assignment to a slice of a numpy array" | unsupported }}{% endif %}{{ index(value | emit, elts) }}'
   - input:
       node: Subscript
       slice:
@@ -608,17 +757,21 @@ rules:
       keywords: []
     when: method in ["debug", "info", "warning", "error", "critical", "exception"] and value | source in ["logger", "log", "logging"]
     output: 'console.{{ {"debug": "debug", "info": "info", "warning": "warn", "error": "error", "critical": "error", "exception": "error"}[method] }}({{ args | map("emit") | join(", ") }})'
-  # Matrix multiplication needs numpy arrays, which the generated code does not have.
+  # Matrix multiplication of vectors and matrices.
   - input:
       node: BinOp
+      left: $left
       op:
         node: MatMult
-    output: '{{ "the @ operator needs numpy" | unsupported }}'
+      right: $right
+    output: '{{ "helpers.linalg" | use("linalg") }}.matmul({{ left | emit }}, {{ right | emit }})'
   - input:
       node: AugAssign
+      target: $target
       op:
         node: MatMult
-    output: '{{ "the @ operator needs numpy" | unsupported }}'
+      value: $value
+    output: '{{ target | emit }} = {{ "helpers.linalg" | use("linalg") }}.matmul({{ target | emit }}, {{ value | emit }});'
   # A misspelled file.createIfc... call in the Python source fails there too: keep it a stub.
   - input:
       node: Call
@@ -794,12 +947,13 @@ rules:
       attr: version
     when: node | source == "ifcopenshell.version"
     output: '{{ ifcopenshell_version | literal }}'
-  # Derived attributes: Python computes them with the generated EXPRESS rules (ifcopenshell.express.rules).
+  # Derived attributes: Python computes them with the generated EXPRESS rules (ifcopenshell.express.rules),
+  # which ifcopenshell-js does not have.
   - input:
       node: Attribute
       attr: $name
     when: name in ["Dim"] and node.ctx.__class__.__name__ == "Load"
-    output: '{{ ("the derived attribute " ~ name ~ " needs the EXPRESS rules") | unsupported }}'
+    output: '{{ ("the derived attribute " ~ name) | unsupported }}'
   # Methods of the native file that ifcopenshell-js does not expose.
   - input:
       node: Call
@@ -807,8 +961,13 @@ rules:
         node: Attribute
         value: $value
         attr: $name
-    when: name in ["assign_header_from"] and value | kind == "file"
+    when: name in ["assign_header_from", "begin_transaction", "end_transaction", "discard_transaction", "undo", "redo"] and value | kind == "file"
     output: '{{ ("ifcopenshell.file." ~ name ~ " is not exposed") | unsupported }}'
+  - input:
+      node: Attribute
+      attr: $name
+    when: name in geom_constants and ((node | source).startswith("ifcopenshell.ifcopenshell_wrapper.") or (node | source).startswith("ifcopenshell_wrapper."))
+    output: '{{ "geom.index" | use("geom") }}.{{ geom_constants[name] }}'
   - input:
       node: Attribute
       attr: $name
@@ -838,12 +997,7 @@ rules:
     output: '{{ callee | emit }}({{ args | map("emit") | join(", ") }}{% if keywords %}{% if args %}, {% endif %}{ {% for keyword in keywords %}{% if keyword.arg is none %}{{ "**values in a call (pass the keyword arguments)" | unsupported }}{% else %}{{ keyword.arg | camel }}: {{ keyword.value | emit }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %} }{% endif %})'
   - input: $value
     when: value.__class__.__name__ in ["Name", "Attribute"] and value | runtime_path is not none
-    output: '{% set path = value | runtime_path %}{% if path.module == "math" %}{{ math_functions[path.parts[0]] if path.parts[0] in math_functions else math_constants[path.parts[0]] }}{% else %}{% set spec = runtime_modules[path.module] %}{% if spec.module is none %}{{ ((value | source) ~ " (no rule for this use of the module)") | unsupported }}{% endif %}{{ spec.module | use(spec.alias) }}{% if spec.prefix is defined %}.{{ spec.prefix }}{% endif %}{% for part in path.parts %}.{{ part | camel }}{% endfor %}{% endif %}'
-  - input:
-      node: Attribute
-      attr: $name
-    when: name in geom_constants and ((node | source).startswith("ifcopenshell.ifcopenshell_wrapper.") or (node | source).startswith("ifcopenshell_wrapper."))
-    output: '{{ "geom.index" | use("geom") }}.{{ geom_constants[name] }}'
+    output: '{% set path = value | runtime_path %}{% if path.module == "math" %}{{ math_functions[path.parts[0]] if path.parts[0] in math_functions else math_constants[path.parts[0]] }}{% else %}{% set spec = runtime_modules[path.module] %}{% if spec.module is none %}{{ ((value | source) ~ " (no rule for this use of the module)") | unsupported }}{% endif %}{% set name = path.parts | join(".") %}{% if path.module == "numpy" and name in numpy_math %}{{ numpy_math[name] }}{% elif spec.members is defined and path.parts %}{% if name not in spec.members %}{{ ((value | source) ~ " (not in " ~ spec.module ~ ")") | unsupported }}{% endif %}{{ spec.module | use(spec.alias) }}.{{ spec.members[name] }}{% else %}{{ spec.module | use(spec.alias) }}{% if spec.prefix is defined %}.{{ spec.prefix }}{% endif %}{% for part in path.parts %}.{{ part | camel }}{% endfor %}{% endif %}{% endif %}'
   # Methods of runtime objects (arrays, dates) keep their Python meaning, in camelCase.
   - input:
       node: Call
@@ -874,8 +1028,18 @@ rules:
           value: $container
           slice: $index
       value: $value
-    when: container | kind == "ndarray" or overloading and container | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and container | kind not in ["dict", "map"]
-    output: '{{ "indexing a numpy array or a value of unknown type" | unsupported }}'
+    when: overloading and container | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and container | kind not in ["dict", "map"] and index.elts | selectattr("__class__.__name__", "equalto", "Slice") | list
+    output: '{{ ("indexing a numpy array or a value of unknown type: " ~ (node | source)[:60]) | unsupported }}'
+  - input:
+      node: AugAssign
+      target:
+        node: Subscript
+        value: $container
+        slice: $index
+      op: $op
+      value: $value
+    when: op.__class__.__name__ in numpy_operators and (container | kind == "ndarray") and index.__class__.__name__ != "Tuple"
+    output: '{% set item = (container | emit) ~ "[" ~ (index | emit) ~ "]" %}{{ item }} = {{ "helpers.linalg" | use("linalg") }}.{{ numpy_operators[op.__class__.__name__] }}({{ item }}, {{ value | emit }});'
   - input:
       node: AugAssign
       target:
@@ -885,7 +1049,14 @@ rules:
       op: $op
       value: $value
     when: op.__class__.__name__ in dunder_operators and (container | kind == "ndarray" or overloading and container | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string))
-    output: '{{ "indexing a numpy array or a value of unknown type" | unsupported }}'
+    output: '{{ ("indexing a numpy array or a value of unknown type: " ~ (node | source)[:60]) | unsupported }}'
+  - input:
+      node: AugAssign
+      target: $target
+      op: $op
+      value: $value
+    when: op.__class__.__name__ in numpy_operators and (target | kind == "ndarray" or value | kind == "ndarray")
+    output: '{{ target | emit }} = {{ "helpers.linalg" | use("linalg") }}.{{ numpy_operators[op.__class__.__name__] }}({{ target | emit }}, {{ value | emit }});'
   - input:
       node: AugAssign
       target: $target
@@ -2075,7 +2246,7 @@ rules:
       args:
         - $value
       keywords: []
-    output: '{% set k = value | kind %}{% if k in ["array", "string", "sequence"] %}{{ value | emit }}.length{% elif k in ["set", "map"] %}{{ value | emit }}.size{% elif k == "dict" %}Object.keys({{ value | emit }}).length{% elif k == "entity" %}{{ value | emit }}.attributes().length{% else %}{{ ("len() of a value of unknown type: " ~ (value | source)[:60]) | unsupported }}{% endif %}'
+    output: '{% set k = value | kind %}{% if k in ["array", "string", "sequence", "ndarray"] %}{{ value | emit }}.length{% elif k in ["set", "map"] %}{{ value | emit }}.size{% elif k == "dict" %}Object.keys({{ value | emit }}).length{% elif k == "entity" %}{{ value | emit }}.attributes().length{% else %}{{ ("len() of a value of unknown type: " ~ (value | source)[:60]) | unsupported }}{% endif %}'
   - input:
       node: Call
       func:
@@ -2187,7 +2358,7 @@ rules:
         attr: copy
       args: []
       keywords: []
-    output: '{% set k = value | kind %}{% if k == "set" %}new Set<any>({{ value | emit }}){% elif k == "dict" %}({ ...{{ value | emit }} }){% elif k == "array" %}[...{{ value | emit }}]{% else %}{{ "copy() of a value of unknown type" | unsupported }}{% endif %}'
+    output: '{% set k = value | kind %}{% if k == "set" %}new Set<any>({{ value | emit }}){% elif k == "dict" %}({ ...{{ value | emit }} }){% elif k == "array" %}[...{{ value | emit }}]{% elif k == "ndarray" %}{{ "helpers.linalg" | use("linalg") }}.copy({{ value | emit }}){% else %}{{ "copy() of a value of unknown type" | unsupported }}{% endif %}'
   - input:
       node: Call
       func:
@@ -2542,8 +2713,8 @@ rules:
       node: Subscript
       value: $value
       slice: $index
-    when: value | kind == "ndarray" or overloading and value | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and value | kind not in ["dict", "map"]
-    output: '{{ "indexing a numpy array or a value of unknown type" | unsupported }}'
+    when: overloading and value | kind == "unknown" and not (index.__class__.__name__ == "Constant" and index.value is string) or index.__class__.__name__ == "Tuple" and value | kind not in ["dict", "map"]
+    output: '{{ ("indexing a numpy array or a value of unknown type: " ~ (node | source)[:60]) | unsupported }}'
   - input:
       node: Subscript
       value: $value
@@ -2559,6 +2730,19 @@ rules:
             node: Constant
             value: 1
     output: '[...{{ value | emit }}].reverse()'
+  # v[start:stop:step] with a positive constant step: every step-th item.
+  - input:
+      node: Subscript
+      value: $value
+      slice:
+        node: Slice
+        lower: $lower
+        upper: $upper
+        step:
+          node: Constant
+          value: $step
+    when: step is integer and step > 0 and node.ctx.__class__.__name__ == "Load"
+    output: '{% set start = lower | emit if lower is not none else "0" %}{{ value | emit }}.slice({{ start }}{% if upper is not none %}, {{ upper | emit }}{% endif %}).filter((_: unknown, i: number) => i % {{ step }} === 0)'
   - input:
       node: Subscript
       value: $value
@@ -2632,6 +2816,13 @@ rules:
       op:
         node: USub
       operand: $value
+    when: value | kind == "ndarray"
+    output: '{{ "helpers.linalg" | use("linalg") }}.negative({{ value | emit }})'
+  - input:
+      node: UnaryOp
+      op:
+        node: USub
+      operand: $value
     when: value | kind in ["ndarray", "pyobject"] or overloading and value | kind == "unknown"
     output: '{{ "unary minus of a numpy array or a value of unknown type" | unsupported }}'
   - input:
@@ -2640,6 +2831,46 @@ rules:
         node: USub
       operand: $value
     output: (-{{ value | emit }})
+  # [x, y] * n repeats a list; ' ' * n repeats a text.
+  - input:
+      node: BinOp
+      left: $left
+      op:
+        node: Mult
+      right: $right
+    when: left.__class__.__name__ == "List" and right | kind in ["number", "unknown"] and right.__class__.__name__ not in ["List", "Tuple"] or right.__class__.__name__ == "List" and left | kind in ["number", "unknown"] and left.__class__.__name__ not in ["List", "Tuple"]
+    output: '{% set items, n = (left, right) if left.__class__.__name__ == "List" else (right, left) %}Array.from({ length: {{ n | emit }} }).flatMap(() => {{ items | emit }})'
+  - input:
+      node: BinOp
+      left: $left
+      op:
+        node: Mult
+      right: $right
+    when: left.__class__.__name__ == "Constant" and left.value is string and right | kind in ["number", "unknown"]
+    output: '{{ left | emit }}.repeat({{ right | emit }})'
+  # Arithmetic on numpy arrays (or values of unknown type in a module that uses numpy): element-wise functions.
+  - input:
+      node: BinOp
+      left: $left
+      op: $op
+      right: $right
+    when: op.__class__.__name__ in numpy_operators and (left | kind == "ndarray" or right | kind == "ndarray") and not (op.__class__.__name__ == "Mult" and (left.__class__.__name__ in ["List", "Tuple"] and right | kind != "ndarray" and not (right | kind == "unknown" and left.elts | length > 1) or right.__class__.__name__ in ["List", "Tuple"] and left | kind != "ndarray" and not (left | kind == "unknown" and right.elts | length > 1)))
+    output: '{{ "helpers.linalg" | use("linalg") }}.{{ numpy_operators[op.__class__.__name__] }}({{ left | emit }}, {{ right | emit }})'
+  # A Python list has no - / or **: a list with one of them is a numpy array that the types do not show.
+  - input:
+      node: BinOp
+      left: $left
+      op: $op
+      right: $right
+    when: op.__class__.__name__ in ["Sub", "Div", "Pow"] and left | kind != "set" and right | kind != "set" and (left | kind in ["array", "sequence"] or right | kind in ["array", "sequence"] or overloading and (left | kind == "object" or right | kind == "object"))
+    output: '{{ ("an operator on a list (type the value as a numpy array): " ~ (node | source)[:60]) | unsupported }}'
+  - input:
+      node: AugAssign
+      target: $target
+      op: $op
+      value: $value
+    when: op.__class__.__name__ in ["Sub", "Div", "Pow"] and target | kind != "set" and value | kind != "set" and (target | kind in ["array", "sequence"] or value | kind in ["array", "sequence"] or overloading and (target | kind == "object" or value | kind == "object"))
+    output: '{{ ("an operator on a list (type the value as a numpy array): " ~ (node | source)[:60]) | unsupported }}'
   # Arithmetic on arrays and dates: Python's operator protocol (__add__, __radd__, ...) at runtime.
   - input:
       node: BinOp
@@ -2647,7 +2878,7 @@ rules:
       op: $op
       right: $right
     when: op.__class__.__name__ in dunder_operators and (left | kind in ["ndarray", "pyobject"] or right | kind in ["ndarray", "pyobject"] or op.__class__.__name__ == "MatMult" or overloading and left | kind in ["unknown", "number"] and right | kind in ["unknown", "number"] and not (left | kind == "number" and right | kind == "number") or op.__class__.__name__ == "Mult" and (left.__class__.__name__ in ["List", "Tuple"] or right.__class__.__name__ in ["List", "Tuple"] or left | kind in ["string", "array"] or right | kind in ["string", "array"]))
-    output: '{{ "an operator on a numpy array or a value of unknown type" | unsupported }}'
+    output: '{{ ("an operator on a numpy array or a value of unknown type: " ~ (node | source)[:60]) | unsupported }}'
   - input:
       node: BinOp
       left: $left
@@ -2709,7 +2940,7 @@ rules:
     when: op.__class__.__name__ in ["Is", "IsNot", "Eq", "NotEq"] and right.value is defined and right.value is none and right.__class__.__name__ == "Constant"
     output: ({{ left | emit }} {{ "==" if op.__class__.__name__ in ["Is", "Eq"] else "!=" }} null)
   - input: *id001
-    when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind == "ndarray" or right | kind == "ndarray")
+    when: op.__class__.__name__ in ["Lt", "LtE", "Gt", "GtE"] and (left | kind == "pyobject" or right | kind == "pyobject")
     output: '{{ "ordering of values of unknown type" | unsupported }}'
   - input: *id001
     when: op.__class__.__name__ in ["Eq", "NotEq"] and left.__class__.__name__ != "Constant" and right.__class__.__name__ != "Constant" and (left | kind in ["ndarray", "pyobject"] or right | kind in ["ndarray", "pyobject"] or overloading and left | kind == "unknown" and right | kind == "unknown")
@@ -2842,7 +3073,7 @@ annotation_kinds:
     output: unknown
   - input: $value
     when: value | runtime_path is not none and (value | runtime_path).module in runtime_kinds
-    output: '{% set path = value | runtime_path %}{{ "ndarray" if path.module == "numpy" and path.parts[-1] in ["ndarray", "NDArray", "array"] else "number" if path.module == "numpy" else runtime_kinds[path.module] }}'
+    output: '{% set path = value | runtime_path %}{{ "ndarray" if path.module == "numpy" and (path.parts or [""])[-1] in ["ndarray", "NDArray", "array"] else "number" if path.module == "numpy" else runtime_kinds[path.module] }}'
   # Instances of util and api classes, so their method calls bind to the method's parameters.
   - input: $value
     when: value.__class__.__name__ in ["Name", "Attribute"] and value | is_class
@@ -2907,6 +3138,12 @@ annotation_kinds:
   - input: $value
     output: unknown
 inference:
+  # What map_shape and function_item_evaluator give, for the rules of their methods.
+  - input:
+      node: Call
+      func: $callee
+    when: callee | source in geom_functions and geom_functions[callee | source] in ["mapShape", "functionItemEvaluator"]
+    output: '{{ "taxonomy" if geom_functions[callee | source] == "mapShape" else "evaluator" }}'
   # file._is_referenced_only_in(element, ids): a native method that gives a boolean.
   - input:
       node: Call
@@ -2937,10 +3174,10 @@ inference:
       node: Call
       func: $callee
     when: callee | runtime_path is not none
-    output: '{% set path = callee | runtime_path %}{% set name = path.parts[-1] if path.parts else "" %}{% if path.module == "math" %}number{% elif path.module == "numpy" %}{{ "boolean" if name in ["allclose", "array_equal"] else "unknown" if name in numpy_scalars else "ndarray" }}{% elif path.module == "itertools" %}array{% else %}{{ runtime_kinds.get(path.module, "unknown") }}{% endif %}'
+    output: '{% set path = callee | runtime_path %}{% set name = path.parts[-1] if path.parts else "" %}{% if path.module == "math" %}number{% elif path.module == "numpy" %}{{ "boolean" if name in ["allclose", "array_equal", "isclose", "any", "all"] else "unknown" if name == "dot" else "number" if name in ["norm", "det", "sum", "mean", "min", "max", "argmax", "argmin", "pi"] else (node.args[0] | kind if node.args and node.args[0] | kind in ["number", "ndarray"] else "unknown") if name in numpy_scalars else "ndarray" }}{% elif path.module == "itertools" %}array{% else %}{{ runtime_kinds.get(path.module, "unknown") }}{% endif %}'
   - input: $value
     when: value.__class__.__name__ in ["Name", "Attribute"] and value | runtime_path is not none
-    output: '{% set path = value | runtime_path %}{{ "number" if path.module == "math" or path.module == "numpy" and path.parts[-1] in ["pi", "e", "inf", "nan"] else "unknown" }}'
+    output: '{% set path = value | runtime_path %}{{ "number" if path.module == "math" or path.module == "numpy" and (path.parts or [""])[-1] in ["pi", "e", "inf", "nan"] else "unknown" }}'
   - input:
       node: Name
       id: $name

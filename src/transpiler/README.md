@@ -80,10 +80,19 @@ the pure Python build of mypy, since `mypy_types.py` subclasses its visitors.
 
 ## Unsupported modules
 
-The generated code does not emulate Python libraries. Functions that use `numpy`, `datetime`
-arithmetic, `isodate`, `dateutil`, `lark`, `shapely`, Blender modules or native functions that
-the WASM build does not expose become stubs that throw with the reason; `transpile.json` lists
-them. The rules write native TS for the kinds they know (`mypy_types.py` proves them): a truth
+The generated code does not emulate Python libraries. Functions that use `datetime` arithmetic,
+`isodate`, `dateutil`, `lark`, `shapely`, Blender modules or native functions that the WASM build
+does not expose become stubs that throw with the reason; `transpile.json` lists them.
+
+numpy vectors and matrices are plain arrays of numbers (a matrix is an array of rows). For a value
+that mypy types as a numpy array, the rules map `np.cross(a, b)`, `a @ b`, `a + b` and stores such as
+`m[:3, 3] = v` to `src/helpers/linalg.ts`, a small module of vector and matrix functions
+(`runtime_modules` lists its names). It is not numpy: an operation takes two operands of the same
+shape, or one of them and a number. numpy functions of numbers (`np.cos(x)`) become `Math` functions.
+A function that uses another numpy name or form (`axis` arguments, arrays of indices, reshapes)
+stays a stub.
+
+The rules write native TS for the kinds they know (`mypy_types.py` proves them): a truth
 test of a list is `.length > 0`, a set is a `Set`, a dict with entity or number keys is a `Map`,
 a pattern is a `RegExp`. An expression whose kind is not known makes its function a stub, with
 the expression in the reason; typing the Python is the way to translate it. A `File` keeps one

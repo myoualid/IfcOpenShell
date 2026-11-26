@@ -43,6 +43,12 @@ export function functionItemEvaluator(settings: Settings, item: IfcOpenshellGeom
   return evaluator;
 }
 
+/** The 4x4 matrix (rows) at the parameter u of a function item evaluator: Python's evaluator.evaluate(u). */
+export function evaluateAt(evaluator: IfcOpenshellGeomFunctionItemEvaluator, u: number): number[][] {
+  const data = evaluator.evaluateAt(u);
+  return [0, 1, 2, 3].map(row => [0, 1, 2, 3].map(column => data[column * 4 + row]!));
+}
+
 /** The first and last parameter (distance along) of a function item that mapShape gives. */
 export function functionItemRange(item: IfcOpenshellGeomTaxonomyItem): [number, number] {
   return [ifcopenshell.geom.taxonomyFunctionItemStart(item), ifcopenshell.geom.taxonomyFunctionItemEnd(item)];
@@ -52,4 +58,15 @@ export function functionItemRange(item: IfcOpenshellGeomTaxonomyItem): [number, 
 export function helmertCurvePoint(a0: number, a1: number, a2: number, s: number): [number, number, number] {
   const [x, y, angle] = ifcopenshell.geom.helmertCurvePoint(a0, a1, a2, s);
   return [x!, y!, angle!];
+}
+
+/**
+ * The rows of the 4x4 matrix of a matrix item that mapShape gives for a placement: Python's `components`.
+ * It needs a WASM build with taxonomy_matrix4_components (IfcOpenShell geometry bindings).
+ */
+export function matrixComponents(item: IfcOpenshellGeomTaxonomyItem): number[][] {
+  const geom = ifcopenshell.geom as unknown as { taxonomyMatrix4Components?: (item: IfcOpenshellGeomTaxonomyItem) => number[] };
+  if (!geom.taxonomyMatrix4Components) throw new TypeError('This WASM build cannot read the matrix of a taxonomy item (taxonomy_matrix4_components)');
+  const rows = geom.taxonomyMatrix4Components(item);
+  return [0, 1, 2, 3].map(row => rows.slice(row * 4, row * 4 + 4));
 }
