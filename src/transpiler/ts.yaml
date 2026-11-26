@@ -475,6 +475,14 @@ rules:
         id: pytest
       attr: $attr
     output: '{{ ("pytest." ~ attr) | unsupported }}'
+  # Python date formatting has no Temporal counterpart: strftime and strptime stay stubs.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        attr: $method
+    when: method in ["strftime", "strptime"]
+    output: '{{ (method ~ " (no Temporal rule)") | unsupported }}'
   # Geometry of a triangulation: the methods of the ifcopenshell-js triangulation (verts -> verts(),
   # verts_buffer -> vertsBuffer()).
   - input:
@@ -3063,6 +3071,13 @@ rules:
       ctx:
         node: Load
     output: ({{ value | emit }}.units ?? {})
+  # A use of the datetime module that no Temporal rule covers stays a stub.
+  - input:
+      node: Attribute
+      value: $value
+      attr: $attr
+    when: (node | source).split(".")[0] == "datetime" and value.__class__.__name__ in ["Name", "Attribute"] and "datetime" not in symbols
+    output: '{{ ((node | source) ~ " (no Temporal rule)") | unsupported }}'
   - input:
       node: Attribute
       value: $value
