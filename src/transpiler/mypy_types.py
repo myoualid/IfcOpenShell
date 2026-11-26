@@ -247,6 +247,9 @@ def analyze():
                 if isinstance(proper, types.Instance) and proper.type.fullname.startswith("ifcopenshell.ifcopenshell_wrapper."):
                     # The class of a native value, for the rules that map its methods to ifcopenshell-js.
                     self.kinds[position + ":class"] = [proper.type.name, False]
+                if isinstance(proper, types.TupleType) and (fields := proper.partial_fallback.type.metadata.get("namedtuple", {}).get("fields")):
+                    # The fields of a named tuple in order, for *value in a call (f(x, *parameters)).
+                    self.kinds[position + ":fields"] = [list(fields), False]
                 if (elements := element_type(proper)) is not None and (kind := classify(elements, types)):
                     # The elements of a list, tuple or set (for sorted(), min(), all() and `in`).
                     self.kinds[position + ":elements"] = kind

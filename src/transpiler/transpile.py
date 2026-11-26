@@ -718,6 +718,11 @@ class Transpiler:
         ):
             # f(a, *rest): rest fills the optional parameters after a, as an options object built at runtime.
             head = call.args[:-1]
+            fields = self.named_fields(starred[0].value)
+            if fields and len(head) + len(fields) <= len(parameters):
+                # A named tuple: its fields, in order, are the next arguments (f(x, *parameters)).
+                value = starred[0].value
+                return self.bind(ast.Call(call.func, head + [ast.Attribute(value, f, ast.Load()) for f in fields], []), function)
             names = [ast.Constant(p.arg) for p in parameters[len(head) :]]
             spread = ast.Call(
                 ast.Name("__positional_options__", ast.Load()), [ast.List(names, ast.Load()), starred[0].value], []
@@ -1054,6 +1059,13 @@ class Transpiler:
         if not self.rules.get("proven_types") or getattr(node, "lineno", None) is None:
             return None
         position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}:class"
+        return (self.types.get(self.module, {}).get(position) or [None])[0]
+
+    def named_fields(self, node):
+        """The fields of the named tuple that an expression is, in order, from mypy_types; None if it is not one."""
+        if not self.rules.get("proven_types") or getattr(node, "lineno", None) is None:
+            return None
+        position = f"{node.lineno}:{node.col_offset}:{node.end_lineno}:{node.end_col_offset}:fields"
         return (self.types.get(self.module, {}).get(position) or [None])[0]
 
     def returns_kind(self, node):
