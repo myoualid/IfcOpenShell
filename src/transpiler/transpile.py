@@ -265,12 +265,14 @@ def value_path(node):
 
 
 def camel(name):
-    """snake_case to camelCase; CONSTANT_CASE and leading underscores are kept."""
+    """snake_case to camelCase; CONSTANT_CASE and leading underscores are kept, and a double underscore inside
+    keeps one, so that a_0__5 and a_0_5 stay different names."""
     stripped = name.lstrip("_")
     if not stripped or stripped.upper() == stripped:
         return name
-    head, *rest = stripped.split("_")
-    return name[: len(name) - len(stripped)] + head + "".join(part[:1].upper() + part[1:] for part in rest)
+    core = stripped.rstrip("_")  # Trailing underscores are dropped (__init__ is __init).
+    head, *rest = core.split("_")
+    return name[: len(name) - len(stripped)] + head + "".join(part[:1].upper() + part[1:] if part else "_" for part in rest)
 
 
 COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
