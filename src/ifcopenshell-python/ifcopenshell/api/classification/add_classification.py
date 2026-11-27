@@ -16,7 +16,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Union
+import datetime
+from typing import Optional, Union
 
 import ifcopenshell
 import ifcopenshell.guid
@@ -95,7 +96,7 @@ class Usecase:
         return self.add_from_library()
 
     def add_from_library(self) -> ifcopenshell.entity_instance:
-        edition_date = None
+        edition_date: Optional[datetime.date] = None
         if self.classification.EditionDate:
             edition_date = ifcopenshell.util.date.ifc2datetime(self.classification.EditionDate)
             self.classification.EditionDate = None
@@ -108,10 +109,10 @@ class Usecase:
             result.EditionDate = self.file.create_entity(
                 "IfcCalendarDate", **ifcopenshell.util.date.datetime2ifc(edition_date, "IfcCalendarDate")
             )
+        elif edition_date:
+            result.EditionDate = ifcopenshell.util.date.datetime2ifc(edition_date, "IfcDate")
         else:
-            if edition_date:
-                edition_date = ifcopenshell.util.date.datetime2ifc(edition_date, "IfcDate")
-            result.EditionDate = edition_date
+            result.EditionDate = None
 
         self.relate_to_project(result)
 

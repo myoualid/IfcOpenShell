@@ -47,7 +47,7 @@ filter_elements_grammar = lark.Lark("""start: filter_group
     facet: instance | entity | attribute | type | material | query | classification | location | property | group | parent
 
     instance: not? globalid
-    globalid: /[0-3][a-zA-Z0-9_$]{21}/
+    globalid: GLOBALID
     entity: not? ifc_class
     attribute: attribute_name comparison value
     type: "type" comparison value
@@ -57,20 +57,31 @@ filter_elements_grammar = lark.Lark("""start: filter_group
     location: "location" comparison value
     group: "group" comparison value
     parent: "parent" comparison value
-    query: "query:" keys comparison value
+    query: _QUERY keys comparison value
 
     pset: quoted_string | regex_string | unquoted_string
     prop: quoted_string | regex_string | unquoted_string
     keys: quoted_string | unquoted_string
 
-    attribute_name: /[A-Z]\\w+/
-    ifc_class: /Ifc\\w+/
+    attribute_name: ATTRIBUTE_NAME | IFC_CLASS
+    ifc_class: IFC_CLASS
 
     value: special | quoted_string | regex_string | decimal_string | unquoted_string
-    unquoted_string: /[^,.=><*!\\s]+/
+    // The LALR lexer gives one terminal for each word, so a word that is also a GlobalId, a class
+    // or an attribute name is an unquoted string where the grammar expects one.
+    unquoted_string: UNQUOTED | ATTRIBUTE_NAME | IFC_CLASS | GLOBALID
     decimal_string: SIGNED_DECIMAL
-    SIGNED_DECIMAL: ["+"|"-"] (INT "." INT | "." INT)
-    regex_string: "/" /[^\\/]+/ "/"
+
+    // Terminals that match the same text are tried in the order of their priorities. A name ends
+    // at a separator: , . = > < * ! + or white space. Terminals that start with _ are not in the tree.
+    GLOBALID.5: /[0-3][a-zA-Z0-9_$]{21}(?![^,.=><*!\\s+])/
+    IFC_CLASS.4: /Ifc\\w+(?![^,.=><*!\\s+])/
+    ATTRIBUTE_NAME.3: /[A-Z]\\w+(?![^,.=><*!\\s+])/
+    SIGNED_DECIMAL.2: /[+-]?(\\d+\\.\\d+|\\.\\d+)/
+    UNQUOTED: /[^,.=><*!\\s]+/
+    _QUERY.5: "query:"
+    _SLASH.1: "/"
+    regex_string: _SLASH /[^\\/]+/ _SLASH
     quoted_string: ESCAPED_STRING
 
     special: null | true | false
@@ -83,9 +94,12 @@ filter_elements_grammar = lark.Lark("""start: filter_group
     morethan: ">"
     lessthan: "<"
     contains: "*="
-    null: "NULL"
-    true: "TRUE"
-    false: "FALSE"
+    null: _NULL
+    true: _TRUE
+    false: _FALSE
+    _NULL.6: /NULL(?![^,.=><*!\\s+])/
+    _TRUE.6: /TRUE(?![^,.=><*!\\s+])/
+    _FALSE.6: /FALSE(?![^,.=><*!\\s+])/
 
     // Embed common.lark for packaging
     DIGIT: "0".."9"
@@ -111,13 +125,14 @@ filter_elements_grammar = lark.Lark("""start: filter_group
     CR : /\\r/
     LF : /\\n/
     NEWLINE: (CR? LF)+
-    COMMENT: "/*" /.*?/s "*/"
+    COMMENT.7: "/*" /.*?/s "*/"
 
     %ignore WS // Disregard spaces in text
     %ignore COMMENT // Allow /* ... */ block comments to toggle parts of a query
-""")
+""", parser="lalr")
 
-get_element_grammar = lark.Lark("""start: keys
+get_element_grammar = lark.Lark(
+    """start: keys
 
     keys: key ("." key)*
     key: quoted_string | regex_string | unquoted_string
@@ -132,9 +147,12 @@ get_element_grammar = lark.Lark("""start: keys
     WS: /[ \\t\\f\\r\\n]/+
 
     %ignore WS // Disregard spaces in text
- """)
+ """,
+    parser="lalr",
+)
 
-format_grammar = lark.Lark("""start: expression
+format_grammar = lark.Lark(
+    """start: expression
 
     ?expression: add_sub
     ?add_sub: mul_div
@@ -194,24 +212,26 @@ format_grammar = lark.Lark("""start: expression
     NEWLINE: (CR? LF)+
 
     %ignore WS // Disregard spaces in text
-""")
+""",
+    parser="lalr",
+)
 
 
 class FormatTransformer(lark.Transformer):
-    def __init__(self, element=None):
+    def __init__(self, element: Optional[ifcopenshell.entity_instance] = None):
         """Initialize transformer with optional element for variable substitution"""
         super().__init__()
         self.element = element
 
-    def start(self, args):
+    def start(self, args: list[Any]):
         if isinstance(args[0], (list, tuple)):
             return ", ".join(args[0])
         return args[0]
 
-    def expression(self, args):
+    def expression(self, args: list[Any]):
         return args[0]
 
-    def variable(self, args):
+    def variable(self, args: list[Any]):
         """Handle variable substitution like {{z}} or {{Pset_Wall.FireRating}}"""
         if self.element:
             try:
@@ -219,11 +239,11 @@ class FormatTransformer(lark.Transformer):
             except:
                 pass
 
-    def query_path(self, args):
+    def query_path(self, args: list[Any]):
         """Extract the query path from variable"""
         return str(args[0]).strip()
 
-    def add(self, args):
+    def add(self, args: list[Any]):
         """Handle addition operation"""
         left, right = args
         try:
@@ -238,7 +258,7 @@ class FormatTransformer(lark.Transformer):
             # If can't convert to numbers, concatenate as strings
             return str(left) + str(right)
 
-    def subtract(self, args):
+    def subtract(self, args: list[Any]):
         """Handle subtraction operation"""
         left, right = args
         left_val = float(left) if left != "None" and left is not None else 0.0
@@ -248,7 +268,7 @@ class FormatTransformer(lark.Transformer):
             return str(int(result))
         return str(result)
 
-    def multiply(self, args):
+    def multiply(self, args: list[Any]):
         """Handle multiplication operation"""
         left, right = args
         left_val = float(left) if left != "None" and left is not None else 0.0
@@ -258,7 +278,7 @@ class FormatTransformer(lark.Transformer):
             return str(int(result))
         return str(result)
 
-    def divide(self, args):
+    def divide(self, args: list[Any]):
         """Handle division operation"""
         left, right = args
         left_val = float(left) if left != "None" and left is not None else 0.0
@@ -270,28 +290,28 @@ class FormatTransformer(lark.Transformer):
             return str(int(result))
         return str(result)
 
-    def function(self, args):
+    def function(self, args: list[Any]):
         return args[0]
 
-    def ESCAPED_STRING(self, args):
+    def ESCAPED_STRING(self, args: str):
         return args[1:-1].replace("\\", "")
 
-    def NUMBER(self, args):
+    def NUMBER(self, args: str):
         return str(args)
 
-    def lower(self, args):
+    def lower(self, args: list[Any]):
         return str(args[0]).lower()
 
-    def upper(self, args):
+    def upper(self, args: list[Any]):
         return str(args[0]).upper()
 
-    def title(self, args):
+    def title(self, args: list[Any]):
         return str(args[0]).title()
 
-    def concat(self, args):
+    def concat(self, args: list[Any]):
         return "".join(str(arg) for arg in args)
 
-    def substr(self, args):
+    def substr(self, args: list[Any]):
         if len(args) == 3:
             if args[2] is None:
                 return str(args[0])[int(args[1]) :]
@@ -299,19 +319,19 @@ class FormatTransformer(lark.Transformer):
         elif len(args) == 2:
             return str(args[0])[int(args[1]) :]
 
-    def replace(self, args):
+    def replace(self, args: list[Any]):
         return str(args[0]).replace(str(args[1]), str(args[2]))
 
-    def sort(self, args):
+    def sort(self, args: list[list[str]]) -> list[str]:
         return sorted(args[0])
 
-    def reverse(self, args):
+    def reverse(self, args: list[Any]):
         return list(reversed(args[0]))
 
-    def join(self, args):
+    def join(self, args: list[Any]):
         return args[0].join(args[1])
 
-    def boolean(self, args):
+    def boolean(self, args: list[Any]):
         if not args:
             return True
         token = args[0]
@@ -322,7 +342,7 @@ class FormatTransformer(lark.Transformer):
             value = str(token.value).lower()
         return value in ("true", "1", "yes")
 
-    def round(self, args):
+    def round(self, args: list[Any]):
         try:
             value = Decimal(0.0 if args[0] == "None" else args[0] or 0.0)
         except InvalidOperation:
@@ -336,7 +356,7 @@ class FormatTransformer(lark.Transformer):
             return str(int(result))
         return str(result)
 
-    def number(self, args):
+    def number(self, args: list[Union[str, int, float, None]]) -> str:
         arg_val = args[0]
         if isinstance(arg_val, str):
             arg_val = float(arg_val) if "." in arg_val else int(arg_val)
@@ -346,16 +366,16 @@ class FormatTransformer(lark.Transformer):
             return "{}".format(arg_val).replace(".", args[1])
         return "{:,}".format(arg_val)
 
-    def format_length(self, args):
+    def format_length(self, args: list[Any]):
         return args[0]
 
-    def metric_length(self, args):
+    def metric_length(self, args: list[Any]):
         value, precision, decimal_places = args
         return ifcopenshell.util.unit.format_length(
             float(value), float(precision), int(decimal_places), unit_system="metric"
         )
 
-    def imperial_length(self, args):
+    def imperial_length(self, args: list[Any]):
         args = list(filter(lambda x: x is not None, args))
         if len(args) == 2:
             input_unit, output_unit = "foot", "foot"
@@ -389,25 +409,25 @@ class FormatTransformer(lark.Transformer):
 
 
 class GetElementTransformer(lark.Transformer):
-    def start(self, args):
+    def start(self, args: list[Any]):
         return args[0]
 
-    def keys(self, args):
+    def keys(self, args: list[Any]):
         return args
 
-    def key(self, args):
+    def key(self, args: list[Any]):
         return args[0]
 
-    def quoted_string(self, args):
+    def quoted_string(self, args: list[Any]):
         return str(args[0])
 
-    def regex_string(self, args):
+    def regex_string(self, args: list[Any]):
         return re.compile(args[0])
 
-    def unquoted_string(self, args):
+    def unquoted_string(self, args: list[Any]):
         return str(args[0])
 
-    def ESCAPED_STRING(self, args):
+    def ESCAPED_STRING(self, args: str):
         return args[1:-1].replace("\\", "")
 
 
@@ -949,13 +969,13 @@ class FacetTransformer(lark.Transformer):
             results |= r
         return results
 
-    def facet_list(self, args):
+    def facet_list(self, args: list[Any]):
         if self.elements:
             self.results.append(self.elements)
             self.elements = set()
         self.has_additive_facet_in_current_list = False
 
-    def instance(self, args):
+    def instance(self, args: list[Any]):
         self.has_additive_facet_in_current_list = True
         if self.base_elements is None:
             if args[0].data == "globalid":
@@ -978,7 +998,7 @@ class FacetTransformer(lark.Transformer):
                     e for e in self.base_elements if getattr(e, "GlobalId", None) == args[1].children[0].value
                 }
 
-    def entity(self, args):
+    def entity(self, args: list[Any]):
         self.has_additive_facet_in_current_list = True
         if self.base_elements is None:
             if args[0].data == "ifc_class":
@@ -997,7 +1017,7 @@ class FacetTransformer(lark.Transformer):
             else:
                 self.elements -= {e for e in self.base_elements if e.is_a(args[1].children[0].value)}
 
-    def attribute(self, args):
+    def attribute(self, args: list[Any]):
         name, comparison, value = args
         name = name.children[0].value
 
@@ -1011,7 +1031,7 @@ class FacetTransformer(lark.Transformer):
         self.add_default_elements()
         self.elements = set(filter(filter_function, self.elements))
 
-    def type(self, args):
+    def type(self, args: list[Any]):
         comparison, value = args
 
         def filter_function(element: ifcopenshell.entity_instance) -> bool:
@@ -1023,7 +1043,7 @@ class FacetTransformer(lark.Transformer):
         self.add_default_elements()
         self.elements = set(filter(filter_function, self.elements))
 
-    def material(self, args):
+    def material(self, args: list[Any]):
         comparison, value = args
 
         def filter_function(element: ifcopenshell.entity_instance) -> bool:
@@ -1041,7 +1061,7 @@ class FacetTransformer(lark.Transformer):
         self.add_default_elements()
         self.elements = set(filter(filter_function, self.elements))
 
-    def property(self, args):
+    def property(self, args: list[Any]):
         pset, prop, comparison, value = args
 
         def filter_function(element: ifcopenshell.entity_instance) -> bool:
@@ -1071,7 +1091,7 @@ class FacetTransformer(lark.Transformer):
         self.add_default_elements()
         self.elements = set(filter(filter_function, self.elements))
 
-    def classification(self, args):
+    def classification(self, args: list[Any]):
         comparison, value = args
 
         def filter_function(element: ifcopenshell.entity_instance) -> bool:
@@ -1091,7 +1111,7 @@ class FacetTransformer(lark.Transformer):
         self.add_default_elements()
         self.elements = set(filter(filter_function, self.elements))
 
-    def location(self, args):
+    def location(self, args: list[Any]):
         comparison, value = args
 
         def filter_function(element: ifcopenshell.entity_instance) -> bool:
@@ -1110,7 +1130,7 @@ class FacetTransformer(lark.Transformer):
         self.add_default_elements()
         self.elements = set(filter(filter_function, self.elements))
 
-    def group(self, args):
+    def group(self, args: list[Any]):
         comparison, value = args
 
         def filter_function(element: ifcopenshell.entity_instance) -> bool:
@@ -1126,7 +1146,7 @@ class FacetTransformer(lark.Transformer):
         self.add_default_elements()
         self.elements = set(filter(filter_function, self.elements))
 
-    def parent(self, args):
+    def parent(self, args: list[Any]):
         comparison, value = args
 
         parents = set()
@@ -1179,7 +1199,7 @@ class FacetTransformer(lark.Transformer):
         else:
             self.elements -= result
 
-    def query(self, args):
+    def query(self, args: list[Any]):
         keys, comparison, value = args
 
         def filter_function(element: ifcopenshell.entity_instance) -> bool:
@@ -1207,7 +1227,7 @@ class FacetTransformer(lark.Transformer):
             self.container_trees[tree_copy.pop(0)] = tree_copy.copy()
         return tree
 
-    def comparison(self, args):
+    def comparison(self, args: list[Any]):
         if args[0].data == "not":
             comparison = args[1].data
             is_not = "!"
@@ -1227,16 +1247,16 @@ class FacetTransformer(lark.Transformer):
             }[comparison]
         )
 
-    def keys(self, args):
+    def keys(self, args: list[Any]):
         return self.value(args)
 
-    def pset(self, args):
+    def pset(self, args: list[Any]):
         return self.value(args)
 
-    def prop(self, args):
+    def prop(self, args: list[Any]):
         return self.value(args)
 
-    def value(self, args):
+    def value(self, args: list[Any]):
         if args[0].data == "unquoted_string":
             return args[0].children[0].value
         elif args[0].data == "decimal_string":

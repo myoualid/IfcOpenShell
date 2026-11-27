@@ -240,7 +240,8 @@ def _map_helmert_curve(file: ifcopenshell.file, design_parameters: entity_instan
     A1_1 = length * math.pow(math.fabs(a1_1), -1.0 / 2.0) * a1_1 / math.fabs(a1_1) if a1_1 != 0.0 else 0.0
     A2_1 = length * math.pow(math.fabs(a2_1), -1.0 / 3.0) * a2_1 / math.fabs(a2_1) if a2_1 != 0.0 else 0.0
 
-    x1, y1, angle1 = ifcopenshell_wrapper.helmert_curve_point(A0_1, A1_1, A2_1, length / 2)
+    point1: list[float] = ifcopenshell_wrapper.helmert_curve_point(A0_1, A1_1, A2_1, length / 2)
+    x1, y1, angle1 = point1
 
     parent_curve1 = file.createIfcSecondOrderPolynomialSpiral(
         Position=file.createIfcAxis2Placement2D(
@@ -272,7 +273,8 @@ def _map_helmert_curve(file: ifcopenshell.file, design_parameters: entity_instan
     A1_2 = length * math.pow(math.fabs(a1_2), -1.0 / 2.0) * (a1_2 / math.fabs(a1_2)) if a1_2 != 0.0 else 0.0
     A2_2 = length * math.pow(math.fabs(a2_2), -1.0 / 3.0) * (a2_2 / math.fabs(a2_2)) if a2_2 != 0.0 else 0.0
 
-    x2, y2, angle2 = ifcopenshell_wrapper.helmert_curve_point(A0_2, A1_2, A2_2, length / 2)
+    point2: list[float] = ifcopenshell_wrapper.helmert_curve_point(A0_2, A1_2, A2_2, length / 2)
+    x2, y2, angle2 = point2
     anglep = angle1 - angle2
     xp = x1 - x2 * math.cos(anglep) + y2 * math.sin(anglep)
     yp = y1 - x2 * math.sin(anglep) - y2 * math.cos(anglep)

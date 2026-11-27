@@ -17,11 +17,16 @@
 # along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
 
 
+from collections.abc import Callable
+from typing import Optional
+
 from ifcopenshell import entity_instance
 
-_horizontal_callback = None
-_vertical_callback = None
-_cant_callback = None
+LabelCallback = Callable[[Optional[entity_instance], Optional[entity_instance]], str]
+
+_horizontal_callback: Optional[LabelCallback] = None
+_vertical_callback: Optional[LabelCallback] = None
+_cant_callback: Optional[LabelCallback] = None
 
 
 def register_referent_name_callback(horizontal=None, vertical=None, cant=None):
