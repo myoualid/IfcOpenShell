@@ -9,6 +9,7 @@ package (`src/ts/ifcopenshell-js`), as `ifcopenshell/util/<module>` and
 ```shell
 python src/transpiler/generate.py            # write src/ts/ifcopenshell-js/src/{util,api}
 python src/transpiler/generate.py --report   # also write TRACKING.md: per module, what remains, what is tested, what is done
+python src/transpiler/generate.py --tests    # also transpile the Python tests into src/ts/ifcopenshell-js/tests/generated
 python src/transpiler/transpile.py src/ifcopenshell-python/ifcopenshell/util/unit.py   # one module to stdout
 ```
 
@@ -113,3 +114,23 @@ npm run build      # type-checks and compiles the generated code into dist/util 
 
 The generated code is not committed, so run `generate` and `build` after changing the rules or
 the Python source.
+
+## Tests
+
+The tests of the generated code are the Python tests of `util` and `api`
+(`src/ifcopenshell-python/test`), transpiled with the same rules by `generate.py --tests`
+(`tests.py`). Each test class becomes a plain class: its base classes are inlined (the setup
+fixture of `test/bootstrap.py` and the test classes of the same file that it extends), and each
+test method becomes a vitest test. A test method that the rules cannot translate becomes a
+skipped test with the reason. The `test_modules` and `test_suite` entries and the pytest rules
+of `ts.yaml` cover pytest (`pytest.raises`, `pytest.approx`, `pytest.mark.parametrize`).
+
+```shell
+cd src/ts/ifcopenshell-js
+npm run generate -- --tests
+npm run build
+IFCOPENSHELL_WASM_DIR=<the WASM build> npm run test:report   # also writes src/transpiler/test-results.json
+python ../../transpiler/generate.py --report                 # TRACKING.md with the test results per module
+```
+
+The generated tests import the built package (`dist`), and are not committed.

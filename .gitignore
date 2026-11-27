@@ -150,3 +150,5 @@ CLAUDE.local.md
 /src/transpiler/transpile.json
 /src/transpiler/types.json
 /src/transpiler/TRACKING.md
+/src/transpiler/test-results.json
+/src/ts/ifcopenshell-js/tests/generated/

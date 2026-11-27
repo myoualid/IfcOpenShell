@@ -5,7 +5,8 @@
 Writes src/util and src/api of src/ts/ifcopenshell-js, which are build output
 and not committed, from this checkout's Python source, the rules and precomputed.json.
 transpile.json lists each module's untranslated functions; `--report` also writes
-TRACKING.md (not committed), with the results of the last `npm run test:report`. Needs only
+TRACKING.md (not committed), with the results of the last `npm run test:report`, and `--tests`
+transpiles the Python tests into tests/generated (see tests.py). Needs only
 PyYAML and Jinja2 (requirements.txt). `--precompute` refreshes precomputed.json, which needs
 an installed ifcopenshell close to this checkout.
 """
@@ -20,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 
 import mypy_types
+import tests
 import yaml
 from transpile import PACKAGE, Transpiler, build_index, camel, module_name
 
@@ -27,8 +29,9 @@ HERE = Path(__file__).parent
 OUTPUT = HERE.parent / "ts" / "ifcopenshell-js" / "src"
 MANIFEST = HERE / "transpile.json"
 PRECOMPUTED = HERE / "precomputed.json"
-RESULTS = HERE / "parity" / "results.json"
+RESULTS = HERE / "test-results.json"
 TRACKING = HERE / "TRACKING.md"
+TESTS_OUTPUT = HERE.parent / "ts" / "ifcopenshell-js" / "tests" / "generated"
 # Modules that are not ported, and why: their functions throw, so other modules still import them.
 NOT_PORTED = {
     "util/doc": "documentation script",
@@ -93,27 +96,28 @@ def precompute(rules):
     return results
 
 
-def parity_results():
-    """Replayed calls per module, from the last `npm run test:report`."""
+def test_results():
+    """Results of the generated tests (tests/generated) per module, from the last `npm run test:report`."""
     modules = collections.defaultdict(
         lambda: {"passed": 0, "skipped": collections.Counter(), "failed": collections.defaultdict(collections.Counter)}
     )
     if not RESULTS.exists():
         return modules
-    for test in (
-        t for f in json.loads(RESULTS.read_text(encoding="utf-8"))["testResults"] for t in f["assertionResults"]
-    ):
-        if test["ancestorTitles"][:1] != ["parity with Python"] or len(test["ancestorTitles"]) < 2:
+    for result in json.loads(RESULTS.read_text(encoding="utf-8"))["testResults"]:
+        if "/tests/generated/" not in result["name"].replace("\\", "/"):
             continue
-        module = modules[test["ancestorTitles"][1].replace(".", "/")]
-        if test["status"] == "passed":
-            module["passed"] += 1
-        elif test["status"] == "failed":
-            message = re.sub(r"(?<![A-Za-z])\d+", "N", test["failureMessages"][0].splitlines()[0])
-            module["failed"][message][test["title"].rsplit(" ", 1)[-1]] += 1
-        else:
-            reason = re.search(r"\] \w+ \((.*)\)$", test["title"])
-            module["skipped"][re.sub(r"(?<![A-Za-z])\d+", "N", reason[1]) if reason else test["title"]] += 1
+        for test in result["assertionResults"]:
+            # The suite of a generated file is the module it tests (util/x or api/p), then the test class.
+            module = modules[test["ancestorTitles"][0]]
+            if test["status"] == "passed":
+                module["passed"] += 1
+            elif test["status"] == "failed":
+                message = re.sub(r"(?<![A-Za-z])\d+", "N", (test["failureMessages"] or ["?"])[0].splitlines()[0])
+                name = ".".join(test["ancestorTitles"][1:2] + [test["title"].split(" ")[0]])
+                module["failed"][message][name] += 1
+            else:
+                reason = re.search(r" \((.*)\)$", test["title"])
+                module["skipped"][re.sub(r"(?<![A-Za-z])\d+", "N", reason[1]) if reason else "skipped"] += 1
     return modules
 
 
@@ -134,7 +138,7 @@ def tracking(manifest):
         group["missing"] += [(f"{Path(key).name}: {name}", reason) for name, reason in missing.items()]
         blockers.update(re.sub(r"^No \w+ rule at line \d+: ", "", reason)[:80] for reason in missing.values())
 
-    results = parity_results()
+    results = test_results()
     todo, untested, done = [], [], []
     for name, group in sorted(groups.items()):
         result = results[name]
@@ -168,7 +172,7 @@ def tracking(manifest):
         "",
         f"Test results: {tested}.",
         "",
-        "| Modules to do | Modules to test | Modules done | Functions translated | Calls passed | Calls failed | Calls skipped |",
+        "| Modules to do | Modules to test | Modules done | Functions translated | Tests passed | Tests failed | Tests skipped |",
         "|---|---|---|---|---|---|---|",
         f"| {len(todo)} | {len(untested)} | {len(done)} | {translated}/{total} | {passed} | {failures} | {skipped} |",
         "",
@@ -181,7 +185,7 @@ def tracking(manifest):
     for group in todo:
         lines += ["", f"### {group['name']}", ""]
         lines += [
-            f"Translated {group['translated']}; {group['passed']} calls passed, {group['failures']} failed, {sum(group['skipped'].values())} skipped."
+            f"Translated {group['translated']}; {group['passed']} tests passed, {group['failures']} failed, {sum(group['skipped'].values())} skipped."
         ]
         if group["failed"]:
             lines += ["", "Failing:", ""]
@@ -190,14 +194,14 @@ def tracking(manifest):
         if group["missing"]:
             lines += ["", "Not translated:", ""]
             lines += [f"- `{name}`: {reason[:160]}" for name, reason in group["missing"]]
-    lines += ["", "## To test", "", "Translated, but no recorded call replays.", ""]
+    lines += ["", "## To test", "", "Translated, but no generated test passes.", ""]
     lines += ["| Module | Translated | Reason |", "|---|---|---|"]
     for group in untested:
-        reason = group["skipped"].most_common(1)[0][0] if group["skipped"] else "no recorded calls"
+        reason = group["skipped"].most_common(1)[0][0] if group["skipped"] else "no Python tests"
         lines.append(f"| {group['name']} | {group['translated']} | {reason[:120]} |")
     lines += ["", "## Not ported", "", "Not counted above.", ""] + [f"- {item}" for item in unported]
-    lines += ["", "## Done", "", "Translated, with no failing call.", ""]
-    lines += ["| Module | Translated | Calls passed | Calls skipped |", "|---|---|---|---|"]
+    lines += ["", "## Done", "", "Translated, with no failing test.", ""]
+    lines += ["| Module | Translated | Tests passed | Tests skipped |", "|---|---|---|---|"]
     lines += [f"| {g['name']} | {g['translated']} | {g['passed']} | {sum(g['skipped'].values())} |" for g in done]
     TRACKING.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote {TRACKING}")
@@ -208,6 +212,7 @@ def main():
     parser.add_argument("--rules", type=Path, default=HERE / "ts.yaml")
     parser.add_argument("--precompute", action="store_true", help=f"only refresh {PRECOMPUTED.name}")
     parser.add_argument("--report", action="store_true", help=f"also write {TRACKING.name}")
+    parser.add_argument("--tests", action="store_true", help="also transpile the Python tests into tests/generated")
     args = parser.parse_args()
 
     rules = yaml.safe_load(args.rules.read_text(encoding="utf-8"))
@@ -301,8 +306,31 @@ def main():
             f"ifcopenshell.{scope}: {len(entries) - failed}/{len(entries)} files, {functions - stubs}/{functions} functions translated"
             f" ({methods} methods stubbed in otherwise translated classes; {unported} files not ported)"
         )
+    if args.tests:
+        generate_tests(compiler)
     if args.report:
         tracking(manifest)
+
+
+def generate_tests(compiler):
+    """Transpile the Python tests of util and api into tests/generated (see tests.py)."""
+    shutil.rmtree(TESTS_OUTPUT, ignore_errors=True)
+    total = skipped = 0
+    for path, relative, tested_module in tests.test_sources():
+        output = TESTS_OUTPUT / relative
+        output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            code, suites = tests.translate(compiler, path, relative, tested_module)
+        except Exception as error:  # Module-level constructs stop the whole file.
+            print(f"{path.relative_to(tests.TEST_ROOT).as_posix()}: {str(error).splitlines()[0]}")
+            continue
+        if not suites:  # A file with no tests (a comment that other files cover them, for example).
+            continue
+        output.write_text(polish(code), encoding="utf-8")
+        cases = [t for s in suites for t in s["tests"]]
+        total += len(cases)
+        skipped += sum(bool(t["skip"]) for t in cases)
+    print(f"tests: {total - skipped}/{total} test methods translated")
 
 
 if __name__ == "__main__":

@@ -385,7 +385,92 @@ numpy_functions: []
 numpy_operators: {Add: add, Sub: subtract, Mult: multiply, Div: divide, MatMult: matmul}
 # numpy calls that a rule writes inline for numbers (see the np.isclose rule).
 inline_numpy: [np.isclose, np.allclose, numpy.isclose, numpy.allclose]
+# Generated tests (tests.py): the modules that the Python tests use besides those above, and the
+# vitest suite that runs the test methods of each test class (`self` is the test class instance).
+test_modules: [pytest]
+test_suite: |-
+  {% macro test(t, call) %}{% if t.skip %}it.skip({{ (t.name ~ " (" ~ t.skip[:200] ~ ")") | tojson }}, () => {});
+  {% elif t.cases %}it.each({{ json(t.cases) }})({{ (t.name ~ " %#") | tojson }}, (...args: any[]) => {{ call }}(...args));
+  {% else %}it({{ t.name | tojson }}, () => {{ call }}());
+  {% endif %}{% endmacro %}import { afterEach, beforeAll, beforeEach, describe, it } from "vitest";
+  import { createInstance, describeOrSkip } from "{{ helper }}";
+
+  // The tests of {{ python_path }}, for {{ tested_module }}.
+  describeOrSkip({{ tested_module | tojson }}, () => {
+    beforeAll(async () => {
+      const runtime = await createInstance();
+      for (const schema of ["ifc2x3", "ifc4", "ifc4x3_add2"]) {
+        await runtime.loadPlugin("schema", schema);
+        await runtime.loadPlugin("mapping", schema);
+      }
+    });
+  {% for suite in suites %}{% if suite.name is none %}{% for t in suite.tests %}  {{ test(t, t.function) }}{% endfor %}{% else %}
+    describe({{ suite.name | tojson }}, () => {
+      let self: any;
+      beforeEach(() => {
+        self = new {{ suite.name }}();{% if suite.setup %}
+        self.setup();{% endif %}
+      });
+      afterEach(() => self.file?.dispose());
+  {% for t in suite.tests %}    {{ test(t, "self." ~ t.function) }}{% endfor %}  });
+  {% endif %}{% endfor %}});
 rules:
+  # pytest in the generated tests (tests.py). pytest.raises: the code throws, and not because it is a stub.
+  - input:
+      node: With
+      items:
+        - node: withitem
+          context_expr:
+            node: Call
+            func: $callee
+          optional_vars: null
+      body: $body
+    when: callee | source == "pytest.raises"
+    output: |-
+      expect(() => {
+      {{ body | emit | indent(2, true) }}
+      }).toThrow(/^(?!Unsupported Python|Not transpiled)/);
+  # x == pytest.approx(y, rel=, abs=) and pytest.approx(y) == x: every number of x is within max(rel * |y|, abs)
+  # of y (pytest's defaults).
+  - input:
+      node: Compare
+      left: $left
+      ops: [{node: Eq}]
+      comparators:
+        - node: Call
+          func: $callee
+          args: [$expected]
+          keywords: $keywords
+    when: callee | source == "pytest.approx" and keywords | rejectattr("arg", "in", ["rel", "abs"]) | list | length == 0
+    output: '{% set k = {} %}{% for kw in keywords %}{% set _ = k.update({kw.arg: kw.value | emit}) %}{% endfor %}{{ "helpers.linalg" | use("linalg") }}.allclose({{ left | emit }}, {{ expected | emit }}, { rtol: {{ k.rel | default("1e-6") }}, atol: {{ k.abs | default("1e-12") }} })'
+  - input:
+      node: Compare
+      left:
+        node: Call
+        func: $callee
+        args: [$expected]
+        keywords: $keywords
+      ops: [{node: Eq}]
+      comparators: [$actual]
+    when: callee | source == "pytest.approx" and keywords | rejectattr("arg", "in", ["rel", "abs"]) | list | length == 0
+    output: '{% set k = {} %}{% for kw in keywords %}{% set _ = k.update({kw.arg: kw.value | emit}) %}{% endfor %}{{ "helpers.linalg" | use("linalg") }}.allclose({{ actual | emit }}, {{ expected | emit }}, { rtol: {{ k.rel | default("1e-6") }}, atol: {{ k.abs | default("1e-12") }} })'
+  # Other uses of pytest have no rule.
+  - input:
+      node: Call
+      func:
+        node: Attribute
+        value:
+          node: Name
+          id: pytest
+        attr: $attr
+    output: '{{ ("pytest." ~ attr) | unsupported }}'
+  - input:
+      node: Attribute
+      value:
+        node: Name
+        id: pytest
+      attr: $attr
+    output: '{{ ("pytest." ~ attr) | unsupported }}'
   # Geometry of a triangulation: the methods of the ifcopenshell-js triangulation (verts -> verts(),
   # verts_buffer -> vertsBuffer()).
   - input:

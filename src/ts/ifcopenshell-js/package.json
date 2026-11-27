@@ -60,6 +60,7 @@
     "prepack": "npm run build",
     "test": "vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:report": "vitest run tests/generated --reporter=default --reporter=json --outputFile.json=../../transpiler/test-results.json",
     "test:watch": "vitest"
   },
   "dependencies": {
