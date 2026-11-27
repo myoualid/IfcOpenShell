@@ -139,6 +139,12 @@ export function allclose<T extends Operand>(a: T | number, b: T | number, option
   return [close].flat(2).every(Boolean);
 }
 
+/** Whether two operands have the same shape and equal numbers. */
+export function arrayEqual(a: Operand, b: Operand): boolean {
+  if (typeof a === 'number' || typeof b === 'number') return a === b;
+  return a.length === b.length && a.every((x, i) => arrayEqual(x, b[i]!));
+}
+
 /** Set a part of a column of a matrix, from the row `rowStart`. */
 export function setColumn(m: Matrix, column: number, values: Iterable<number>, rowStart = 0): void {
   Array.from(values).forEach((value, i) => (m[rowStart + i]![column] = value));

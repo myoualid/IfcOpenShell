@@ -159,7 +159,7 @@ runtime_modules:
   # Vectors (number[]) and matrices (rows); not numpy: no dtypes, no broadcasting between shapes.
   # members: the numpy names that helpers/linalg has, with its names; a function that uses another
   # numpy name stays a stub (numpy_math lists the names that are Math functions of numbers).
-  numpy: {module: helpers.linalg, alias: linalg, members: {array: array, asarray: array, copy: copy, add: add, subtract: subtract, multiply: multiply, divide: divide, negative: negative, dot: dot, matmul: matmul, cross: cross, linalg.norm: norm, linalg.inv: inverse, transpose: transpose, eye: identity, identity: identity, zeros: zeros, allclose: allclose, isclose: isclose}}
+  numpy: {module: helpers.linalg, alias: linalg, members: {array: array, asarray: array, copy: copy, add: add, subtract: subtract, multiply: multiply, divide: divide, negative: negative, dot: dot, matmul: matmul, cross: cross, linalg.norm: norm, linalg.inv: inverse, transpose: transpose, eye: identity, identity: identity, zeros: zeros, allclose: allclose, isclose: isclose, array_equal: arrayEqual}}
 # numpy names that are Math functions and constants when their arguments are numbers.
 numpy_math: {pi: Math.PI, e: Math.E, inf: Infinity, nan: NaN, sqrt: Math.sqrt, sin: Math.sin, cos: Math.cos, tan: Math.tan, arcsin: Math.asin, arccos: Math.acos, arctan: Math.atan, arctan2: Math.atan2, abs: Math.abs, sign: Math.sign, floor: Math.floor, ceil: Math.ceil, isnan: Number.isNaN, radians: '((v: number) => v * Math.PI / 180)', degrees: '((v: number) => v * 180 / Math.PI)'}
 # Functions of the ifcopenshell-js geom module, which rules call since `import ifcopenshell.geom` binds no local name.
