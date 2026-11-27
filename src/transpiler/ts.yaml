@@ -1214,6 +1214,15 @@ rules:
         keywords: []
     output: '{% set names = fields.replace(",", " ").split() | list %}{% if not top_level %}{{ "a namedtuple defined inside a function" | unsupported }}{% endif %}export type {{ target | emit }} = { {% for f in names %}{{ f }}: any; {% endfor %}}; export const {{ target | emit }} = ({% for f in names %}{{ f | ident }}: any{% if not loop.last %}, {% endif %}{% endfor %}): {{ target | emit }} => ({ {% for f in names %}{{ f }}: {{ f | ident }}{% if not loop.last %}, {% endif %}{% endfor %} });'
   # Assigning to a function of an overridable module (get_user = my_get_user) sets its override.
+  # From another module (ifcopenshell.api.owner.settings.get_user = f), it sets that module's override.
+  - input:
+      node: Assign
+      targets:
+        - node: Attribute
+          attr: $name
+      value: $value
+    when: (node.targets[0] | resolve) is not none and (node.targets[0] | resolve).rsplit(".", 1)[0] in overridable
+    output: '{{ (node.targets[0] | resolve).rsplit(".", 1)[0] | use }}.overrides.{{ name | camel }} = {{ value | emit }};'
   - input:
       node: Assign
       targets:
