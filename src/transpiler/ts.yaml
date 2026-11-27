@@ -3152,6 +3152,15 @@ annotation_kinds:
   - input: $value
     output: unknown
 inference:
+  # next(iter(xs), None) and next(xs, None): an item of xs, or null.
+  - input:
+      node: Call
+      func:
+        node: Name
+        id: next
+      args: [$values, $default]
+    when: '"next" not in shadowed and default.__class__.__name__ == "Constant" and default.value is none'
+    output: '{{ (values.args[0] if values.__class__.__name__ == "Call" and values.func.id is defined and values.func.id == "iter" and values.args else values) | element_kind }}'
   # What map_shape and function_item_evaluator give, for the rules of their methods.
   - input:
       node: Call

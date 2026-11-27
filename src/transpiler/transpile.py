@@ -1210,6 +1210,14 @@ class Transpiler:
         """The kind of the elements of a list, tuple, set or comprehension; unknown when they differ."""
         if isinstance(node, (ast.ListComp, ast.GeneratorExp, ast.SetComp)):
             return self.kind(node.elt)
+        # file.by_type(...) gives entities.
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "by_type"
+            and self.kind(node.func.value) == "file"
+        ):
+            return "entity"
         if isinstance(node, (ast.List, ast.Tuple, ast.Set)) and node.elts:
             kinds = {self.kind(e) for e in node.elts}
             return kinds.pop() if len(kinds) == 1 else "unknown"
@@ -1430,6 +1438,12 @@ class Transpiler:
                         for a in function.args.args + function.args.kwonlyargs
                     }
                 )
+                # Annotated parameters of nested functions, unless the name is taken.
+                for nested in ast.walk(function):
+                    if isinstance(nested, ast.FunctionDef) and nested is not function:
+                        for a in nested.args.args + nested.args.kwonlyargs:
+                            if a.annotation is not None and a.arg not in self.symbols:
+                                self.symbols[a.arg] = self.emit(a.annotation, "annotation_kinds")
             # A parameter with no annotation that the function uses only as the receiver of text methods
             # (text.upper(), text.split(...)) is text.
             for function in functions:
