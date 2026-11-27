@@ -2,6 +2,7 @@
 import { expect, it } from 'vitest';
 import * as ifcopenshell from 'ifcopenshell';
 import * as geom from 'ifcopenshell/geom';
+import type { IfcOpenshellGeomElement } from '@ifcopenshell/wasm/api';
 import { describeOrSkip } from '../_helper.js';
 
 describeOrSkip('createShape', () => {
@@ -33,7 +34,7 @@ END-ISO-10303-21;`;
     const product = model.byId(10)!;
     const settings = new geom.Settings();
     settings.set('weld-vertices', false);
-    const shape = geom.createShape(settings, product, undefined, kernel)!;
+    const shape = geom.createShape(settings, product, undefined, kernel) as IfcOpenshellGeomElement;
     const triangulation = shape.asTriangulationElement()!;
     const geometry = triangulation.geometry();
     expect(geometry.facesBuffer(Uint32Array).length).toBe(36);

@@ -2,8 +2,71 @@
 import { ifcopenshell } from '../init.js';
 import type { Settings } from './settings.js';
 import type { EntityInstance } from '../entity_instance.js';
+import type {
+  IfcOpenshellGeomElement,
+  IfcOpenshellGeomFunctionItemEvaluator,
+  IfcOpenshellGeomTaxonomyItem,
+  IfcOpenshellGeomTriangulation,
+} from '@ifcopenshell/wasm/api';
 
-/** Create one shape. Load the schema mapping and geometry kernel beforehand. */
-export function createShape(settings: Settings, instance: EntityInstance, representation?: EntityInstance, geometryLibrary = 'opencascade') {
-  return ifcopenshell.geom.createShape(settings, instance, representation ?? null, geometryLibrary);
+/**
+ * Create one shape, as ifcopenshell.geom.create_shape: for a product, an element (its geometry with
+ * its placement); for a representation item, a representation or a profile, only its geometry. In
+ * this build the geometry of an instance that is not a product needs triangulated output (the
+ * default iterator-output setting). Load the schema mapping and geometry kernel beforehand.
+ */
+export function createShape(
+  settings: Settings,
+  instance: EntityInstance,
+  representation?: EntityInstance,
+  geometryLibrary = 'opencascade',
+): IfcOpenshellGeomElement | IfcOpenshellGeomTriangulation | null {
+  const element = ifcopenshell.geom.createShape(settings, instance, representation ?? null, geometryLibrary);
+  if (!element || instance.isA('IfcProduct')) return element;
+  const triangulation = element.asTriangulationElement();
+  if (!triangulation) {
+    element.destroy();
+    throw new TypeError('The geometry of an instance that is not a product needs triangulated output in this build');
+  }
+  return triangulation.geometry();
+}
+
+/** The taxonomy item of an instance, such as the function item of an alignment curve or curve segment. */
+export function mapShape(settings: Settings, instance: EntityInstance): IfcOpenshellGeomTaxonomyItem {
+  return ifcopenshell.geom.mapShape(settings, instance);
+}
+
+/** An evaluator of a function item that mapShape gives. */
+export function functionItemEvaluator(settings: Settings, item: IfcOpenshellGeomTaxonomyItem): IfcOpenshellGeomFunctionItemEvaluator {
+  const evaluator = ifcopenshell.geom.createFunctionItemEvaluator(settings, item);
+  if (!evaluator) throw new TypeError('The item is not a function item');
+  return evaluator;
+}
+
+/** The 4x4 matrix (rows) at the parameter u of a function item evaluator: Python's evaluator.evaluate(u). */
+export function evaluateAt(evaluator: IfcOpenshellGeomFunctionItemEvaluator, u: number): number[][] {
+  const data = evaluator.evaluateAt(u);
+  return [0, 1, 2, 3].map(row => [0, 1, 2, 3].map(column => data[column * 4 + row]!));
+}
+
+/** The first and last parameter (distance along) of a function item that mapShape gives. */
+export function functionItemRange(item: IfcOpenshellGeomTaxonomyItem): [number, number] {
+  return [ifcopenshell.geom.taxonomyFunctionItemStart(item), ifcopenshell.geom.taxonomyFunctionItemEnd(item)];
+}
+
+/** x, y and the direction angle at the distance s along a Helmert curve with the coefficients A0, A1 and A2. */
+export function helmertCurvePoint(a0: number, a1: number, a2: number, s: number): [number, number, number] {
+  const [x, y, angle] = ifcopenshell.geom.helmertCurvePoint(a0, a1, a2, s);
+  return [x!, y!, angle!];
+}
+
+/**
+ * The rows of the 4x4 matrix of a matrix item that mapShape gives for a placement: Python's `components`.
+ * It needs a WASM build with taxonomy_matrix4_components (IfcOpenShell geometry bindings).
+ */
+export function matrixComponents(item: IfcOpenshellGeomTaxonomyItem): number[][] {
+  const geom = ifcopenshell.geom as unknown as { taxonomyMatrix4Components?: (item: IfcOpenshellGeomTaxonomyItem) => number[] };
+  if (!geom.taxonomyMatrix4Components) throw new TypeError('This WASM build cannot read the matrix of a taxonomy item (taxonomy_matrix4_components)');
+  const rows = geom.taxonomyMatrix4Components(item);
+  return [0, 1, 2, 3].map(row => rows.slice(row * 4, row * 4 + 4));
 }
