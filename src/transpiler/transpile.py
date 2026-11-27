@@ -473,6 +473,8 @@ class Transpiler:
         self.index = index or {}
         self.precomputed = precomputed or {}
         self.module = None
+        self.root = ""
+        self.source_path = None
         self.scope = {}
         self.depth = 0
         self.unsupported = []
@@ -565,6 +567,8 @@ class Transpiler:
             symbols=self.symbols,
             aliases=self.aliases,
             this_module=self.module,
+            root=self.root,
+            source_path=self.source_path,
             module_globals=self.globals,
             shadowed=self.shadowed,
             return_annotation=self.return_annotation,
@@ -1297,8 +1301,12 @@ class Transpiler:
                     qualified = f"{node.module.removeprefix('ifcopenshell.')}.{alias.name}"
                     self.import_aliases[alias.asname or alias.name] = qualified
 
-    def translate(self, source, module=None):
+    def translate(self, source, module=None, root=None, source_path=None):
+        """`root` is the path from the output file to the package sources (src/ of ifcopenshell-js), and
+        `source_path` the Python file that the header names; both follow from `module` by default."""
         self.module = module
+        self.root = root if root is not None else "../" * (len(module.split(".")) - 1) if module else ""
+        self.source_path = source_path or f"ifcopenshell/{(module or '').replace('.', '/')}.py"
         tree = ast.parse(source)
         static_classmethods(tree)
         untyped_overloads(tree)

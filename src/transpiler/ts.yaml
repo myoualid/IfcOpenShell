@@ -18,16 +18,16 @@ unsupported_method: |-
 header: |-
   // This file was generated with the assistance of an AI coding tool.
   // SPDX-License-Identifier: LGPL-3.0-or-later
-  // Counterpart of ifcopenshell/{{ this_module | replace(".", "/") }}.py; see that file for copyright.
+  // Counterpart of {{ source_path }}; see that file for copyright.
 
-  import * as ifcopenshell from "{{ "../" * (this_module.split(".") | length - 1) }}index.js";{% if this_module in overridable %}
+  import * as ifcopenshell from "{{ root }}index.js";{% if this_module in overridable %}
 
   /** Replace these functions as Python code assigns to ifcopenshell.{{ this_module }}. */
   export const overrides: { [name: string]: ((...args: any[]) => any) | undefined } = {};{% endif %}
 # Generated modules live in src/util and src/api of the ifcopenshell package; the runtime is in
 # src/helpers: util.x is util/x.ts, api.p.u is api/p/u.ts and api.p is api/p/index.ts.
 import: |-
-  {% set there = target.split(".") %}{% set path = there | join("/") ~ ".js" if there[0] in ["util", "helpers", "geom"] or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ "../" * (this_module.split(".") | length - 1) }}{{ path }}";
+  {% set there = target.split(".") %}{% set path = there | join("/") ~ ".js" if there[0] in ["util", "helpers", "geom"] or there | length > 2 else there | join("/") ~ "/index.js" %}import * as {{ alias }} from "{{ root }}{{ path }}";
 # Classes of ifcopenshell_wrapper, as exported by ifcopenshell.wrapper.
 wrapper_classes:
   attribute: IfcOpenshellAttribute
@@ -123,7 +123,7 @@ calls:
   list: Array.from<any>
 hand_written: {}
 hand_written_import: |-
-  import { {{ name | camel }} } from "{{ "../" * (this_module.split(".") | length - 1) }}{{ target | replace(".", "/") }}.js";
+  import { {{ name | camel }} } from "{{ root }}{{ target | replace(".", "/") }}.js";
   export { {{ name | camel }} };
 # Functions whose types the rules cannot prove, so they stay stubs, with the reason.
 unsupported_functions:
