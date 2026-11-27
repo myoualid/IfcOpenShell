@@ -1,6 +1,6 @@
 
 import { describe, it, expect } from 'vitest';
-import { hashColor, meshColor } from '../src/util/color.js';
+import { hashColor, meshColor } from '../src/helpers/color.js';
 
 describe('hashColor', () => {
   it('is deterministic for the same input', () => {

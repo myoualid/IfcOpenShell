@@ -46,13 +46,13 @@ describeOrSkip('basic I/O', () => {
 
   it('keeps formatted inspection separate from entity info and handles absent ids', async () => {
     using file = openSample();
-    expect(await ifcopenshell.util.inspectEntity(file, 2)).toMatchObject({
+    expect(await ifcopenshell.helpers.inspectEntity(file, 2)).toMatchObject({
       id: 2,
       type: 'IfcWall',
       guid: WALL_GUID,
       attributes: expect.arrayContaining([{ name: 'Name', value: 'Wall' }]),
     });
-    expect(await ifcopenshell.util.inspectEntity(file, 999)).toBeNull();
+    expect(await ifcopenshell.helpers.inspectEntity(file, 999)).toBeNull();
     expect(() => file.byId(999)).toThrow();
     expect(() => file.byGuid('missing')).toThrow();
   });

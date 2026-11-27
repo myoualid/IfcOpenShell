@@ -43,4 +43,4 @@ export type {
   Ptr,
   WasmAssets,
 } from './types.js';
-export * as util from './util/index.js';
+export * as helpers from './helpers/index.js';
