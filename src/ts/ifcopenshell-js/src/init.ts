@@ -61,9 +61,14 @@ export function init(options: InitOptions = {}): Promise<IfcOpenShell> {
 
 /** Native module, available after awaiting init(). */
 export let ifcopenshell: IfcOpenshellModule;
-/** Retrieve the loaded schema declaration by its full identifier. */
+/** The full identifier of a schema name: IFC4X3 is IFC4X3_ADD2, as in ifcopenshell.file(). */
+export function schemaIdentifier(name: string): string {
+  return name === 'IFC4X3' ? 'IFC4X3_ADD2' : name;
+}
+
+/** Retrieve the loaded schema declaration by its full identifier, or by IFC4X3. */
 export function schemaByName(name: string) {
-  return ifcopenshell.parse.schemaByName(name);
+  return ifcopenshell.parse.schemaByName(schemaIdentifier(name));
 }
 
 /** Emscripten filesystem, available after awaiting init(). */

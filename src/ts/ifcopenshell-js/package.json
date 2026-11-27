@@ -25,9 +25,25 @@
       "types": "./dist/serializers/index.d.ts",
       "import": "./dist/serializers/index.js"
     },
+    "./helpers": {
+      "types": "./dist/helpers/index.d.ts",
+      "import": "./dist/helpers/index.js"
+    },
     "./util": {
       "types": "./dist/util/index.d.ts",
       "import": "./dist/util/index.js"
+    },
+    "./util/*": {
+      "types": "./dist/util/*.d.ts",
+      "import": "./dist/util/*.js"
+    },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "import": "./dist/api/index.js"
+    },
+    "./api/*": {
+      "types": "./dist/api/*/index.d.ts",
+      "import": "./dist/api/*/index.js"
     }
   },
   "files": [
@@ -35,7 +51,8 @@
   ],
   "scripts": {
     "clean": "node scripts/clean.mjs",
-    "build": "npm run clean && tsc",
+    "build": "npm run clean && tsc && node scripts/copy-python-data.mjs && tsc -p tsconfig.python.json",
+    "generate": "python ../../transpiler/generate.py",
     "docs": "typedoc",
     "docs:sphinx": "typedoc --options typedoc.sphinx.jsonc && node scripts/prepare-sphinx-docs.mjs",
     "docs:check": "typedoc --emit none",
@@ -43,10 +60,12 @@
     "prepack": "npm run build",
     "test": "vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
+    "test:report": "vitest run tests/generated --reporter=default --reporter=json --outputFile.json=../../transpiler/test-results.json",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@ifcopenshell/wasm": "^0.1.0"
+    "@ifcopenshell/wasm": "^0.1.0",
+    "temporal-polyfill": "^1.0.8"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

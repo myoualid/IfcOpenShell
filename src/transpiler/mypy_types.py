@@ -1,0 +1,297 @@
+# This file was generated with the assistance of an AI coding tool.
+# SPDX-License-Identifier: LGPL-3.0-or-later
+"""Types of Python expressions, proven by mypy, so rules do not have to guess them.
+
+`entity_instance.__getattr__` is opaque to mypy, so a plugin gives IFC attributes their types from
+attributes.json. `analyze()` maps each module to the kinds of its expressions, by source position:
+{module: {"line:column:end_line:end_column": [kind, nullable]}}. Unproven expressions are left out.
+
+Needs the pure Python build of mypy (requirements.txt), since its visitors are subclassed here.
+"""
+
+import hashlib
+import json
+from pathlib import Path
+
+HERE = Path(__file__).parent
+ATTRIBUTES = HERE / "attributes.json"
+CACHE = HERE / "types.json"
+PYTHON = HERE.parent / "ifcopenshell-python"
+SCALARS = {"boolean", "number", "string", "entity", "file", "scalar"}
+SEQUENCES = {"builtins.list", "builtins.tuple", "typing.Sequence", "typing.MutableSequence", "collections.deque"}
+SETS = {"builtins.set", "builtins.frozenset", "typing.AbstractSet", "typing.MutableSet"}
+SIMPLE = {
+    "integer": "number",
+    "real": "number",
+    "number": "number",
+    "string": "string",
+    "binary": "string",
+    "boolean": "boolean",
+    "logical": "boolean",
+}
+
+
+def attribute_type(declared):
+    """A type name of attributes.json: boolean, number, string, entity, or [element]."""
+    import ifcopenshell.ifcopenshell_wrapper as W
+
+    if isinstance(declared, W.aggregation_type):
+        return [attribute_type(declared.type_of_element())]
+    if isinstance(declared, W.named_type):
+        return attribute_type(declared.declared_type())
+    if isinstance(declared, W.type_declaration):
+        return attribute_type(declared.declared_type())
+    if isinstance(declared, W.simple_type):
+        return SIMPLE[declared.declared_type()]
+    if isinstance(declared, W.enumeration_type):
+        return "string"
+    return "entity"  # Entities, and selects, whose values are wrapped in entity instances.
+
+
+def schema_attributes():
+    """Every attribute name in the schemas, with its possible types; needs an installed ifcopenshell."""
+    import ifcopenshell.ifcopenshell_wrapper as W
+
+    attributes = {}
+
+    def add(name, declared, optional):
+        entry = attributes.setdefault(name, {"types": [], "optional": False})
+        if declared not in entry["types"]:
+            entry["types"].append(declared)
+        entry["optional"] |= optional
+
+    for schema in ("IFC2X3", "IFC4", "IFC4X3_ADD2"):
+        for declaration in W.schema_by_name(schema).declarations():
+            entity = declaration.as_entity()
+            if entity:
+                for attribute in entity.attributes():
+                    add(attribute.name(), attribute_type(attribute.type_of_attribute()), attribute.optional())
+                for inverse in entity.inverse_attributes():
+                    add(inverse.name(), ["entity"], False)
+    return {name: attributes[name] for name in sorted(attributes)}
+
+
+def dump_attributes(attributes):
+    """attributes.json text: one attribute per line, so that a schema change gives a small diff."""
+    lines = [
+        f"{json.dumps(name)}: {json.dumps(entry, separators=(', ', ': '))}"
+        for name, entry in sorted(attributes.items())
+    ]
+    return "{\n" + ",\n".join(lines) + "\n}\n"
+
+
+def sources():
+    package = PYTHON / "ifcopenshell"
+    paths = sorted(package.glob("util/*.py")) + sorted(package.glob("api/*/*.py"))
+    return [path for path in paths if path.stem != "__init__"]
+
+
+def fingerprint():
+    digest = hashlib.sha256()
+    for path in [Path(__file__), ATTRIBUTES, *sources()]:
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def element_type(proper):
+    """The type of the elements of a list, tuple or set type, or None."""
+    from mypy import types
+
+    if isinstance(proper, types.Instance) and proper.type.fullname in SEQUENCES | SETS and proper.args:
+        return types.get_proper_type(proper.args[0])
+    if isinstance(proper, types.TupleType) and proper.partial_fallback.type.fullname == "builtins.tuple" and proper.items:
+        items = [types.get_proper_type(item) for item in proper.items]
+        return items[0] if all(item == items[0] for item in items) else None
+    if isinstance(proper, types.UnionType):
+        # A vector type (Sequence[float] | Vector | np.ndarray): the elements of its sequences, when they agree.
+        # The other members (numpy arrays, Blender vectors) hold the same elements by the contract of the type.
+        found = [element_type(types.get_proper_type(item)) for item in proper.items]
+        found = [item for item in found if item is not None]
+        return found[0] if found and all(item == found[0] for item in found) else None
+    return None
+
+
+def classify(proper, types):
+    """(kind, nullable) of a mypy type, or None when it does not say what the value is."""
+    nullable = False
+    if isinstance(proper, types.UnionType):
+        items = [types.get_proper_type(item) for item in proper.items]
+        nullable = any(isinstance(item, types.NoneType) for item in items)
+        # A type from a module that is not installed (mathutils.Vector in VectorType) says nothing
+        # about the value; the other types of the union decide.
+        unimported = types.TypeOfAny.from_unimported_type
+        known = [
+            item
+            for item in items
+            if not isinstance(item, types.NoneType)
+            and not (isinstance(item, types.AnyType) and item.type_of_any == unimported)
+        ]
+        if not known:
+            return None
+        kinds = {classify(item, types) for item in known}
+        kinds = {kind and kind[0] for kind in kinds}
+        if len(kinds) == 1 and None not in kinds:
+            return kinds.pop(), nullable
+        if kinds == {"array", "ndarray"}:
+            # A list or a numpy array (SequenceOfVectors): only len(), iteration and indexing are common.
+            return "sequence", nullable
+        if kinds <= SCALARS:
+            return "scalar", nullable
+        if kinds <= SCALARS | {"datetime", "date", "time"}:
+            # Text or a date: true in the same cases in Python and JS (dates are always true), but not
+            # comparable with ===, so not a scalar.
+            return "attribute", nullable
+        return None
+    if isinstance(proper, types.LiteralType):
+        proper = proper.fallback
+    if isinstance(proper, types.TupleType):
+        # A named tuple is an object with named fields in TS, not an array.
+        named = proper.partial_fallback.type.fullname != "builtins.tuple"
+        return ("object" if named else "array"), False
+    if isinstance(proper, types.TypedDictType):
+        return "dict", False
+    if isinstance(proper, types.CallableType):
+        return "object", False  # Functions are always true, in Python and in JS.
+    if not isinstance(proper, types.Instance):
+        return None
+    name = proper.type.fullname
+    if name == "builtins.bool":
+        return "boolean", False
+    if name in ("builtins.int", "builtins.float"):
+        return "number", False
+    if name == "builtins.str":
+        return "string", False
+    if name in SEQUENCES:
+        return "array", False
+    if name in SETS:
+        return "set", False
+    if name in ("builtins.dict", "typing.Mapping", "typing.MutableMapping"):
+        # dict[str, ...] is a JS object in the generated code; other keys (entities, numbers, tuples) a Map.
+        key = types.get_proper_type(proper.args[0]) if proper.args else None
+        if not isinstance(key, types.Instance):
+            return None
+        if key.type.fullname == "builtins.str":
+            return "dict", False
+        if key.type.fullname in ("builtins.int",) or key.type.fullname.endswith(".entity_instance"):
+            return "map", False
+        return None
+    if name in ("numpy.bool", "numpy.bool_"):
+        return "boolean", False
+    if name in ("numpy.floating", "numpy.integer", "numpy.signedinteger", "numpy.unsignedinteger", "numpy.number"):
+        return "number", False
+    if name.startswith("numpy."):
+        return "ndarray", False
+    # Dates are Temporal objects in TS; a timedelta is a number of microseconds.
+    if name == "datetime.datetime":
+        return "datetime", False
+    if name == "datetime.date":
+        return "date", False
+    if name == "datetime.time":
+        return "time", False
+    if name == "datetime.timedelta":
+        return "number", False
+    if name.endswith((".entity_instance", ".entity_instance_mixin")):
+        return "entity", False
+    if name == "re.Match":
+        return "match", False  # A RegExpExecArray in TS.
+    if name == "re.Pattern":
+        return "pattern", False  # A RegExp in TS.
+    if name in ("ifcopenshell.file.file", "ifcopenshell.ifcopenshell_wrapper.file"):
+        return "file", False
+    if name.startswith("ifcopenshell.") and not name.startswith("ifcopenshell.ifcopenshell_wrapper."):
+        return None  # util and api classes: the rules bind their method calls from the class.
+    if not proper.type.fallback_to_any and not any(proper.type.get(method) for method in ("__bool__", "__len__")):
+        # Always true in Python (re.Match, schema declarations, iterators...), as an object is in JS.
+        return "object", False
+    return None
+
+
+def analyze():
+    """Run mypy over util and api."""
+    from mypy import build, nodes, options, traverser, types
+    from mypy.modulefinder import BuildSource
+    from mypy.plugin import Plugin
+
+    attributes = json.loads(ATTRIBUTES.read_text(encoding="utf-8"))
+
+    class SchemaAttributes(Plugin):
+        def get_attribute_hook(self, fullname):
+            prefix, _, name = fullname.rpartition(".")
+            if prefix == "ifcopenshell.entity_instance.entity_instance_mixin" and name in attributes:
+                return lambda context: self.attribute(context, attributes[name])
+            return None
+
+        def attribute(self, context, entry):
+            def to_type(declared):
+                if isinstance(declared, list):
+                    return context.api.named_generic_type("builtins.list", [to_type(declared[0])])
+                if declared == "entity":
+                    return context.type
+                python = {"boolean": "bool", "number": "float", "string": "str"}[declared]
+                return context.api.named_generic_type(f"builtins.{python}", [])
+
+            items = [to_type(declared) for declared in entry["types"]]
+            if entry["optional"]:
+                items.append(types.NoneType())
+            return types.UnionType.make_union(items)
+
+    package = PYTHON / "ifcopenshell"
+    modules = [BuildSource(str(path), ".".join(path.relative_to(PYTHON).with_suffix("").parts)) for path in sources()]
+    settings = options.Options()
+    settings.export_types = True
+    settings.preserve_asts = True
+    settings.check_untyped_defs = True
+    settings.ignore_missing_imports = True
+    settings.follow_imports = "silent"
+    settings.incremental = False
+    settings.namespace_packages = True
+    settings.explicit_package_bases = True
+    settings.mypy_path = [str(PYTHON)]
+    result = build.build(modules, settings, extra_plugins=[SchemaAttributes(settings)])
+
+    class Expressions(traverser.ExtendedTraverserVisitor):
+        def __init__(self):
+            self.kinds = {}
+
+        def visit(self, node):
+            if isinstance(node, nodes.Expression) and node in result.types:
+                proper = types.get_proper_type(result.types[node])
+                position = f"{node.line}:{node.column}:{node.end_line}:{node.end_column}"
+                kind = classify(proper, types)
+                if kind:
+                    self.kinds[position] = kind
+                if isinstance(proper, types.CallableType):
+                    # What a call of the value returns (a sort key passed as a parameter, for example).
+                    returns = classify(types.get_proper_type(proper.ret_type), types)
+                    if returns:
+                        self.kinds[position + ":returns"] = returns
+                if isinstance(proper, types.Instance) and proper.type.fullname.startswith("ifcopenshell.ifcopenshell_wrapper."):
+                    # The class of a native value, for the rules that map its methods to ifcopenshell-js.
+                    self.kinds[position + ":class"] = [proper.type.name, False]
+                if isinstance(proper, types.TupleType) and (fields := proper.partial_fallback.type.metadata.get("namedtuple", {}).get("fields")):
+                    # The fields of a named tuple in order, for *value in a call (f(x, *parameters)).
+                    self.kinds[position + ":fields"] = [list(fields), False]
+                if (elements := element_type(proper)) is not None and (kind := classify(elements, types)):
+                    # The elements of a list, tuple or set (for sorted(), min(), all() and `in`).
+                    self.kinds[position + ":elements"] = kind
+            return True
+
+    found = {}
+    for module in modules:
+        if module.module in result.files:
+            expressions = Expressions()
+            result.files[module.module].accept(expressions)
+            found[module.module.removeprefix("ifcopenshell.")] = expressions.kinds
+    return found
+
+
+def load():
+    """Types of this checkout, from the cache when nothing they depend on changed."""
+    key = fingerprint()
+    if CACHE.exists():
+        cached = json.loads(CACHE.read_text(encoding="utf-8"))
+        if cached["fingerprint"] == key:
+            return cached["modules"]
+    modules = analyze()
+    CACHE.write_text(json.dumps({"fingerprint": key, "modules": modules}), encoding="utf-8")
+    return modules

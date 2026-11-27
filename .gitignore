@@ -143,3 +143,14 @@ CLAUDE.local.md
 # bonsaiviewer-autodesk connector build artifacts
 /src/bonsaiviewer-autodesk/build/
 /src/bonsaiviewer-autodesk/dist/
+
+# Python-to-TypeScript transpilation (src/transpiler): written by generate.py; not committed.
+/src/ts/ifcopenshell-js/src/util/
+/src/ts/ifcopenshell-js/src/api/
+/src/transpiler/types.json
+/src/transpiler/attributes.json
+/src/transpiler/precomputed.json
+/src/transpiler/transpile.json
+/src/transpiler/TRACKING.md
+/src/transpiler/test-results.json
+/src/ts/ifcopenshell-js/tests/generated/
